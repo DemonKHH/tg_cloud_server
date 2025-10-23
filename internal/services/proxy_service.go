@@ -3,7 +3,6 @@ package services
 import (
 	"fmt"
 	"net"
-	"net/http"
 	"time"
 
 	"go.uber.org/zap"
@@ -186,11 +185,6 @@ func (s *proxyService) testProxyConnection(proxy *models.ProxyIP) error {
 	// 构建代理URL
 	proxyURL := fmt.Sprintf("%s://%s:%s@%s:%d",
 		proxy.Protocol, proxy.Username, proxy.Password, proxy.Host, proxy.Port)
-
-	// 创建HTTP客户端
-	client := &http.Client{
-		Timeout: 10 * time.Second,
-	}
 
 	// 简单的连接测试 - 尝试连接到代理服务器
 	address := fmt.Sprintf("%s:%d", proxy.Host, proxy.Port)

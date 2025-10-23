@@ -138,7 +138,7 @@ func (h *AccountHandler) GetAccounts(c *gin.Context) {
 		Total:      total,
 		Page:       page,
 		Limit:      limit,
-		TotalPages: (total + int64(limit) - 1) / int64(limit),
+		TotalPages: int((total + int64(limit) - 1) / int64(limit)),
 	}
 
 	c.JSON(http.StatusOK, response)

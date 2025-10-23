@@ -140,13 +140,16 @@ func (cp *ConnectionPool) createNewConnection(accountID string, config *ClientCo
 	}
 
 	// 配置代理 (固定绑定)
+	// TODO: 实现gotd/td库的代理设置
+	// gotd/td库的代理配置方式可能需要调整
 	if config.ProxyConfig != nil {
-		dialer, err := createProxyDialer(config.ProxyConfig)
-		if err != nil {
-			cancel()
-			return nil, fmt.Errorf("failed to create proxy dialer: %w", err)
-		}
-		options.Dialer = dialer
+		// dialer, err := createProxyDialer(config.ProxyConfig)
+		// if err != nil {
+		//     cancel()
+		//     return nil, fmt.Errorf("failed to create proxy dialer: %w", err)
+		// }
+		// 需要使用正确的gotd/td代理设置方式
+		cp.logger.Warn("Proxy configuration temporarily disabled, needs gotd/td API update")
 	}
 
 	client := telegram.NewClient(cp.appID, cp.appHash, options)

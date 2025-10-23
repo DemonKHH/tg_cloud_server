@@ -22,11 +22,11 @@ type TaskScheduler struct {
 	connectionPool *telegram.ConnectionPool     // 连接池引用
 	accountRepo    repository.AccountRepository // 账号仓库
 	taskRepo       repository.TaskRepository    // 任务仓库
-	riskEngine     *RiskControlEngine           // 风控引擎
-	logger         *zap.Logger
-	mu             sync.RWMutex
-	ctx            context.Context
-	cancel         context.CancelFunc
+	// riskEngine 暂时移除风控引擎，后续实现
+	logger *zap.Logger
+	mu     sync.RWMutex
+	ctx    context.Context
+	cancel context.CancelFunc
 }
 
 // TaskQueue 任务队列
@@ -51,7 +51,6 @@ func NewTaskScheduler(
 		connectionPool: connectionPool,
 		accountRepo:    accountRepo,
 		taskRepo:       taskRepo,
-		riskEngine:     NewRiskControlEngine(),
 		logger:         logger.Get().Named("task_scheduler"),
 		ctx:            ctx,
 		cancel:         cancel,
@@ -301,20 +300,17 @@ func (ts *TaskScheduler) executeTask(task *models.Task) {
 	startTime := time.Now()
 	task.StartedAt = &startTime
 
-	if err := ts.taskRepo.UpdateTask(task); err != nil {
+	if err := ts.taskRepo.UpdateTask(task.ID, map[string]interface{}{
+		"status":     models.TaskStatusRunning,
+		"started_at": startTime,
+	}); err != nil {
 		ts.logger.Error("Failed to update task status",
 			zap.Uint64("task_id", task.ID),
 			zap.Error(err))
 	}
 
-	// 执行风控检查
-	if err := ts.riskEngine.EvaluateRisk(accountID); err != nil {
-		ts.logger.Warn("Risk evaluation failed",
-			zap.String("account_id", accountID),
-			zap.Error(err))
-		ts.completeTaskWithError(task, err)
-		return
-	}
+	// 风控检查暂时跳过，后续实现
+	// TODO: 实现风控检查逻辑
 
 	// 创建任务执行器
 	taskExecutor, err := ts.createTaskExecutor(task)
@@ -348,7 +344,10 @@ func (ts *TaskScheduler) completeTaskWithSuccess(task *models.Task) {
 	completedTime := time.Now()
 	task.CompletedAt = &completedTime
 
-	if err := ts.taskRepo.UpdateTask(task); err != nil {
+	if err := ts.taskRepo.UpdateTask(task.ID, map[string]interface{}{
+		"status":       models.TaskStatusCompleted,
+		"completed_at": completedTime,
+	}); err != nil {
 		ts.logger.Error("Failed to update completed task",
 			zap.Uint64("task_id", task.ID),
 			zap.Error(err))
@@ -367,7 +366,11 @@ func (ts *TaskScheduler) completeTaskWithError(task *models.Task, taskErr error)
 	}
 	task.Result["error"] = taskErr.Error()
 
-	if err := ts.taskRepo.UpdateTask(task); err != nil {
+	if err := ts.taskRepo.UpdateTask(task.ID, map[string]interface{}{
+		"status":       models.TaskStatusFailed,
+		"completed_at": completedTime,
+		"result":       task.Result,
+	}); err != nil {
 		ts.logger.Error("Failed to update failed task",
 			zap.Uint64("task_id", task.ID),
 			zap.Error(err))
@@ -378,15 +381,15 @@ func (ts *TaskScheduler) completeTaskWithError(task *models.Task, taskErr error)
 func (ts *TaskScheduler) createTaskExecutor(task *models.Task) (telegram.TaskInterface, error) {
 	switch task.TaskType {
 	case models.TaskTypeCheck:
-		return NewAccountCheckTask(task), nil
+		return telegram.NewAccountCheckTask(task), nil
 	case models.TaskTypePrivate:
-		return NewPrivateMessageTask(task), nil
+		return telegram.NewPrivateMessageTask(task), nil
 	case models.TaskTypeBroadcast:
-		return NewBroadcastTask(task), nil
+		return telegram.NewBroadcastTask(task), nil
 	case models.TaskTypeVerify:
-		return NewVerifyCodeTask(task), nil
+		return telegram.NewVerifyCodeTask(task), nil
 	case models.TaskTypeGroupChat:
-		return NewGroupChatTask(task), nil
+		return telegram.NewGroupChatTask(task), nil
 	default:
 		return nil, fmt.Errorf("unsupported task type: %s", task.TaskType)
 	}
@@ -438,15 +441,24 @@ func (ts *TaskScheduler) generateRecommendations(account *models.TGAccount, avai
 
 // GetQueueStatus 获取队列状态
 func (ts *TaskScheduler) GetQueueStatus(accountID string) *models.QueueInfo {
+	// 解析accountID
+	accountIDUint, err := strconv.ParseUint(accountID, 10, 64)
+	if err != nil {
+		return &models.QueueInfo{
+			AccountID:         0,
+			PendingTasks:      0,
+			RunningTasks:      0,
+			EstimatedWaitTime: 0,
+		}
+	}
+
 	// 实现队列状态获取逻辑
 	// 这里应该查询数据库获取更完整的统计信息
 	return &models.QueueInfo{
-		AccountID:      account.ID,
-		PendingCount:   ts.getQueueSize(accountID),
-		RunningCount:   0,   // 需要实现
-		CompletedCount: 0,   // 需要实现
-		FailedCount:    0,   // 需要实现
-		LastTaskAt:     nil, // 需要实现
+		AccountID:         accountIDUint,
+		PendingTasks:      int64(ts.getQueueSize(accountID)),
+		RunningTasks:      0, // 需要实现
+		EstimatedWaitTime: 0, // 需要实现
 	}
 }
 

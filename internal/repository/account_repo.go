@@ -24,6 +24,7 @@ type AccountRepository interface {
 	CountByUserID(userID uint64) (int64, error)
 	CountActiveByUserID(userID uint64) (int64, error)
 	GetAccountsNeedingHealthCheck() ([]*models.TGAccount, error)
+	GetAccountSummaries(userID uint64, page, limit int) ([]*models.AccountSummary, int64, error)
 	GetAll() ([]*models.TGAccount, error)
 }
 
@@ -170,59 +171,21 @@ func (r *accountRepository) CountActiveByUserID(userID uint64) (int64, error) {
 // GetAccountsNeedingHealthCheck 获取需要健康检查的账号
 func (r *accountRepository) GetAccountsNeedingHealthCheck() ([]*models.TGAccount, error) {
 	var accounts []*models.TGAccount
-	
+
 	// 获取超过5分钟未检查或从未检查的账号
 	fiveMinutesAgo := time.Now().Add(-5 * time.Minute)
-	
+
 	err := r.db.Preload("User").Preload("ProxyIP").
-		Where("(last_check_at IS NULL OR last_check_at < ?) AND status NOT IN (?)", 
-			fiveMinutesAgo, 
+		Where("(last_check_at IS NULL OR last_check_at < ?) AND status NOT IN (?)",
+			fiveMinutesAgo,
 			[]models.AccountStatus{
 				models.AccountStatusDead,
 				models.AccountStatusMaintenance,
-			}).
+				}).
 		Limit(50). // 限制每次检查的数量
 		Find(&accounts).Error
-	
+
 	return accounts, err
-}
-
-// GetAccountSummaries 获取账号摘要信息（用于列表显示）
-func (r *accountRepository) GetAccountSummaries(userID uint64, status string, offset, limit int) ([]*models.AccountSummary, int64, error) {
-	query := r.db.Model(&models.TGAccount{}).
-		Select(`
-			tg_accounts.id,
-			tg_accounts.phone,
-			tg_accounts.status,
-			tg_accounts.health_score,
-			tg_accounts.last_check_at,
-			COUNT(tasks.id) as task_count,
-			proxy_ips.name as proxy_name
-		`).
-		Joins("LEFT JOIN tasks ON tasks.account_id = tg_accounts.id").
-		Joins("LEFT JOIN proxy_ips ON proxy_ips.id = tg_accounts.proxy_id").
-		Where("tg_accounts.user_id = ?", userID).
-		Group("tg_accounts.id, proxy_ips.name")
-
-	// 状态过滤
-	if status != "" {
-		query = query.Where("tg_accounts.status = ?", status)
-	}
-
-	// 获取总数
-	var total int64
-	if err := query.Count(&total).Error; err != nil {
-		return nil, 0, err
-	}
-
-	// 获取分页数据
-	var summaries []*models.AccountSummary
-	err := query.Offset(offset).
-		Limit(limit).
-		Order("tg_accounts.created_at DESC").
-		Find(&summaries).Error
-	
-	return summaries, total, err
 }
 
 // UpdateLastUsed 更新最后使用时间
@@ -271,6 +234,30 @@ func (r *accountRepository) GetAccountsWithFilters(filters map[string]interface{
 		Find(&accounts).Error
 
 	return accounts, total, err
+}
+
+// GetAccountSummaries 获取账号摘要列表（分页）
+func (r *accountRepository) GetAccountSummaries(userID uint64, page, limit int) ([]*models.AccountSummary, int64, error) {
+	var summaries []*models.AccountSummary
+	var total int64
+
+	offset := (page - 1) * limit
+
+	// 获取总数
+	if err := r.db.Model(&models.TGAccount{}).Where("user_id = ?", userID).Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	// 获取摘要数据
+	err := r.db.Model(&models.TGAccount{}).
+		Select("id, user_id, phone, status, health_score, last_active_at, created_at").
+		Where("user_id = ?", userID).
+		Offset(offset).
+		Limit(limit).
+		Order("created_at DESC").
+		Scan(&summaries).Error
+
+	return summaries, total, err
 }
 
 // GetAll 获取所有账号

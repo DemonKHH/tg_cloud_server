@@ -10,8 +10,9 @@ import (
 type ProxyRepository interface {
 	Create(proxy *models.Proxy) error
 	GetByID(id uint64) (*models.Proxy, error)
-	GetByUserID(userID uint64) ([]*models.Proxy, error)
+	GetByUserID(userID uint64, page, limit int) ([]*models.ProxyIP, int64, error)
 	GetByUserIDAndID(userID, proxyID uint64) (*models.Proxy, error)
+	GetByUserIDAndStatus(userID uint64, status string, page, limit int) ([]*models.ProxyIP, int64, error)
 	Update(proxy *models.Proxy) error
 	Delete(id uint64) error
 
@@ -21,6 +22,7 @@ type ProxyRepository interface {
 
 	// 代理统计
 	GetProxyStats(userID uint64) (*models.ProxyStats, error)
+	GetStatsByUserID(userID uint64) (*models.ProxyStats, error)
 	UpdateProxyStatus(id uint64, status string) error
 
 	// 批量操作
@@ -49,13 +51,26 @@ func (r *proxyRepository) GetByID(id uint64) (*models.Proxy, error) {
 	return &proxy, err
 }
 
-// GetByUserID 根据用户ID获取代理列表
-func (r *proxyRepository) GetByUserID(userID uint64) ([]*models.Proxy, error) {
-	var proxies []*models.Proxy
+// GetByUserID 根据用户ID获取代理列表（分页）
+func (r *proxyRepository) GetByUserID(userID uint64, page, limit int) ([]*models.ProxyIP, int64, error) {
+	var proxies []*models.ProxyIP
+	var total int64
+
+	offset := (page - 1) * limit
+
+	// 获取总数
+	if err := r.db.Model(&models.ProxyIP{}).Where("user_id = ?", userID).Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	// 获取分页数据
 	err := r.db.Where("user_id = ?", userID).
+		Offset(offset).
+		Limit(limit).
 		Order("created_at DESC").
 		Find(&proxies).Error
-	return proxies, err
+
+	return proxies, total, err
 }
 
 // GetByUserIDAndID 根据用户ID和代理ID获取代理
@@ -114,6 +129,64 @@ func (r *proxyRepository) GetProxyStats(userID uint64) (*models.ProxyStats, erro
 		Group("status").
 		Find(&statusCounts)
 
+	for _, sc := range statusCounts {
+		switch sc.Status {
+		case "active":
+			stats.Active = sc.Count
+		case "inactive":
+			stats.Inactive = sc.Count
+		case "error":
+			stats.Error = sc.Count
+		case "testing":
+			stats.Testing = sc.Count
+		}
+	}
+
+	return &stats, nil
+}
+
+// GetByUserIDAndStatus 根据用户ID和状态获取代理列表（分页）
+func (r *proxyRepository) GetByUserIDAndStatus(userID uint64, status string, page, limit int) ([]*models.ProxyIP, int64, error) {
+	var proxies []*models.ProxyIP
+	var total int64
+
+	offset := (page - 1) * limit
+
+	// 获取总数
+	if err := r.db.Model(&models.ProxyIP{}).Where("user_id = ? AND status = ?", userID, status).Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	// 获取分页数据
+	err := r.db.Where("user_id = ? AND status = ?", userID, status).
+		Offset(offset).
+		Limit(limit).
+		Order("created_at DESC").
+		Find(&proxies).Error
+
+	return proxies, total, err
+}
+
+// GetStatsByUserID 根据用户ID获取代理统计
+func (r *proxyRepository) GetStatsByUserID(userID uint64) (*models.ProxyStats, error) {
+	var stats models.ProxyStats
+
+	// 获取总数
+	r.db.Model(&models.ProxyIP{}).Where("user_id = ?", userID).Count(&stats.Total)
+
+	// 按状态统计
+	var statusCounts []struct {
+		Status string
+		Count  int64
+	}
+
+	r.db.Model(&models.ProxyIP{}).
+		Select("status, COUNT(*) as count").
+		Where("user_id = ?", userID).
+		Group("status").
+		Find(&statusCounts)
+
+	// 分配统计数据
 	for _, sc := range statusCounts {
 		switch sc.Status {
 		case "active":

@@ -168,7 +168,6 @@ func (c *DatabaseHealthChecker) Check(ctx context.Context) *ComponentHealth {
 	health.Details["in_use"] = stats.InUse
 	health.Details["idle"] = stats.Idle
 	health.Details["max_open_connections"] = stats.MaxOpenConnections
-	health.Details["max_idle_connections"] = stats.MaxIdleConnections
 
 	// 检查连接池状态
 	if stats.OpenConnections > stats.MaxOpenConnections*8/10 {

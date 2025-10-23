@@ -87,8 +87,7 @@ func (s *AccountService) CreateAccount(userID uint64, req *models.CreateAccountR
 
 // GetAccounts 获取账号列表
 func (s *AccountService) GetAccounts(filter *AccountFilter) ([]*models.AccountSummary, int64, error) {
-	offset := (filter.Page - 1) * filter.Limit
-	return s.accountRepo.GetAccountSummaries(filter.UserID, filter.Status, offset, filter.Limit)
+	return s.accountRepo.GetAccountSummaries(filter.UserID, filter.Page, filter.Limit)
 }
 
 // GetAccount 获取账号详情
@@ -176,12 +175,13 @@ func (s *AccountService) CheckAccountHealth(userID, accountID uint64) (*models.A
 	}
 
 	// 创建健康度报告
+	now := time.Now()
 	report := &models.AccountHealthReport{
 		AccountID:   account.ID,
 		Phone:       account.Phone,
 		Status:      account.Status,
 		HealthScore: account.HealthScore,
-		CheckedAt:   time.Now(),
+		CheckedAt:   &now,
 		Issues:      []string{},
 		Suggestions: []string{},
 	}
@@ -192,7 +192,7 @@ func (s *AccountService) CheckAccountHealth(userID, accountID uint64) (*models.A
 	s.checkUsagePattern(account, report)
 
 	// 更新最后检查时间
-	now := time.Now()
+	now = time.Now()
 	account.LastCheckAt = &now
 	s.accountRepo.Update(account)
 

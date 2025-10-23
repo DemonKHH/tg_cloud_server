@@ -17,6 +17,7 @@ type UserRepository interface {
 	Update(user *models.User) error
 	Delete(id uint64) error
 	List(offset, limit int) ([]*models.User, int64, error)
+	GetAll() ([]*models.User, error)
 }
 
 // userRepository 用户数据访问实现
@@ -100,4 +101,11 @@ func (r *userRepository) List(offset, limit int) ([]*models.User, int64, error) 
 	}
 
 	return users, total, nil
+}
+
+// GetAll 获取所有用户
+func (r *userRepository) GetAll() ([]*models.User, error) {
+	var users []*models.User
+	err := r.db.Find(&users).Error
+	return users, err
 }

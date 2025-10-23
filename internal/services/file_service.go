@@ -377,7 +377,8 @@ func (s *fileService) GetFileContent(ctx context.Context, userID uint64, fileID 
 
 // GetFileURL 获取文件访问URL
 func (s *fileService) GetFileURL(ctx context.Context, userID uint64, fileID uint64) (string, error) {
-	fileInfo, err := s.fileRepo.GetByUserIDAndFileID(userID, fileID)
+	// 验证文件存在且属于用户
+	_, err := s.fileRepo.GetByUserIDAndFileID(userID, fileID)
 	if err != nil {
 		return "", err
 	}
@@ -548,13 +549,13 @@ func (s *fileService) CleanupExpiredFiles(ctx context.Context) error {
 		return err
 	}
 
-	for _, fileInfo := range expiredFiles {
+	for _, file := range expiredFiles {
 		// 删除物理文件
-		fullPath := filepath.Join(s.uploadPath, fileInfo.FilePath)
+		fullPath := filepath.Join(s.uploadPath, file.FilePath)
 		os.Remove(fullPath)
 
 		// 删除数据库记录
-		s.fileRepo.Delete(fileInfo.ID)
+		s.fileRepo.Delete(file.ID)
 	}
 
 	s.logger.Info("Expired files cleaned up", zap.Int("count", len(expiredFiles)))

@@ -638,6 +638,11 @@ func (s *notificationService) subscribeToEvents() {
 	}
 }
 
+// Handle 处理事件 - 实现 EventHandler 接口
+func (s *notificationService) Handle(ctx context.Context, event *events.Event) error {
+	return s.HandleEvent(ctx, event)
+}
+
 // HandleEvent 处理事件
 func (s *notificationService) HandleEvent(ctx context.Context, event *events.Event) error {
 	switch event.Type {

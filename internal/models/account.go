@@ -23,11 +23,11 @@ const (
 type ConnectionStatus int
 
 const (
-	StatusDisconnected ConnectionStatus = iota // 断开连接
-	StatusConnecting                           // 连接中
-	StatusConnected                            // 已连接
-	StatusReconnecting                         // 重连中
-	StatusError                                // 错误
+	StatusDisconnected    ConnectionStatus = iota // 断开连接
+	StatusConnecting                              // 连接中
+	StatusConnected                               // 已连接
+	StatusReconnecting                            // 重连中
+	StatusConnectionError                         // 连接错误
 )
 
 // TGAccount TG账号模型
@@ -129,4 +129,66 @@ type ValidationResult struct {
 	Errors      []string `json:"errors"`
 	QueueSize   int      `json:"queue_size"`
 	HealthScore float64  `json:"health_score"`
+}
+
+// CreateAccountRequest 创建账号请求
+type CreateAccountRequest struct {
+	Phone       string  `json:"phone" binding:"required"`
+	SessionData string  `json:"session_data" binding:"required"`
+	ProxyID     *uint64 `json:"proxy_id"`
+}
+
+// UpdateAccountRequest 更新账号请求
+type UpdateAccountRequest struct {
+	Phone   string         `json:"phone"`
+	Status  *AccountStatus `json:"status"`
+	ProxyID *uint64        `json:"proxy_id"`
+}
+
+// AccountHealthReport 账号健康报告
+type AccountHealthReport struct {
+	AccountID    uint64                 `json:"account_id"`
+	Phone        string                 `json:"phone"`
+	HealthScore  float64                `json:"health_score"`
+	Score        float64                `json:"score"` // 别名字段用于兼容
+	Status       AccountStatus          `json:"status"`
+	LastCheckAt  *time.Time             `json:"last_check_at"`
+	CheckedAt    *time.Time             `json:"checked_at"` // 别名字段用于兼容
+	Issues       []string               `json:"issues"`
+	Suggestions  []string               `json:"suggestions"`
+	CheckResults map[string]interface{} `json:"check_results"`
+	GeneratedAt  time.Time              `json:"generated_at"`
+}
+
+// PaginationResponse 分页响应
+type PaginationResponse struct {
+	Total       int64       `json:"total"`
+	Page        int         `json:"page"`
+	Limit       int         `json:"limit"`
+	TotalPages  int         `json:"total_pages"`
+	HasNext     bool        `json:"has_next"`
+	HasPrevious bool        `json:"has_previous"`
+	Data        interface{} `json:"data"`
+}
+
+// RiskLog 风控日志
+type RiskLog struct {
+	ID        uint64    `json:"id" gorm:"primaryKey;autoIncrement"`
+	UserID    uint64    `json:"user_id" gorm:"not null;index"`
+	AccountID *uint64   `json:"account_id" gorm:"index"`
+	TaskID    *uint64   `json:"task_id" gorm:"index"`
+	Level     string    `json:"level" gorm:"type:enum('low','medium','high','critical');not null"`
+	Event     string    `json:"event" gorm:"size:100;not null"`
+	Message   string    `json:"message" gorm:"type:text"`
+	Data      string    `json:"data" gorm:"type:json"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// UpdateTaskRequest 更新任务请求
+type UpdateTaskRequest struct {
+	Status     *TaskStatus `json:"status"`
+	Priority   int         `json:"priority,omitempty"`
+	Config     TaskConfig  `json:"config"`
+	Result     TaskResult  `json:"result"`
+	ScheduleAt *time.Time  `json:"schedule_at,omitempty"`
 }

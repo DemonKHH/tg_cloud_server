@@ -126,8 +126,8 @@ func (s *AccountService) UpdateAccount(userID, accountID uint64, req *models.Upd
 	}
 
 	// 更新状态
-	if req.Status != "" {
-		account.Status = models.AccountStatus(req.Status)
+	if req.Status != nil {
+		account.Status = *req.Status
 	}
 
 	if err := s.accountRepo.Update(account); err != nil {
@@ -409,4 +409,3 @@ type AccountHealthReport struct {
 	Issues      []string             `json:"issues"`
 	Suggestions []string             `json:"suggestions"`
 }
-

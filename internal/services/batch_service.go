@@ -13,49 +13,30 @@ import (
 	"tg_cloud_server/internal/repository"
 )
 
-// BatchOperation 批量操作类型
-type BatchOperation string
+// Use types from models package
+type BatchOperation = models.BatchOperation
+type BatchJobStatus = models.BatchJobStatus
+type BatchJob = models.BatchJob
 
+// Re-export constants for convenience
 const (
-	BatchOperationCreateAccounts BatchOperation = "create_accounts"
-	BatchOperationUpdateAccounts BatchOperation = "update_accounts"
-	BatchOperationDeleteAccounts BatchOperation = "delete_accounts"
-	BatchOperationBindProxies    BatchOperation = "bind_proxies"
-	BatchOperationCreateTasks    BatchOperation = "create_tasks"
-	BatchOperationCancelTasks    BatchOperation = "cancel_tasks"
-	BatchOperationImportUsers    BatchOperation = "import_users"
-	BatchOperationExportData     BatchOperation = "export_data"
+	BatchOperationCreateAccounts = models.BatchOperationCreateAccounts
+	BatchOperationUpdateAccounts = models.BatchOperationUpdateAccounts
+	BatchOperationDeleteAccounts = models.BatchOperationDeleteAccounts
+	BatchOperationBindProxies    = models.BatchOperationBindProxies
+	BatchOperationCreateTasks    = models.BatchOperationCreateTasks
+	BatchOperationCancelTasks    = models.BatchOperationCancelTasks
+	BatchOperationImportUsers    = models.BatchOperationImportUsers
+	BatchOperationExportData     = models.BatchOperationExportData
 )
 
-// BatchJobStatus 批量任务状态
-type BatchJobStatus string
-
 const (
-	BatchJobStatusPending   BatchJobStatus = "pending"
-	BatchJobStatusRunning   BatchJobStatus = "running"
-	BatchJobStatusCompleted BatchJobStatus = "completed"
-	BatchJobStatusFailed    BatchJobStatus = "failed"
-	BatchJobStatusCancelled BatchJobStatus = "cancelled"
+	BatchJobStatusPending   = models.BatchJobStatusPending
+	BatchJobStatusRunning   = models.BatchJobStatusRunning
+	BatchJobStatusCompleted = models.BatchJobStatusCompleted
+	BatchJobStatusFailed    = models.BatchJobStatusFailed
+	BatchJobStatusCancelled = models.BatchJobStatusCancelled
 )
-
-// BatchJob 批量任务
-type BatchJob struct {
-	ID             uint64                 `json:"id"`
-	UserID         uint64                 `json:"user_id"`
-	Operation      BatchOperation         `json:"operation"`
-	Status         BatchJobStatus         `json:"status"`
-	TotalItems     int                    `json:"total_items"`
-	ProcessedItems int                    `json:"processed_items"`
-	SuccessItems   int                    `json:"success_items"`
-	FailedItems    int                    `json:"failed_items"`
-	Progress       float64                `json:"progress"`
-	ErrorMessages  []string               `json:"error_messages,omitempty"`
-	Result         map[string]interface{} `json:"result,omitempty"`
-	StartedAt      *time.Time             `json:"started_at,omitempty"`
-	CompletedAt    *time.Time             `json:"completed_at,omitempty"`
-	CreatedAt      time.Time              `json:"created_at"`
-	UpdatedAt      time.Time              `json:"updated_at"`
-}
 
 // BatchAccountCreateRequest 批量创建账号请求
 type BatchAccountCreateRequest struct {
@@ -265,7 +246,7 @@ func (s *batchService) executeBatchCreateAccounts(ctx context.Context, job *Batc
 		}
 
 		// 创建账号
-		_, err := s.accountService.CreateAccount(ctx, job.UserID, &accountReq)
+		_, err := s.accountService.CreateAccount(job.UserID, &accountReq)
 		processed++
 
 		if err != nil {
@@ -351,7 +332,7 @@ func (s *batchService) executeBatchUpdateAccounts(ctx context.Context, job *Batc
 		}
 
 		// 更新账号
-		_, err := s.accountService.UpdateAccount(ctx, job.UserID, update.AccountID, &update.Data)
+		_, err := s.accountService.UpdateAccount(job.UserID, update.AccountID, &update.Data)
 		processed++
 
 		if err != nil {
@@ -411,7 +392,7 @@ func (s *batchService) executeBatchDeleteAccounts(ctx context.Context, job *Batc
 	var errorMessages []string
 
 	for _, accountID := range accountIDs {
-		err := s.accountService.DeleteAccount(ctx, job.UserID, accountID)
+		err := s.accountService.DeleteAccount(job.UserID, accountID)
 		processed++
 
 		if err != nil {

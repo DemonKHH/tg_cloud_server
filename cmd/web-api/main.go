@@ -69,7 +69,7 @@ func main() {
 	}
 
 	// 初始化缓存服务
-	cacheService := cache.NewCacheService(cache.NewRedisCache(redisClient))
+	_ = cache.NewCacheService(cache.NewRedisCache(redisClient))
 
 	// 初始化事件系统
 	eventBus := events.NewInMemoryEventBus()
@@ -101,6 +101,7 @@ func main() {
 	// 初始化服务层
 	authService := services.NewAuthService(userRepo, cfg)
 	accountService := services.NewAccountService(accountRepo, proxyRepo)
+	proxyService := services.NewProxyService(proxyRepo)
 	taskService := services.NewTaskService(taskRepo, accountRepo)
 
 	// 初始化定时任务服务
@@ -110,7 +111,7 @@ func main() {
 	authHandler := handlers.NewAuthHandler(authService)
 	accountHandler := handlers.NewAccountHandler(accountService)
 	taskHandler := handlers.NewTaskHandler(taskService)
-	proxyHandler := handlers.NewProxyHandler(accountService) // 代理功能在 accountService 中
+	proxyHandler := handlers.NewProxyHandler(proxyService)
 	moduleHandler := handlers.NewModuleHandler(taskService, accountService)
 
 	// 设置Gin模式

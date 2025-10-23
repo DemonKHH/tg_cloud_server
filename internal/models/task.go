@@ -193,8 +193,8 @@ type TaskSummary struct {
 	Duration     string     `json:"duration,omitempty"`
 }
 
-// QueueInfo 队列信息
-type QueueInfo struct {
+// AccountQueueInfo 账号队列详细信息
+type AccountQueueInfo struct {
 	AccountID      uint64     `json:"account_id"`
 	PendingCount   int        `json:"pending_count"`
 	RunningCount   int        `json:"running_count"`
@@ -203,8 +203,8 @@ type QueueInfo struct {
 	LastTaskAt     *time.Time `json:"last_task_at"`
 }
 
-// TaskStats 任务统计
-type TaskStats struct {
+// TaskStatistics 任务详细统计
+type TaskStatistics struct {
 	TotalTasks    int64            `json:"total_tasks"`
 	TasksByStatus map[string]int64 `json:"tasks_by_status"`
 	TasksByType   map[string]int64 `json:"tasks_by_type"`

@@ -16,21 +16,34 @@ const (
 	ProxySOCKS5 ProxyProtocol = "socks5"
 )
 
+// ProxyStatus 代理状态枚举
+type ProxyStatus string
+
+const (
+	StatusActive   ProxyStatus = "active"
+	StatusInactive ProxyStatus = "inactive"
+	StatusError    ProxyStatus = "error"
+	StatusTesting  ProxyStatus = "testing"
+	StatusUntested ProxyStatus = "untested"
+)
+
 // ProxyIP 代理IP模型（客户自管理）
 type ProxyIP struct {
 	ID          uint64        `json:"id" gorm:"primaryKey;autoIncrement"`
-	UserID      uint64        `json:"user_id" gorm:"not null;index"` // 归属用户
-	Name        string        `json:"name" gorm:"size:100"`          // 代理名称/备注
-	IP          string        `json:"ip" gorm:"size:45;not null"`    // IP地址
-	Port        int           `json:"port" gorm:"not null"`          // 端口
+	UserID      uint64        `json:"user_id" gorm:"not null;index"`   // 归属用户
+	Name        string        `json:"name" gorm:"size:100"`            // 代理名称/备注
+	Host        string        `json:"host" gorm:"size:255;not null"`   // 主机地址 (IP或域名)
+	IP          string        `json:"ip" gorm:"size:45;not null"`      // IP地址
+	Port        int           `json:"port" gorm:"not null"`            // 端口
 	Protocol    ProxyProtocol `json:"protocol" gorm:"type:enum('http','https','socks5');not null"`
-	Username    string        `json:"username" gorm:"size:100"`                           // 代理用户名
-	Password    string        `json:"-" gorm:"size:100"`                                  // 代理密码（隐藏）
-	Country     string        `json:"country" gorm:"size:10"`                             // 国家代码
-	IsActive    bool          `json:"is_active" gorm:"default:true"`                      // 是否启用
-	SuccessRate float64       `json:"success_rate" gorm:"type:decimal(5,2);default:0.00"` // 成功率
-	AvgLatency  int           `json:"avg_latency"`                                        // 平均延迟(ms)
-	LastTestAt  *time.Time    `json:"last_test_at"`                                       // 最后测试时间
+	Username    string        `json:"username" gorm:"size:100"`                                   // 代理用户名
+	Password    string        `json:"-" gorm:"size:100"`                                          // 代理密码（隐藏）
+	Country     string        `json:"country" gorm:"size:10"`                                     // 国家代码
+	Status      ProxyStatus   `json:"status" gorm:"type:enum('active','inactive','error','testing','untested');default:'untested'"` // 代理状态
+	IsActive    bool          `json:"is_active" gorm:"default:true"`                              // 是否启用
+	SuccessRate float64       `json:"success_rate" gorm:"type:decimal(5,2);default:0.00"`         // 成功率
+	AvgLatency  int           `json:"avg_latency"`                                                // 平均延迟(ms)
+	LastTestAt  *time.Time    `json:"last_test_at"`                                               // 最后测试时间
 	CreatedAt   time.Time     `json:"created_at"`
 	UpdatedAt   time.Time     `json:"updated_at"`
 
@@ -106,6 +119,7 @@ type ProxyConfig struct {
 // CreateProxyRequest 创建代理请求
 type CreateProxyRequest struct {
 	Name     string        `json:"name" binding:"required"`
+	Host     string        `json:"host" binding:"required"`
 	IP       string        `json:"ip" binding:"required,ip"`
 	Port     int           `json:"port" binding:"required,min=1,max=65535"`
 	Protocol ProxyProtocol `json:"protocol" binding:"required,oneof=http https socks5"`
@@ -116,11 +130,14 @@ type CreateProxyRequest struct {
 
 // UpdateProxyRequest 更新代理请求
 type UpdateProxyRequest struct {
-	Name     string `json:"name"`
-	Username string `json:"username"`
-	Password string `json:"password"`
-	Country  string `json:"country"`
-	IsActive *bool  `json:"is_active"`
+	Name     string        `json:"name"`
+	Host     string        `json:"host"`
+	Port     int           `json:"port"`
+	Protocol ProxyProtocol `json:"protocol"`
+	Username string        `json:"username"`
+	Password string        `json:"password"`
+	Country  string        `json:"country"`
+	IsActive *bool         `json:"is_active"`
 }
 
 // ProxyTestResult 代理测试结果
@@ -133,8 +150,8 @@ type ProxyTestResult struct {
 	IPLocation string    `json:"ip_location,omitempty"`
 }
 
-// ProxyStats 代理统计信息
-type ProxyStats struct {
+// ProxyDetail 代理详细统计信息
+type ProxyDetail struct {
 	ProxyID      uint64     `json:"proxy_id"`
 	Name         string     `json:"name"`
 	Address      string     `json:"address"`

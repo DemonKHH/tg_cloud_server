@@ -8,6 +8,7 @@ import (
 	"go.uber.org/zap"
 
 	"tg_cloud_server/internal/common/logger"
+	"tg_cloud_server/internal/common/utils"
 	"tg_cloud_server/internal/models"
 	"tg_cloud_server/internal/services"
 )
@@ -28,7 +29,11 @@ func NewTaskHandler(taskService *services.TaskService) *TaskHandler {
 
 // CreateTask 创建任务
 func (h *TaskHandler) CreateTask(c *gin.Context) {
-	userID := getUserID(c)
+	userID, err := utils.GetUserID(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		return
+	}
 
 	var req models.CreateTaskRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -53,7 +58,11 @@ func (h *TaskHandler) CreateTask(c *gin.Context) {
 
 // GetTasks 获取任务列表
 func (h *TaskHandler) GetTasks(c *gin.Context) {
-	userID := getUserID(c)
+	userID, err := utils.GetUserID(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		return
+	}
 
 	// 解析查询参数
 	filter := &services.TaskFilter{
@@ -112,7 +121,11 @@ func (h *TaskHandler) GetTasks(c *gin.Context) {
 
 // GetTask 获取任务详情
 func (h *TaskHandler) GetTask(c *gin.Context) {
-	userID := getUserID(c)
+	userID, err := utils.GetUserID(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		return
+	}
 	taskID, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid task ID"})
@@ -140,14 +153,18 @@ func (h *TaskHandler) GetTask(c *gin.Context) {
 
 // UpdateTask 更新任务
 func (h *TaskHandler) UpdateTask(c *gin.Context) {
-	userID := getUserID(c)
+	userID, err := utils.GetUserID(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		return
+	}
 	taskID, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid task ID"})
 		return
 	}
 
-	var req services.UpdateTaskRequest
+	var req models.UpdateTaskRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -175,7 +192,11 @@ func (h *TaskHandler) UpdateTask(c *gin.Context) {
 
 // CancelTask 取消任务
 func (h *TaskHandler) CancelTask(c *gin.Context) {
-	userID := getUserID(c)
+	userID, err := utils.GetUserID(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		return
+	}
 	taskID, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid task ID"})
@@ -202,7 +223,11 @@ func (h *TaskHandler) CancelTask(c *gin.Context) {
 
 // RetryTask 重试任务
 func (h *TaskHandler) RetryTask(c *gin.Context) {
-	userID := getUserID(c)
+	userID, err := utils.GetUserID(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		return
+	}
 	taskID, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid task ID"})
@@ -231,7 +256,11 @@ func (h *TaskHandler) RetryTask(c *gin.Context) {
 
 // GetTaskLogs 获取任务日志
 func (h *TaskHandler) GetTaskLogs(c *gin.Context) {
-	userID := getUserID(c)
+	userID, err := utils.GetUserID(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		return
+	}
 	taskID, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid task ID"})
@@ -259,7 +288,11 @@ func (h *TaskHandler) GetTaskLogs(c *gin.Context) {
 
 // GetTaskStats 获取任务统计
 func (h *TaskHandler) GetTaskStats(c *gin.Context) {
-	userID := getUserID(c)
+	userID, err := utils.GetUserID(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		return
+	}
 	timeRange := c.DefaultQuery("range", "all")
 
 	stats, err := h.taskService.GetTaskStats(userID, timeRange)
@@ -279,7 +312,11 @@ func (h *TaskHandler) GetTaskStats(c *gin.Context) {
 
 // BatchCancel 批量取消任务
 func (h *TaskHandler) BatchCancel(c *gin.Context) {
-	userID := getUserID(c)
+	userID, err := utils.GetUserID(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		return
+	}
 
 	var req services.BatchCancelRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -309,7 +346,11 @@ func (h *TaskHandler) BatchCancel(c *gin.Context) {
 
 // GetQueueInfo 获取队列信息
 func (h *TaskHandler) GetQueueInfo(c *gin.Context) {
-	userID := getUserID(c)
+	userID, err := utils.GetUserID(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		return
+	}
 	accountID, err := strconv.ParseUint(c.Param("account_id"), 10, 64)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid account ID"})
@@ -333,7 +374,11 @@ func (h *TaskHandler) GetQueueInfo(c *gin.Context) {
 
 // CleanupTasks 清理已完成任务
 func (h *TaskHandler) CleanupTasks(c *gin.Context) {
-	userID := getUserID(c)
+	userID, err := utils.GetUserID(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		return
+	}
 
 	var req services.CleanupRequest
 	if err := c.ShouldBindJSON(&req); err != nil {

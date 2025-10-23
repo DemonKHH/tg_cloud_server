@@ -20,12 +20,12 @@ func RegisterAPIRoutes(
 	config *config.Config,
 ) {
 	// 注册各模块路由
-	SetupTaskRoutes(router, taskHandler)
-	SetupProxyRoutes(router, proxyHandler)
+	SetupTaskRoutes(router, taskHandler, authService)
+	SetupProxyRoutes(router, proxyHandler, authService)
 
 	// API路由组（需要认证）
 	api := router.Group("/api/v1")
-	api.Use(middleware.JWTAuthMiddleware())
+	api.Use(middleware.JWTAuthMiddleware(authService))
 
 	// 用户资料管理
 	{

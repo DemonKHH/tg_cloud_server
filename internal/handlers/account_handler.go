@@ -68,7 +68,7 @@ func (h *AccountHandler) CreateAccount(c *gin.Context) {
 			return
 		}
 
-		h.logger.Error("Failed to create account", 
+		h.logger.Error("Failed to create account",
 			zap.Uint64("user_id", userID),
 			zap.Error(err))
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -78,7 +78,7 @@ func (h *AccountHandler) CreateAccount(c *gin.Context) {
 		return
 	}
 
-	h.logger.Info("Account created successfully", 
+	h.logger.Info("Account created successfully",
 		zap.Uint64("user_id", userID),
 		zap.Uint64("account_id", account.ID),
 		zap.String("phone", account.Phone))
@@ -122,7 +122,7 @@ func (h *AccountHandler) GetAccounts(c *gin.Context) {
 	// 获取账号列表
 	accounts, total, err := h.accountService.GetAccounts(filter)
 	if err != nil {
-		h.logger.Error("Failed to get accounts", 
+		h.logger.Error("Failed to get accounts",
 			zap.Uint64("user_id", userID),
 			zap.Error(err))
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -180,7 +180,7 @@ func (h *AccountHandler) GetAccount(c *gin.Context) {
 			return
 		}
 
-		h.logger.Error("Failed to get account", 
+		h.logger.Error("Failed to get account",
 			zap.Uint64("user_id", userID),
 			zap.Uint64("account_id", accountID),
 			zap.Error(err))
@@ -242,7 +242,7 @@ func (h *AccountHandler) UpdateAccount(c *gin.Context) {
 			return
 		}
 
-		h.logger.Error("Failed to update account", 
+		h.logger.Error("Failed to update account",
 			zap.Uint64("user_id", userID),
 			zap.Uint64("account_id", accountID),
 			zap.Error(err))
@@ -253,7 +253,7 @@ func (h *AccountHandler) UpdateAccount(c *gin.Context) {
 		return
 	}
 
-	h.logger.Info("Account updated successfully", 
+	h.logger.Info("Account updated successfully",
 		zap.Uint64("user_id", userID),
 		zap.Uint64("account_id", accountID))
 
@@ -296,7 +296,7 @@ func (h *AccountHandler) DeleteAccount(c *gin.Context) {
 			return
 		}
 
-		h.logger.Error("Failed to delete account", 
+		h.logger.Error("Failed to delete account",
 			zap.Uint64("user_id", userID),
 			zap.Uint64("account_id", accountID),
 			zap.Error(err))
@@ -307,7 +307,7 @@ func (h *AccountHandler) DeleteAccount(c *gin.Context) {
 		return
 	}
 
-	h.logger.Info("Account deleted successfully", 
+	h.logger.Info("Account deleted successfully",
 		zap.Uint64("user_id", userID),
 		zap.Uint64("account_id", accountID))
 
@@ -352,7 +352,7 @@ func (h *AccountHandler) CheckAccountHealth(c *gin.Context) {
 			return
 		}
 
-		h.logger.Error("Failed to check account health", 
+		h.logger.Error("Failed to check account health",
 			zap.Uint64("user_id", userID),
 			zap.Uint64("account_id", accountID),
 			zap.Error(err))
@@ -402,7 +402,7 @@ func (h *AccountHandler) GetAccountAvailability(c *gin.Context) {
 			return
 		}
 
-		h.logger.Error("Failed to get account availability", 
+		h.logger.Error("Failed to get account availability",
 			zap.Uint64("user_id", userID),
 			zap.Uint64("account_id", accountID),
 			zap.Error(err))
@@ -464,7 +464,7 @@ func (h *AccountHandler) BindProxy(c *gin.Context) {
 			return
 		}
 
-		h.logger.Error("Failed to bind proxy", 
+		h.logger.Error("Failed to bind proxy",
 			zap.Uint64("user_id", userID),
 			zap.Uint64("account_id", accountID),
 			zap.Any("proxy_id", req.ProxyID),
@@ -476,7 +476,7 @@ func (h *AccountHandler) BindProxy(c *gin.Context) {
 		return
 	}
 
-	h.logger.Info("Proxy bound successfully", 
+	h.logger.Info("Proxy bound successfully",
 		zap.Uint64("user_id", userID),
 		zap.Uint64("account_id", accountID),
 		zap.Any("proxy_id", req.ProxyID))

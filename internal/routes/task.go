@@ -5,13 +5,14 @@ import (
 
 	"tg_cloud_server/internal/common/middleware"
 	"tg_cloud_server/internal/handlers"
+	"tg_cloud_server/internal/services"
 )
 
 // SetupTaskRoutes 设置任务相关路由
-func SetupTaskRoutes(router *gin.Engine, taskHandler *handlers.TaskHandler) {
+func SetupTaskRoutes(router *gin.Engine, taskHandler *handlers.TaskHandler, authService *services.AuthService) {
 	// 任务管理API路由组
 	taskGroup := router.Group("/api/v1/tasks")
-	taskGroup.Use(middleware.JWTAuthMiddleware())
+	taskGroup.Use(middleware.JWTAuthMiddleware(authService))
 	{
 		// 任务基本操作
 		taskGroup.POST("", taskHandler.CreateTask)       // 创建任务
@@ -34,7 +35,7 @@ func SetupTaskRoutes(router *gin.Engine, taskHandler *handlers.TaskHandler) {
 
 	// 账号队列信息路由
 	queueGroup := router.Group("/api/v1/accounts/:account_id/queue")
-	queueGroup.Use(middleware.JWTAuthMiddleware())
+	queueGroup.Use(middleware.JWTAuthMiddleware(authService))
 	{
 		queueGroup.GET("", taskHandler.GetQueueInfo) // 获取队列信息
 	}

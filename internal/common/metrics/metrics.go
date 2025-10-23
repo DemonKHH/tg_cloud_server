@@ -260,7 +260,7 @@ func (m *MetricsService) RecordDatabaseQuery(queryType string, duration float64)
 // UpdateSystemMetrics 更新系统指标
 func (m *MetricsService) UpdateSystemMetrics(memoryUsage, cpuUsage, goroutines float64) {
 	MemoryUsage.Set(memoryUsage)
-	CPuUsage.Set(cpuUsage)
+	CPUUsage.Set(cpuUsage)
 	GoroutinesActive.Set(goroutines)
 }
 

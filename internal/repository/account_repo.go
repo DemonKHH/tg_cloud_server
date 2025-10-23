@@ -24,6 +24,7 @@ type AccountRepository interface {
 	CountByUserID(userID uint64) (int64, error)
 	CountActiveByUserID(userID uint64) (int64, error)
 	GetAccountsNeedingHealthCheck() ([]*models.TGAccount, error)
+	GetAll() ([]*models.TGAccount, error)
 }
 
 // accountRepository 账号数据访问实现
@@ -270,4 +271,11 @@ func (r *accountRepository) GetAccountsWithFilters(filters map[string]interface{
 		Find(&accounts).Error
 
 	return accounts, total, err
+}
+
+// GetAll 获取所有账号
+func (r *accountRepository) GetAll() ([]*models.TGAccount, error) {
+	var accounts []*models.TGAccount
+	err := r.db.Find(&accounts).Error
+	return accounts, err
 }

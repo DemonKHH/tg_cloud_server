@@ -14,6 +14,8 @@ type TaskRepository interface {
 	GetByID(id uint64) (*models.Task, error)
 	GetByUserIDAndID(userID, taskID uint64) (*models.Task, error)
 	Update(task *models.Task) error
+	UpdateStatus(taskID uint64, status models.TaskStatus) error
+	UpdateTask(taskID uint64, updates map[string]interface{}) error
 	Delete(id uint64) error
 
 	// 任务查询
@@ -66,6 +68,16 @@ func (r *taskRepository) GetByUserIDAndID(userID, taskID uint64) (*models.Task, 
 // Update 更新任务
 func (r *taskRepository) Update(task *models.Task) error {
 	return r.db.Save(task).Error
+}
+
+// UpdateStatus 更新任务状态
+func (r *taskRepository) UpdateStatus(taskID uint64, status models.TaskStatus) error {
+	return r.db.Model(&models.Task{}).Where("id = ?", taskID).Update("status", status).Error
+}
+
+// UpdateTask 更新任务字段
+func (r *taskRepository) UpdateTask(taskID uint64, updates map[string]interface{}) error {
+	return r.db.Model(&models.Task{}).Where("id = ?", taskID).Updates(updates).Error
 }
 
 // Delete 删除任务

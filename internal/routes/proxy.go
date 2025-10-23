@@ -5,13 +5,14 @@ import (
 
 	"tg_cloud_server/internal/common/middleware"
 	"tg_cloud_server/internal/handlers"
+	"tg_cloud_server/internal/services"
 )
 
 // SetupProxyRoutes 设置代理相关路由
-func SetupProxyRoutes(router *gin.Engine, proxyHandler *handlers.ProxyHandler) {
+func SetupProxyRoutes(router *gin.Engine, proxyHandler *handlers.ProxyHandler, authService *services.AuthService) {
 	// 代理管理API路由组
 	proxyGroup := router.Group("/api/v1/proxies")
-	proxyGroup.Use(middleware.JWTAuthMiddleware())
+	proxyGroup.Use(middleware.JWTAuthMiddleware(authService))
 	{
 		// 代理基本操作
 		proxyGroup.POST("", proxyHandler.CreateProxy)       // 创建代理

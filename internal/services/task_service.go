@@ -299,12 +299,6 @@ func (s *TaskService) CleanupCompletedTasks(userID uint64, olderThanDays int) (i
 
 // 数据模型定义
 
-// UpdateTaskRequest 更新任务请求
-type UpdateTaskRequest struct {
-	Priority   int               `json:"priority,omitempty"`
-	Config     models.TaskConfig `json:"config,omitempty"`
-	ScheduleAt *time.Time        `json:"schedule_at,omitempty"`
-}
 
 // BatchCancelRequest 批量取消请求
 type BatchCancelRequest struct {

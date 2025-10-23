@@ -1,0 +1,26 @@
+-- 创建代理IP表
+CREATE TABLE IF NOT EXISTS `proxy_ips` (
+    `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    `user_id` BIGINT UNSIGNED NOT NULL COMMENT '归属用户ID',
+    `name` VARCHAR(100) DEFAULT '' COMMENT '代理名称/备注',
+    `ip` VARCHAR(45) NOT NULL COMMENT 'IP地址',
+    `port` INT UNSIGNED NOT NULL COMMENT '端口',
+    `protocol` ENUM('http', 'https', 'socks5') NOT NULL COMMENT '代理协议',
+    `username` VARCHAR(100) DEFAULT '' COMMENT '代理用户名',
+    `password` VARCHAR(100) DEFAULT '' COMMENT '代理密码',
+    `country` VARCHAR(10) DEFAULT '' COMMENT '国家代码',
+    `is_active` BOOLEAN NOT NULL DEFAULT TRUE COMMENT '是否启用',
+    `success_rate` DECIMAL(5,2) NOT NULL DEFAULT 0.00 COMMENT '成功率(%)',
+    `avg_latency` INT UNSIGNED DEFAULT 0 COMMENT '平均延迟(ms)',
+    `last_test_at` TIMESTAMP NULL COMMENT '最后测试时间',
+    `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (`id`),
+    INDEX `idx_proxy_ips_user_id` (`user_id`),
+    INDEX `idx_proxy_ips_ip_port` (`ip`, `port`),
+    INDEX `idx_proxy_ips_protocol` (`protocol`),
+    INDEX `idx_proxy_ips_is_active` (`is_active`),
+    INDEX `idx_proxy_ips_success_rate` (`success_rate`),
+    INDEX `idx_proxy_ips_created_at` (`created_at`),
+    FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='代理IP表';

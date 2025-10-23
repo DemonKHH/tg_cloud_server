@@ -1,0 +1,261 @@
+# TG Cloud Server 配置文件
+# 这是一个示例配置文件，实际使用时请根据需要修改
+
+# 服务配置
+server:
+  web_api:
+    host: "0.0.0.0"
+    port: 8080
+  tg_manager:
+    host: "0.0.0.0"
+    port: 8081
+  task_scheduler:
+    host: "0.0.0.0"
+    port: 8082
+  ai_service:
+    host: "0.0.0.0"
+    port: 8083
+
+# 数据库配置
+database:
+  mysql:
+    host: "localhost"
+    port: 3306
+    username: "tg_user"
+    password: "your_password"
+    database: "tg_manager"
+    max_open_conns: 100
+    max_idle_conns: 10
+    max_lifetime: "1h"
+  redis:
+    host: "localhost"
+    port: 6379
+    password: ""
+    database: 0
+    pool_size: 10
+
+# Telegram配置
+telegram:
+  api_id: 12345  # 从 https://my.telegram.org/apps 获取
+  api_hash: "your_api_hash_here"  # 从 https://my.telegram.org/apps 获取
+  connection_pool:
+    max_connections: 1000
+    idle_timeout: "30m"
+    cleanup_interval: "5m"
+  rate_limit:
+    messages_per_minute: 30
+    burst_size: 5
+    cooldown_duration: "1m"
+
+# AI配置
+ai:
+  openai:
+    api_key: "your_openai_key_here"
+    model: "gpt-3.5-turbo"
+    max_tokens: 1000
+    temperature: 0.7
+    timeout: "30s"
+
+# 风控配置
+risk_control:
+  enabled: true
+  check_interval: "1m"
+  max_failures: 3
+  cooldown_duration: "30m"
+  health_threshold: 0.3
+
+# 日志配置
+logging:
+  level: "info"  # debug, info, warn, error
+  format: "json"  # json, console
+  output: "stdout"  # stdout, file
+  filename: "logs/app.log"
+  max_size: 100    # MB
+  max_backups: 3
+  max_age: 28      # days
+
+# JWT配置
+jwt:
+  secret_key: "your_jwt_secret_key_change_this_in_production"
+  expiration_time: "24h"
+  refresh_time: "168h"  # 7 days
+
+# 任务配置
+tasks:
+  # 各模块任务间隔配置 (秒)
+  intervals:
+    check: 30        # 账号检查最小间隔
+    private: 60      # 私信发送最小间隔
+    broadcast: 120   # 群发消息最小间隔
+    verify: 0        # 验证码接收(即时)
+    group_chat: 300  # AI炒群最小间隔
+  
+  # 任务超时配置
+  timeouts:
+    check: "2m"
+    private: "5m"
+    broadcast: "10m"
+    verify: "30s"
+    group_chat: "3m"
+  
+  # 重试配置
+  retry:
+    max_attempts: 3
+    initial_delay: "5s"
+    max_delay: "5m"
+    backoff_factor: 2.0
+
+# 代理配置
+proxy:
+  # 代理测试配置
+  test:
+    timeout: "10s"
+    test_url: "https://api.telegram.org"
+    max_retries: 3
+  
+  # 代理质量评估
+  quality:
+    min_success_rate: 80.0  # 最低成功率(%)
+    max_latency: 5000       # 最大延迟(ms)
+
+# 监控配置
+monitoring:
+  # Prometheus指标
+  metrics:
+    enabled: true
+    path: "/metrics"
+    port: 9091
+  
+  # 健康检查
+  health:
+    enabled: true
+    path: "/health"
+    interval: "30s"
+  
+  # 性能分析
+  pprof:
+    enabled: false
+    port: 6060
+
+# 安全配置
+security:
+  # CORS配置
+  cors:
+    allowed_origins: 
+      - "http://localhost:3000"
+      - "https://yourdomain.com"
+    allowed_methods:
+      - "GET"
+      - "POST"
+      - "PUT"
+      - "DELETE"
+      - "OPTIONS"
+    allowed_headers:
+      - "Content-Type"
+      - "Authorization"
+    max_age: 86400
+  
+  # 请求限制
+  limits:
+    max_request_size: "10MB"
+    max_upload_size: "100MB"
+    request_timeout: "30s"
+  
+  # 限流配置
+  rate_limit:
+    enabled: true
+    requests_per_minute: 100
+    burst_size: 20
+    cleanup_interval: "1m"
+
+# WebSocket配置
+websocket:
+  enabled: true
+  path: "/ws"
+  read_buffer_size: 1024
+  write_buffer_size: 1024
+  check_origin: false
+  ping_period: "54s"
+  pong_wait: "60s"
+  write_wait: "10s"
+  max_message_size: 512
+
+# 文件存储配置
+storage:
+  # 本地存储
+  local:
+    upload_path: "uploads"
+    max_file_size: "100MB"
+    allowed_extensions:
+      - ".jpg"
+      - ".jpeg"
+      - ".png"
+      - ".gif"
+      - ".mp4"
+      - ".pdf"
+      - ".doc"
+      - ".docx"
+  
+  # 会话存储
+  sessions:
+    path: "sessions"
+    backup_enabled: true
+    backup_interval: "1h"
+
+# 通知配置
+notifications:
+  # 邮件通知
+  email:
+    enabled: false
+    smtp_host: "smtp.gmail.com"
+    smtp_port: 587
+    username: "your_email@gmail.com"
+    password: "your_email_password"
+    from: "noreply@yourdomain.com"
+    to: "admin@yourdomain.com"
+  
+  # Webhook通知
+  webhook:
+    enabled: false
+    url: "https://your-webhook-url.com/notify"
+    timeout: "10s"
+    secret: "your_webhook_secret"
+
+# 备份配置
+backup:
+  enabled: true
+  interval: "24h"
+  retention: "7d"
+  path: "backups"
+  compress: true
+
+# 开发配置
+development:
+  # 调试模式
+  debug: false
+  
+  # 热重载
+  hot_reload: false
+  
+  # API文档
+  docs:
+    enabled: true
+    path: "/docs"
+    title: "TG Cloud Server API"
+    version: "1.0.0"
+
+# 生产配置
+production:
+  # 性能优化
+  performance:
+    gomaxprocs: 0  # 0表示使用所有CPU核心
+    gogc: 100
+  
+  # 优雅关闭
+  graceful_shutdown:
+    timeout: "30s"
+    
+  # 资源限制
+  limits:
+    max_goroutines: 10000
+    max_memory: "2GB"

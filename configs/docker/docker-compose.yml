@@ -1,0 +1,225 @@
+# TG Cloud Server Docker Compose 配置
+version: '3.8'
+
+networks:
+  tg-network:
+    driver: bridge
+
+volumes:
+  mysql_data:
+    driver: local
+  redis_data:
+    driver: local
+  sessions_data:
+    driver: local
+
+services:
+  # MySQL数据库
+  mysql:
+    image: mysql:8.0
+    container_name: tg-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-root123}
+      MYSQL_DATABASE: ${DB_NAME:-tg_manager}
+      MYSQL_USER: ${DB_USER:-tg_user}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-tg_pass123}
+      MYSQL_CHARSET: utf8mb4
+      MYSQL_COLLATION: utf8mb4_unicode_ci
+    ports:
+      - "${DB_PORT:-3306}:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    networks:
+      - tg-network
+    command: >
+      --default-authentication-plugin=mysql_native_password
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+      --max_connections=1000
+      --innodb_buffer_pool_size=512M
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${DB_ROOT_PASSWORD:-root123}"]
+      timeout: 20s
+      retries: 10
+
+  # Redis缓存
+  redis:
+    image: redis:7.0-alpine
+    container_name: tg-redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+      - ./redis.conf:/usr/local/etc/redis/redis.conf:ro
+    networks:
+      - tg-network
+    command: redis-server /usr/local/etc/redis/redis.conf
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      timeout: 3s
+      retries: 5
+
+  # Web API服务
+  web-api:
+    build:
+      context: ../../
+      dockerfile: configs/docker/Dockerfile.web-api
+    container_name: tg-web-api
+    restart: unless-stopped
+    ports:
+      - "${WEB_API_PORT:-8080}:8080"
+    environment:
+      - CONFIG_PATH=/app/configs/config.yaml
+    volumes:
+      - ../config.yaml:/app/configs/config.yaml:ro
+    networks:
+      - tg-network
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # TG Manager服务
+  tg-manager:
+    build:
+      context: ../../
+      dockerfile: configs/docker/Dockerfile.tg-manager
+    container_name: tg-tg-manager
+    restart: unless-stopped
+    ports:
+      - "${TG_MANAGER_PORT:-8081}:8081"
+    environment:
+      - CONFIG_PATH=/app/configs/config.yaml
+    volumes:
+      - ../config.yaml:/app/configs/config.yaml:ro
+      - sessions_data:/app/sessions
+    networks:
+      - tg-network
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/health"]
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # Task Scheduler服务
+  task-scheduler:
+    build:
+      context: ../../
+      dockerfile: configs/docker/Dockerfile.task-scheduler
+    container_name: tg-task-scheduler
+    restart: unless-stopped
+    ports:
+      - "${TASK_SCHEDULER_PORT:-8082}:8082"
+    environment:
+      - CONFIG_PATH=/app/configs/config.yaml
+    volumes:
+      - ../config.yaml:/app/configs/config.yaml:ro
+    networks:
+      - tg-network
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      tg-manager:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8082/health"]
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # AI Service服务
+  ai-service:
+    build:
+      context: ../../
+      dockerfile: configs/docker/Dockerfile.ai-service
+    container_name: tg-ai-service
+    restart: unless-stopped
+    ports:
+      - "${AI_SERVICE_PORT:-8083}:8083"
+    environment:
+      - CONFIG_PATH=/app/configs/config.yaml
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    volumes:
+      - ../config.yaml:/app/configs/config.yaml:ro
+    networks:
+      - tg-network
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8083/health"]
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # Nginx反向代理 (可选)
+  nginx:
+    image: nginx:alpine
+    container_name: tg-nginx
+    restart: unless-stopped
+    ports:
+      - "${NGINX_HTTP_PORT:-80}:80"
+      - "${NGINX_HTTPS_PORT:-443}:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+    networks:
+      - tg-network
+    depends_on:
+      - web-api
+      - tg-manager
+      - task-scheduler
+      - ai-service
+
+  # Prometheus监控 (可选)
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: tg-prometheus
+    restart: unless-stopped
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    networks:
+      - tg-network
+    depends_on:
+      - web-api
+      - tg-manager
+      - task-scheduler
+      - ai-service
+
+  # Grafana仪表板 (可选)
+  grafana:
+    image: grafana/grafana:latest
+    container_name: tg-grafana
+    restart: unless-stopped
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin123}
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
+    networks:
+      - tg-network
+    depends_on:
+      - prometheus

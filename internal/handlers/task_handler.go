@@ -318,7 +318,7 @@ func (h *TaskHandler) BatchCancel(c *gin.Context) {
 		return
 	}
 
-	var req services.BatchCancelRequest
+	var req models.BatchCancelRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -380,7 +380,7 @@ func (h *TaskHandler) CleanupTasks(c *gin.Context) {
 		return
 	}
 
-	var req services.CleanupRequest
+	var req models.CleanupRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return

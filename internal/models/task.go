@@ -213,3 +213,38 @@ type TaskStatistics struct {
 	TasksToday    int64            `json:"tasks_today"`
 	TasksThisWeek int64            `json:"tasks_this_week"`
 }
+
+// TaskAnalytics 任务分析数据
+type TaskAnalytics struct {
+	Period         string           `json:"period"`
+	TotalTasks     int64            `json:"total_tasks"`
+	Completed      int64            `json:"completed"`
+	Failed         int64            `json:"failed"`
+	Cancelled      int64            `json:"cancelled"`
+	Running        int64            `json:"running"`
+	Pending        int64            `json:"pending"`
+	SuccessRate    float64          `json:"success_rate"`
+	TasksByType    map[string]int64 `json:"tasks_by_type,omitempty"`
+	TasksByAccount map[uint64]int64 `json:"tasks_by_account,omitempty"`
+	GeneratedAt    time.Time        `json:"generated_at"`
+}
+
+// SchedulingOptimization 调度优化建议
+type SchedulingOptimization struct {
+	UserID          uint64    `json:"user_id"`
+	TotalLoad       int64     `json:"total_load"`
+	TotalCapacity   int64     `json:"total_capacity"`
+	UtilizationRate float64   `json:"utilization_rate"`
+	Recommendations []string  `json:"recommendations"`
+	GeneratedAt     time.Time `json:"generated_at"`
+}
+
+// BatchCancelRequest 批量取消请求
+type BatchCancelRequest struct {
+	TaskIDs []uint64 `json:"task_ids" binding:"required"`
+}
+
+// CleanupRequest 清理请求
+type CleanupRequest struct {
+	OlderThanDays int `json:"older_than_days" binding:"required,min=1"`
+}

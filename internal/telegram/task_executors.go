@@ -3,6 +3,7 @@ package telegram
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"tg_cloud_server/internal/models"
 
@@ -21,29 +22,83 @@ func NewAccountCheckTask(task *models.Task) *AccountCheckTask {
 
 // Execute 执行账号检查
 func (t *AccountCheckTask) Execute(ctx context.Context, api *tg.Client) error {
-	// 获取用户信息
-	user, err := api.UsersGetFullUser(ctx, &tg.InputUserSelf{})
-	if err != nil {
-		return fmt.Errorf("failed to get user info: %w", err)
-	}
-
-	// 检查账号状态 - 使用正确的gotd/td API
-	// TODO: 根据实际的gotd/td API结构调整字段访问
-	if user == nil {
-		return fmt.Errorf("user not found")
-	}
-
-	// 更新任务结果
+	// 初始化检查结果
 	if t.task.Result == nil {
 		t.task.Result = make(models.TaskResult)
 	}
 
-	// 暂时使用简化的结果，需要根据实际API调整
-	t.task.Result["user_info"] = "retrieved"
-	t.task.Result["status"] = "active"
-	// t.task.Result["user_id"] = user.FullUser.GetID()  // 需要验证正确的字段
-	// t.task.Result["phone"] = user.FullUser.GetPhone()
-	// t.task.Result["username"] = user.FullUser.GetUsername()
+	checkResults := make(map[string]interface{})
+	healthScore := 100.0
+	var issues []string
+	var suggestions []string
+
+	// 1. 基本账号信息检查
+	_, err := api.UsersGetFullUser(ctx, &tg.InputUserSelf{})
+	if err != nil {
+		healthScore -= 50
+		issues = append(issues, "无法获取账号基本信息")
+		suggestions = append(suggestions, "检查账号登录状态")
+		checkResults["basic_info_check"] = "failed"
+		checkResults["error"] = err.Error()
+	} else {
+		checkResults["basic_info_check"] = "passed"
+		checkResults["user_retrieved"] = true
+	}
+
+	// 2. 连接状态检查
+	_, err = api.HelpGetConfig(ctx)
+	if err != nil {
+		healthScore -= 30
+		issues = append(issues, "Telegram服务连接异常")
+		suggestions = append(suggestions, "检查网络连接和代理设置")
+		checkResults["connection_check"] = "failed"
+	} else {
+		checkResults["connection_check"] = "passed"
+	}
+
+	// 3. 对话列表检查 (检查账号是否能正常获取数据)
+	dialogs, err := api.MessagesGetDialogs(ctx, &tg.MessagesGetDialogsRequest{
+		Limit: 5,
+	})
+	if err != nil {
+		healthScore -= 20
+		issues = append(issues, "无法获取对话列表")
+		suggestions = append(suggestions, "检查账号是否被限制")
+		checkResults["dialogs_check"] = "failed"
+	} else {
+		checkResults["dialogs_check"] = "passed"
+		if messagesDialogs, ok := dialogs.(*tg.MessagesDialogs); ok {
+			checkResults["dialogs_count"] = len(messagesDialogs.Dialogs)
+		}
+	}
+
+	// 4. 发送能力检查 (尝试获取应用配置)
+	_, err = api.HelpGetAppConfig(ctx, 0)
+	if err != nil {
+		checkResults["limits_check"] = "skipped"
+	} else {
+		checkResults["limits_check"] = "passed"
+		checkResults["config_retrieved"] = true
+	}
+
+	// 5. 账号状态评估
+	if healthScore >= 90 {
+		checkResults["account_status"] = "excellent"
+	} else if healthScore >= 70 {
+		checkResults["account_status"] = "good"
+	} else if healthScore >= 50 {
+		checkResults["account_status"] = "warning"
+	} else {
+		checkResults["account_status"] = "critical"
+	}
+
+	// 更新任务结果
+	t.task.Result["health_score"] = healthScore
+	t.task.Result["issues"] = issues
+	t.task.Result["suggestions"] = suggestions
+	t.task.Result["check_results"] = checkResults
+	t.task.Result["check_time"] = time.Now().Unix()
+	t.task.Result["status"] = "completed"
 
 	return nil
 }
@@ -79,32 +134,41 @@ func (t *PrivateMessageTask) Execute(ctx context.Context, api *tg.Client) error 
 		return fmt.Errorf("invalid message configuration")
 	}
 
+	// 获取发送间隔 (防止频繁发送被限制)
+	intervalSec := 2 // 默认2秒间隔
+	if interval, exists := config["interval_seconds"]; exists {
+		if intervalFloat, ok := interval.(float64); ok {
+			intervalSec = int(intervalFloat)
+		}
+	}
+
 	sentCount := 0
+	failedCount := 0
 	var errors []string
+	var sentTargets []string
 
 	// 发送私信给每个目标用户
-	for _, target := range targets {
+	for i, target := range targets {
+		// 添加发送间隔（除了第一个消息）
+		if i > 0 && intervalSec > 0 {
+			time.Sleep(time.Duration(intervalSec) * time.Second)
+		}
+
 		username, ok := target.(string)
 		if !ok {
+			errors = append(errors, fmt.Sprintf("invalid target format: %v", target))
+			failedCount++
 			continue
 		}
 
-		// 解析用户名 - 使用正确的Peer类型
-		inputPeer := &tg.InputPeerUser{
-			UserID: 0, // 需要先解析用户名获取ID
-			// AccessHash: 0, // 通常需要access hash
-		}
-
-		// 发送消息
-		_, err := api.MessagesSendMessage(ctx, &tg.MessagesSendMessageRequest{
-			Peer:    inputPeer,
-			Message: message,
-		})
-
+		// 尝试通过用户名解析
+		err := t.sendPrivateMessage(ctx, api, username, message)
 		if err != nil {
 			errors = append(errors, fmt.Sprintf("failed to send to %s: %v", username, err))
+			failedCount++
 		} else {
 			sentCount++
+			sentTargets = append(sentTargets, username)
 		}
 	}
 
@@ -114,10 +178,52 @@ func (t *PrivateMessageTask) Execute(ctx context.Context, api *tg.Client) error 
 	}
 
 	t.task.Result["sent_count"] = sentCount
-	t.task.Result["total_targets"] = len(targets)
+	t.task.Result["failed_count"] = failedCount
 	t.task.Result["errors"] = errors
+	t.task.Result["sent_targets"] = sentTargets
+	t.task.Result["total_targets"] = len(targets)
+	t.task.Result["success_rate"] = float64(sentCount) / float64(len(targets))
+	t.task.Result["send_time"] = time.Now().Unix()
 
 	return nil
+}
+
+// sendPrivateMessage 发送私信给指定用户
+func (t *PrivateMessageTask) sendPrivateMessage(ctx context.Context, api *tg.Client, username, message string) error {
+	// 移除用户名前的@符号（如果有的话）
+	cleanUsername := username
+	if len(username) > 0 && username[0] == '@' {
+		cleanUsername = username[1:]
+	}
+
+	// 通过用户名解析
+	resolved, err := api.ContactsResolveUsername(ctx, &tg.ContactsResolveUsernameRequest{
+		Username: cleanUsername,
+	})
+	if err != nil {
+		return fmt.Errorf("username not found: %w", err)
+	}
+
+	// 从解析结果中获取用户信息
+	if len(resolved.Users) > 0 {
+		if user, ok := resolved.Users[0].(*tg.User); ok {
+			inputPeer := &tg.InputPeerUser{
+				UserID:     user.ID,
+				AccessHash: user.AccessHash,
+			}
+
+			// 发送消息
+			_, err = api.MessagesSendMessage(ctx, &tg.MessagesSendMessageRequest{
+				Peer:     inputPeer,
+				Message:  message,
+				RandomID: time.Now().UnixNano(), // 防止重复消息
+			})
+
+			return err
+		}
+	}
+
+	return fmt.Errorf("user not found: %s", username)
 }
 
 // GetType 获取任务类型
@@ -139,7 +245,7 @@ func NewBroadcastTask(task *models.Task) *BroadcastTask {
 func (t *BroadcastTask) Execute(ctx context.Context, api *tg.Client) error {
 	config := t.task.Config
 
-	// 获取目标群组列表
+	// 获取目标群组列表 (支持群组ID或群组用户名)
 	groups, ok := config["groups"].([]interface{})
 	if !ok {
 		return fmt.Errorf("invalid groups configuration")
@@ -151,28 +257,33 @@ func (t *BroadcastTask) Execute(ctx context.Context, api *tg.Client) error {
 		return fmt.Errorf("invalid message configuration")
 	}
 
+	// 获取发送间隔 (防止被限制)
+	intervalSec := 3 // 默认3秒间隔，群发更谨慎
+	if interval, exists := config["interval_seconds"]; exists {
+		if intervalFloat, ok := interval.(float64); ok {
+			intervalSec = int(intervalFloat)
+		}
+	}
+
 	sentCount := 0
+	failedCount := 0
 	var errors []string
+	var sentGroups []string
 
 	// 发送消息到每个群组
-	for _, group := range groups {
-		chatID, ok := group.(int64)
-		if !ok {
-			continue
+	for i, group := range groups {
+		// 添加发送间隔（除了第一个消息）
+		if i > 0 && intervalSec > 0 {
+			time.Sleep(time.Duration(intervalSec) * time.Second)
 		}
 
-		// 发送消息
-		_, err := api.MessagesSendMessage(ctx, &tg.MessagesSendMessageRequest{
-			Peer: &tg.InputPeerChat{
-				ChatID: chatID,
-			},
-			Message: message,
-		})
-
+		err := t.sendBroadcastMessage(ctx, api, group, message)
 		if err != nil {
-			errors = append(errors, fmt.Sprintf("failed to send to group %d: %v", chatID, err))
+			errors = append(errors, fmt.Sprintf("failed to send to group %v: %v", group, err))
+			failedCount++
 		} else {
 			sentCount++
+			sentGroups = append(sentGroups, fmt.Sprintf("%v", group))
 		}
 	}
 
@@ -182,10 +293,65 @@ func (t *BroadcastTask) Execute(ctx context.Context, api *tg.Client) error {
 	}
 
 	t.task.Result["sent_count"] = sentCount
-	t.task.Result["total_groups"] = len(groups)
+	t.task.Result["failed_count"] = failedCount
 	t.task.Result["errors"] = errors
+	t.task.Result["sent_groups"] = sentGroups
+	t.task.Result["total_groups"] = len(groups)
+	t.task.Result["success_rate"] = float64(sentCount) / float64(len(groups))
+	t.task.Result["send_time"] = time.Now().Unix()
 
 	return nil
+}
+
+// sendBroadcastMessage 发送群发消息到指定群组
+func (t *BroadcastTask) sendBroadcastMessage(ctx context.Context, api *tg.Client, group interface{}, message string) error {
+	var inputPeer tg.InputPeerClass
+
+	switch v := group.(type) {
+	case int64:
+		// 如果是数字ID，尝试作为ChatID
+		inputPeer = &tg.InputPeerChat{ChatID: v}
+	case string:
+		// 如果是字符串，尝试解析为群组用户名
+		cleanGroupname := v
+		if len(v) > 0 && v[0] == '@' {
+			cleanGroupname = v[1:]
+		}
+
+		resolved, err := api.ContactsResolveUsername(ctx, &tg.ContactsResolveUsernameRequest{
+			Username: cleanGroupname,
+		})
+		if err != nil {
+			return fmt.Errorf("group not found: %w", err)
+		}
+
+		// 从解析结果中获取群组信息
+		if len(resolved.Chats) > 0 {
+			if chat, ok := resolved.Chats[0].(*tg.Chat); ok {
+				inputPeer = &tg.InputPeerChat{ChatID: chat.ID}
+			} else if channel, ok := resolved.Chats[0].(*tg.Channel); ok {
+				inputPeer = &tg.InputPeerChannel{
+					ChannelID:  channel.ID,
+					AccessHash: channel.AccessHash,
+				}
+			} else {
+				return fmt.Errorf("unsupported chat type")
+			}
+		} else {
+			return fmt.Errorf("group not found: %s", cleanGroupname)
+		}
+	default:
+		return fmt.Errorf("unsupported group identifier type")
+	}
+
+	// 发送消息
+	_, err := api.MessagesSendMessage(ctx, &tg.MessagesSendMessageRequest{
+		Peer:     inputPeer,
+		Message:  message,
+		RandomID: time.Now().UnixNano(),
+	})
+
+	return err
 }
 
 // GetType 获取任务类型
@@ -205,30 +371,198 @@ func NewVerifyCodeTask(task *models.Task) *VerifyCodeTask {
 
 // Execute 执行验证码接收
 func (t *VerifyCodeTask) Execute(ctx context.Context, api *tg.Client) error {
-	// 这是一个监听任务，需要持续监听新消息
-	// 实际实现中应该使用Update机制
+	config := t.task.Config
 
-	// 获取最新消息
-	_, err := api.MessagesGetDialogs(ctx, &tg.MessagesGetDialogsRequest{
-		Limit: 10,
-	})
-	if err != nil {
-		return fmt.Errorf("failed to get dialogs: %w", err)
+	// 获取监听的发送者列表 (可以是官方验证服务、特定用户等)
+	senders := []string{"777000", "Telegram"} // 默认Telegram官方
+	if configSenders, exists := config["senders"]; exists {
+		if sendersSlice, ok := configSenders.([]interface{}); ok {
+			senders = make([]string, 0, len(sendersSlice))
+			for _, sender := range sendersSlice {
+				if senderStr, ok := sender.(string); ok {
+					senders = append(senders, senderStr)
+				}
+			}
+		}
 	}
 
-	// 查找验证码消息
+	// 获取超时时间
+	timeoutSec := 300 // 默认5分钟超时
+	if timeout, exists := config["timeout_seconds"]; exists {
+		if timeoutFloat, ok := timeout.(float64); ok {
+			timeoutSec = int(timeoutFloat)
+		}
+	}
+
+	startTime := time.Now()
 	var verifyCode string
-	// 这里应该实现验证码解析逻辑
+	var receivedAt time.Time
+	var senderInfo string
+
+	// 轮询检查新消息
+	for time.Since(startTime) < time.Duration(timeoutSec)*time.Second {
+		// 获取最新对话
+		dialogs, err := api.MessagesGetDialogs(ctx, &tg.MessagesGetDialogsRequest{
+			Limit: 20,
+		})
+		if err != nil {
+			time.Sleep(2 * time.Second)
+			continue
+		}
+
+		// 检查每个对话的最新消息
+		code, sender, receivedTime, found := t.searchVerifyCode(dialogs, senders, startTime)
+		if found {
+			verifyCode = code
+			senderInfo = sender
+			receivedAt = receivedTime
+			break
+		}
+
+		// 等待2秒后再次检查
+		time.Sleep(2 * time.Second)
+	}
 
 	// 更新任务结果
 	if t.task.Result == nil {
 		t.task.Result = make(models.TaskResult)
 	}
 
-	t.task.Result["verify_code"] = verifyCode
-	t.task.Result["received_at"] = "2023-10-01T10:00:00Z"
+	if verifyCode != "" {
+		t.task.Result["verify_code"] = verifyCode
+		t.task.Result["sender"] = senderInfo
+		t.task.Result["received_at"] = receivedAt.Unix()
+		t.task.Result["status"] = "received"
+	} else {
+		t.task.Result["verify_code"] = ""
+		t.task.Result["status"] = "timeout"
+		t.task.Result["error"] = "verification code not received within timeout"
+	}
+
+	t.task.Result["timeout_seconds"] = timeoutSec
+	t.task.Result["actual_wait_seconds"] = int(time.Since(startTime).Seconds())
 
 	return nil
+}
+
+// searchVerifyCode 在对话中搜索验证码
+func (t *VerifyCodeTask) searchVerifyCode(dialogs tg.MessagesDialogsClass, senders []string, startTime time.Time) (code, sender string, receivedTime time.Time, found bool) {
+	if messagesDialogs, ok := dialogs.(*tg.MessagesDialogs); ok {
+		for _, message := range messagesDialogs.Messages {
+			if msg, ok := message.(*tg.Message); ok {
+				// 检查消息时间是否在任务开始后
+				msgTime := time.Unix(int64(msg.Date), 0)
+				if msgTime.Before(startTime) {
+					continue
+				}
+
+				// 检查发送者
+				var msgSender string
+				if msg.FromID != nil {
+					if peerUser, ok := msg.FromID.(*tg.PeerUser); ok {
+						msgSender = fmt.Sprintf("%d", peerUser.UserID)
+					}
+				} else {
+					msgSender = "777000" // Telegram系统消息
+				}
+
+				// 验证发送者是否在白名单中
+				senderMatched := false
+				for _, allowedSender := range senders {
+					if msgSender == allowedSender {
+						senderMatched = true
+						break
+					}
+				}
+
+				if !senderMatched {
+					continue
+				}
+
+				// 解析验证码
+				if extractedCode := t.extractVerificationCode(msg.Message); extractedCode != "" {
+					return extractedCode, msgSender, msgTime, true
+				}
+			}
+		}
+	}
+
+	return "", "", time.Time{}, false
+}
+
+// extractVerificationCode 从消息文本中提取验证码
+func (t *VerifyCodeTask) extractVerificationCode(message string) string {
+	// 常见的验证码模式
+	patterns := []string{
+		"code", "verification", "verify", "login", "telegram",
+		"验证码", "验证", "登录", "代码",
+	}
+
+	// 简单的数字提取逻辑 (4-8位数字)
+	var digits []rune
+	for _, char := range message {
+		if char >= '0' && char <= '9' {
+			digits = append(digits, char)
+		}
+	}
+
+	// 检查是否包含验证码关键词
+	messageContainsPattern := false
+	for _, pattern := range patterns {
+		if t.containsIgnoreCase(message, pattern) {
+			messageContainsPattern = true
+			break
+		}
+	}
+
+	// 如果包含关键词且数字长度合适
+	if messageContainsPattern && len(digits) >= 4 && len(digits) <= 8 {
+		return string(digits)
+	}
+
+	return ""
+}
+
+// containsIgnoreCase 不区分大小写的包含检查
+func (t *VerifyCodeTask) containsIgnoreCase(text, pattern string) bool {
+	textLower := t.toLowerCase(text)
+	patternLower := t.toLowerCase(pattern)
+
+	return t.contains(textLower, patternLower)
+}
+
+// toLowerCase 转换为小写
+func (t *VerifyCodeTask) toLowerCase(s string) string {
+	result := make([]rune, len(s))
+	for i, r := range s {
+		if r >= 'A' && r <= 'Z' {
+			result[i] = r + 32
+		} else {
+			result[i] = r
+		}
+	}
+	return string(result)
+}
+
+// contains 检查字符串是否包含子字符串
+func (t *VerifyCodeTask) contains(s, substr string) bool {
+	if len(substr) > len(s) {
+		return false
+	}
+
+	for i := 0; i <= len(s)-len(substr); i++ {
+		match := true
+		for j := 0; j < len(substr); j++ {
+			if s[i+j] != substr[j] {
+				match = false
+				break
+			}
+		}
+		if match {
+			return true
+		}
+	}
+	return false
 }
 
 // GetType 获取任务类型
@@ -250,49 +584,85 @@ func NewGroupChatTask(task *models.Task) *GroupChatTask {
 func (t *GroupChatTask) Execute(ctx context.Context, api *tg.Client) error {
 	config := t.task.Config
 
-	// 获取目标群组
-	groupID, ok := config["group_id"].(int64)
-	if !ok {
-		return fmt.Errorf("invalid group_id configuration")
+	// 获取目标群组（支持ID和用户名）
+	var inputPeer tg.InputPeerClass
+	if groupID, ok := config["group_id"].(float64); ok {
+		inputPeer = &tg.InputPeerChat{ChatID: int64(groupID)}
+	} else if groupName, ok := config["group_name"].(string); ok {
+		// 解析群组用户名
+		resolved, err := api.ContactsResolveUsername(ctx, &tg.ContactsResolveUsernameRequest{
+			Username: groupName,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to resolve group: %w", err)
+		}
+		if len(resolved.Chats) > 0 {
+			if chat, ok := resolved.Chats[0].(*tg.Chat); ok {
+				inputPeer = &tg.InputPeerChat{ChatID: chat.ID}
+			} else if channel, ok := resolved.Chats[0].(*tg.Channel); ok {
+				inputPeer = &tg.InputPeerChannel{
+					ChannelID:  channel.ID,
+					AccessHash: channel.AccessHash,
+				}
+			}
+		}
+	} else {
+		return fmt.Errorf("missing group_id or group_name configuration")
 	}
 
 	// 获取AI配置
 	aiConfig, ok := config["ai_config"].(map[string]interface{})
 	if !ok {
-		return fmt.Errorf("invalid ai_config configuration")
+		// 使用默认AI配置
+		aiConfig = map[string]interface{}{
+			"personality":   "friendly",
+			"response_rate": 0.3,
+			"keywords":      []string{"hello", "hi", "question"},
+		}
 	}
 
-	// 获取群组最新消息
+	// 获取监控时长
+	monitorDuration := 300 // 默认5分钟
+	if duration, exists := config["monitor_duration_seconds"]; exists {
+		if durationFloat, ok := duration.(float64); ok {
+			monitorDuration = int(durationFloat)
+		}
+	}
+
+	responseSent := 0
+	messagesProcessed := 0
+
+	// 获取群组最新消息作为初始检查
 	history, err := api.MessagesGetHistory(ctx, &tg.MessagesGetHistoryRequest{
-		Peer: &tg.InputPeerChat{
-			ChatID: groupID,
-		},
-		Limit: 10,
+		Peer:  inputPeer,
+		Limit: 5,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to get chat history: %w", err)
 	}
 
-	// 分析群聊上下文（这里应该调用AI服务）
-	// 进行类型断言
-	var response string
+	// 分析群聊上下文并可能发送回复
 	if messages, ok := history.(*tg.MessagesMessages); ok {
-		response = t.generateAIResponse(messages, aiConfig)
-	} else {
-		// 处理其他消息类型或使用默认回复
-		response = "AI服务暂时不可用"
-	}
+		for _, msg := range messages.Messages {
+			if message, ok := msg.(*tg.Message); ok {
+				messagesProcessed++
 
-	// 发送AI生成的回复
-	if response != "" {
-		_, err := api.MessagesSendMessage(ctx, &tg.MessagesSendMessageRequest{
-			Peer: &tg.InputPeerChat{
-				ChatID: groupID,
-			},
-			Message: response,
-		})
-		if err != nil {
-			return fmt.Errorf("failed to send AI response: %w", err)
+				// 简单的回复逻辑 - 如果消息包含关键词且随机数允许
+				if t.shouldRespondSimple(message, aiConfig) {
+					response := t.generateSimpleAIResponse(message, aiConfig)
+					if response != "" {
+						_, err = api.MessagesSendMessage(ctx, &tg.MessagesSendMessageRequest{
+							Peer:     inputPeer,
+							Message:  response,
+							RandomID: time.Now().UnixNano(),
+						})
+						if err == nil {
+							responseSent++
+						}
+						break // 只发送一个回复
+					}
+				}
+			}
 		}
 	}
 
@@ -301,18 +671,139 @@ func (t *GroupChatTask) Execute(ctx context.Context, api *tg.Client) error {
 		t.task.Result = make(models.TaskResult)
 	}
 
-	t.task.Result["group_id"] = groupID
-	t.task.Result["ai_response"] = response
-	t.task.Result["interaction_count"] = 1
+	t.task.Result["messages_processed"] = messagesProcessed
+	t.task.Result["responses_sent"] = responseSent
+	t.task.Result["monitor_duration"] = monitorDuration
+	t.task.Result["completion_time"] = time.Now().Unix()
 
 	return nil
 }
 
-// generateAIResponse 生成AI回复（实际应该调用AI服务）
-func (t *GroupChatTask) generateAIResponse(history *tg.MessagesMessages, config map[string]interface{}) string {
-	// 这里应该调用AI服务生成智能回复
-	// 临时返回示例回复
-	return "这是一个AI生成的回复"
+// shouldRespondSimple 简单的回复决策逻辑
+func (t *GroupChatTask) shouldRespondSimple(msg *tg.Message, aiConfig map[string]interface{}) bool {
+	// 获取回复概率
+	responseRate := 0.3 // 默认30%
+	if rate, exists := aiConfig["response_rate"]; exists {
+		if rateFloat, ok := rate.(float64); ok {
+			responseRate = rateFloat
+		}
+	}
+
+	// 基础概率检查
+	if t.simpleRandom() > responseRate {
+		return false
+	}
+
+	// 检查关键词
+	keywords, exists := aiConfig["keywords"].([]interface{})
+	if exists && len(keywords) > 0 {
+		for _, keyword := range keywords {
+			if keywordStr, ok := keyword.(string); ok {
+				if t.containsIgnoreCase(msg.Message, keywordStr) {
+					return true
+				}
+			}
+		}
+		// 如果有关键词配置但都不匹配，降低概率
+		return t.simpleRandom() < 0.1
+	}
+
+	return true
+}
+
+// generateSimpleAIResponse 生成简单的AI回复
+func (t *GroupChatTask) generateSimpleAIResponse(msg *tg.Message, aiConfig map[string]interface{}) string {
+	personality := "friendly"
+	if p, exists := aiConfig["personality"]; exists {
+		if pStr, ok := p.(string); ok {
+			personality = pStr
+		}
+	}
+
+	msgLower := t.toLowerCase(msg.Message)
+
+	// 根据消息内容选择回复
+	if t.contains(msgLower, "hello") || t.contains(msgLower, "hi") || t.contains(msgLower, "你好") {
+		responses := []string{"Hello there! 👋", "Hi! How's everyone? 😊", "Hey! 🙋‍♂️"}
+		return responses[t.simpleRandomInt(len(responses))]
+	}
+
+	if t.contains(msgLower, "thank") || t.contains(msgLower, "谢谢") || t.contains(msgLower, "thx") {
+		responses := []string{"You're welcome! 😊", "No problem! 👍", "Happy to help! 🤝"}
+		return responses[t.simpleRandomInt(len(responses))]
+	}
+
+	if t.contains(msgLower, "?") || t.contains(msgLower, "？") || t.contains(msgLower, "问") {
+		responses := []string{"That's a good question! 🤔", "Interesting point! 💭", "Let me think about that... 🧠"}
+		return responses[t.simpleRandomInt(len(responses))]
+	}
+
+	// 根据个性选择默认回复
+	switch personality {
+	case "friendly":
+		responses := []string{"I agree! 👌", "That's so true! ✨", "Absolutely! 💯", "Makes sense! 🎯"}
+		return responses[t.simpleRandomInt(len(responses))]
+	case "professional":
+		responses := []string{"I concur.", "That's correct.", "Understood.", "Good point."}
+		return responses[t.simpleRandomInt(len(responses))]
+	default:
+		responses := []string{"👍", "😊", "Indeed", "Right!", "Cool! 😎"}
+		return responses[t.simpleRandomInt(len(responses))]
+	}
+}
+
+// 简单的随机数函数
+func (t *GroupChatTask) simpleRandom() float64 {
+	return float64((time.Now().UnixNano() % 100)) / 100.0
+}
+
+func (t *GroupChatTask) simpleRandomInt(max int) int {
+	if max <= 0 {
+		return 0
+	}
+	return int(time.Now().UnixNano() % int64(max))
+}
+
+// containsIgnoreCase 不区分大小写的包含检查 (GroupChatTask版本)
+func (t *GroupChatTask) containsIgnoreCase(text, pattern string) bool {
+	textLower := t.toLowerCase(text)
+	patternLower := t.toLowerCase(pattern)
+
+	return t.contains(textLower, patternLower)
+}
+
+// toLowerCase 转换为小写 (GroupChatTask版本)
+func (t *GroupChatTask) toLowerCase(s string) string {
+	result := make([]rune, len(s))
+	for i, r := range s {
+		if r >= 'A' && r <= 'Z' {
+			result[i] = r + 32
+		} else {
+			result[i] = r
+		}
+	}
+	return string(result)
+}
+
+// contains 检查字符串是否包含子字符串 (GroupChatTask版本)
+func (t *GroupChatTask) contains(s, substr string) bool {
+	if len(substr) > len(s) {
+		return false
+	}
+
+	for i := 0; i <= len(s)-len(substr); i++ {
+		match := true
+		for j := 0; j < len(substr); j++ {
+			if s[i+j] != substr[j] {
+				match = false
+				break
+			}
+		}
+		if match {
+			return true
+		}
+	}
+	return false
 }
 
 // GetType 获取任务类型

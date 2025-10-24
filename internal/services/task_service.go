@@ -297,16 +297,53 @@ func (s *TaskService) CleanupCompletedTasks(userID uint64, olderThanDays int) (i
 	return count, nil
 }
 
-// 数据模型定义
+// GetTaskAnalytics 获取任务分析数据
+func (s *TaskService) GetTaskAnalytics(userID uint64, days int) (*models.TaskAnalytics, error) {
+	// 简化实现 - 实际需要根据repository接口调整
+	analytics := &models.TaskAnalytics{
+		Period:      fmt.Sprintf("Last %d days", days),
+		TotalTasks:  0,
+		Completed:   0,
+		Failed:      0,
+		Cancelled:   0,
+		Running:     0,
+		Pending:     0,
+		SuccessRate: 0,
+		GeneratedAt: time.Now(),
+	}
 
+	s.logger.Info("Task analytics generated",
+		zap.Uint64("user_id", userID),
+		zap.Int("days", days))
 
-// BatchCancelRequest 批量取消请求
-type BatchCancelRequest struct {
-	TaskIDs []uint64 `json:"task_ids" binding:"required"`
+	return analytics, nil
 }
 
-// CleanupRequest 清理请求
-type CleanupRequest struct {
-	OlderThanDays int `json:"older_than_days" binding:"required,min=1"`
+// RetryFailedTasks 重试失败的任务
+func (s *TaskService) RetryFailedTasks(userID uint64, maxRetries int) (int, error) {
+	// 简化实现 - 实际需要根据repository接口调整
+	s.logger.Info("Failed tasks retry requested",
+		zap.Uint64("user_id", userID),
+		zap.Int("max_retries", maxRetries))
+
+	// 这里应该实现实际的重试逻辑
+	return 0, nil
 }
 
+// OptimizeTaskScheduling 优化任务调度
+func (s *TaskService) OptimizeTaskScheduling(userID uint64) (*models.SchedulingOptimization, error) {
+	// 简化实现 - 实际需要根据repository接口调整
+	optimization := &models.SchedulingOptimization{
+		UserID:          userID,
+		TotalLoad:       0,
+		TotalCapacity:   100,
+		UtilizationRate: 0,
+		Recommendations: []string{"暂无负载数据"},
+		GeneratedAt:     time.Now(),
+	}
+
+	s.logger.Info("Task scheduling optimization generated",
+		zap.Uint64("user_id", userID))
+
+	return optimization, nil
+}

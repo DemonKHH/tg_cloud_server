@@ -137,7 +137,7 @@ func main() {
 	// 注册路由
 	routes.RegisterAuthRoutes(router, authHandler)
 	routes.RegisterAPIRoutes(router, accountHandler, taskHandler, proxyHandler, moduleHandler, statsHandler, authService, cfg)
-	routes.RegisterWebSocketRoutes(router, redisClient)
+	routes.RegisterWebSocketRoutes(router, redisClient, authService)
 
 	// 注册指标端点
 	metrics.RegisterMetricsHandler(router)

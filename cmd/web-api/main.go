@@ -103,6 +103,7 @@ func main() {
 	accountService := services.NewAccountService(accountRepo, proxyRepo)
 	proxyService := services.NewProxyService(proxyRepo)
 	taskService := services.NewTaskService(taskRepo, accountRepo)
+	statsService := services.NewStatsService(userRepo, accountRepo, taskRepo, proxyRepo)
 
 	// 初始化定时任务服务
 	cronService := cron.NewCronService(taskService, accountService, userRepo, taskRepo, accountRepo)
@@ -113,6 +114,7 @@ func main() {
 	taskHandler := handlers.NewTaskHandler(taskService)
 	proxyHandler := handlers.NewProxyHandler(proxyService)
 	moduleHandler := handlers.NewModuleHandler(taskService, accountService)
+	statsHandler := handlers.NewStatsHandler(statsService)
 
 	// 设置Gin模式
 	if cfg.Logging.Level == "debug" {
@@ -134,7 +136,7 @@ func main() {
 
 	// 注册路由
 	routes.RegisterAuthRoutes(router, authHandler)
-	routes.RegisterAPIRoutes(router, accountHandler, taskHandler, proxyHandler, moduleHandler, authService, cfg)
+	routes.RegisterAPIRoutes(router, accountHandler, taskHandler, proxyHandler, moduleHandler, statsHandler, authService, cfg)
 	routes.RegisterWebSocketRoutes(router, redisClient)
 
 	// 注册指标端点

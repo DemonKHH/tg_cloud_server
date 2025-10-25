@@ -16,6 +16,7 @@ func RegisterAPIRoutes(
 	taskHandler *handlers.TaskHandler,
 	proxyHandler *handlers.ProxyHandler,
 	moduleHandler *handlers.ModuleHandler,
+	statsHandler *handlers.StatsHandler,
 	authService *services.AuthService,
 	config *config.Config,
 ) {
@@ -61,13 +62,10 @@ func RegisterAPIRoutes(
 	// 统计和监控路由
 	stats := api.Group("/stats")
 	{
-		stats.GET("/overview", func(c *gin.Context) {
-			c.JSON(200, gin.H{"message": "统计概览接口待实现"})
-		})
-		stats.GET("/accounts", func(c *gin.Context) {
-			c.JSON(200, gin.H{"message": "账号统计接口待实现"})
-		})
-		stats.GET("/tasks", taskHandler.GetTaskStats)     // 任务统计
-		stats.GET("/proxies", proxyHandler.GetProxyStats) // 代理统计
+		stats.GET("/overview", statsHandler.GetOverview)       // 系统统计概览
+		stats.GET("/accounts", statsHandler.GetAccountStats)   // 账号统计详情
+		stats.GET("/dashboard", statsHandler.GetUserDashboard) // 用户仪表盘
+		stats.GET("/tasks", taskHandler.GetTaskStats)          // 任务统计
+		stats.GET("/proxies", proxyHandler.GetProxyStats)      // 代理统计
 	}
 }

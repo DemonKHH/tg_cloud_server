@@ -108,13 +108,15 @@ type UpdateTemplateRequest struct {
 
 // TemplateFilter 模板过滤器
 type TemplateFilter struct {
-	UserID   uint64           `json:"user_id"`
-	Category TemplateCategory `json:"category"`
-	Type     TemplateType     `json:"type"`
-	IsActive *bool            `json:"is_active"`
-	Keyword  string           `json:"keyword"`
-	Page     int              `json:"page"`
-	Limit    int              `json:"limit"`
+	UserID    uint64           `json:"user_id"`
+	Category  TemplateCategory `json:"category"`
+	Type      TemplateType     `json:"type"`
+	IsActive  *bool            `json:"is_active"`
+	Keyword   string           `json:"keyword"`
+	SortBy    string           `json:"sort_by"`
+	SortOrder string           `json:"sort_order"`
+	Page      int              `json:"page"`
+	Limit     int              `json:"limit"`
 }
 
 // TemplateVariable 模板变量定义
@@ -164,4 +166,28 @@ type BatchTemplateOperation struct {
 	TemplateIDs  []uint64 `json:"template_ids" binding:"required"`
 	Operation    string   `json:"operation" binding:"required,oneof=activate deactivate delete copy"`
 	TargetUserID uint64   `json:"target_user_id,omitempty"` // 用于复制操作
+}
+
+// TemplateValidationResult 模板验证结果
+type TemplateValidationResult struct {
+	IsValid   bool     `json:"is_valid"`
+	Errors    []string `json:"errors"`
+	Variables []string `json:"variables,omitempty"` // 模板中发现的变量
+}
+
+// BatchOperationResult 批量操作结果
+type BatchOperationResult struct {
+	Total      int      `json:"total"`
+	Successful int      `json:"successful"`
+	Failed     int      `json:"failed"`
+	Errors     []string `json:"errors"`
+}
+
+// ImportResult 导入结果
+type ImportResult struct {
+	Total       int      `json:"total"`
+	Successful  int      `json:"successful"`
+	Failed      int      `json:"failed"`
+	Errors      []string `json:"errors"`
+	ImportedIDs []uint64 `json:"imported_ids"`
 }

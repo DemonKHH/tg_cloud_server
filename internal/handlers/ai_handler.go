@@ -1,0 +1,385 @@
+package handlers
+
+import (
+	"net/http"
+
+	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
+
+	"tg_cloud_server/internal/common/logger"
+	"tg_cloud_server/internal/common/utils"
+	"tg_cloud_server/internal/services"
+)
+
+// AIHandler AI服务处理器
+type AIHandler struct {
+	aiService services.AIService
+	logger    *zap.Logger
+}
+
+// NewAIHandler 创建AI处理器
+func NewAIHandler(aiService services.AIService) *AIHandler {
+	return &AIHandler{
+		aiService: aiService,
+		logger:    logger.Get().Named("ai_handler"),
+	}
+}
+
+// GenerateGroupChatResponse 生成群聊AI回复
+// @Summary 生成群聊AI回复
+// @Description 根据群聊历史和配置生成智能回复
+// @Tags AI服务
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param body body services.GroupChatConfig true "群聊AI配置"
+// @Success 200 {object} map[string]string "生成的回复内容"
+// @Failure 400 {object} map[string]string "请求错误"
+// @Failure 401 {object} map[string]string "未授权"
+// @Failure 500 {object} map[string]string "服务器错误"
+// @Router /api/v1/ai/group-chat [post]
+func (h *AIHandler) GenerateGroupChatResponse(c *gin.Context) {
+	_, err := utils.GetUserID(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		return
+	}
+
+	var config services.GroupChatConfig
+	if err := c.ShouldBindJSON(&config); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// 设置默认值
+	if config.MaxLength == 0 {
+		config.MaxLength = 200
+	}
+	if config.Language == "" {
+		config.Language = "zh-CN"
+	}
+	if config.ResponseType == "" {
+		config.ResponseType = "casual"
+	}
+
+	response, err := h.aiService.GenerateGroupChatResponse(c.Request.Context(), &config)
+	if err != nil {
+		h.logger.Error("Failed to generate group chat response", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate AI response"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"response": response,
+		"metadata": gin.H{
+			"length":        len(response),
+			"response_type": config.ResponseType,
+			"language":      config.Language,
+		},
+	})
+}
+
+// GeneratePrivateMessage 生成私信内容
+// @Summary 生成私信内容
+// @Description 根据目标和配置生成个性化私信内容
+// @Tags AI服务
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param body body services.PrivateMessageConfig true "私信AI配置"
+// @Success 200 {object} map[string]string "生成的私信内容"
+// @Failure 400 {object} map[string]string "请求错误"
+// @Failure 401 {object} map[string]string "未授权"
+// @Failure 500 {object} map[string]string "服务器错误"
+// @Router /api/v1/ai/private-message [post]
+func (h *AIHandler) GeneratePrivateMessage(c *gin.Context) {
+	_, err := utils.GetUserID(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		return
+	}
+
+	var config services.PrivateMessageConfig
+	if err := c.ShouldBindJSON(&config); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// 设置默认值
+	if config.MaxLength == 0 {
+		config.MaxLength = 300
+	}
+	if config.Language == "" {
+		config.Language = "zh-CN"
+	}
+	if config.MessageGoal == "" {
+		config.MessageGoal = "greeting"
+	}
+
+	message, err := h.aiService.GeneratePrivateMessage(c.Request.Context(), &config)
+	if err != nil {
+		h.logger.Error("Failed to generate private message", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate private message"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": message,
+		"metadata": gin.H{
+			"length":       len(message),
+			"message_goal": config.MessageGoal,
+			"language":     config.Language,
+		},
+	})
+}
+
+// AnalyzeSentiment 分析文本情感
+// @Summary 分析文本情感
+// @Description 分析输入文本的情感倾向和置信度
+// @Tags AI服务
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param body body map[string]string true "文本分析请求" example:{"text":"这是一个很棒的产品！"}
+// @Success 200 {object} services.SentimentAnalysis "情感分析结果"
+// @Failure 400 {object} map[string]string "请求错误"
+// @Failure 401 {object} map[string]string "未授权"
+// @Failure 500 {object} map[string]string "服务器错误"
+// @Router /api/v1/ai/analyze-sentiment [post]
+func (h *AIHandler) AnalyzeSentiment(c *gin.Context) {
+	_, err := utils.GetUserID(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		return
+	}
+
+	var req struct {
+		Text string `json:"text" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if len(req.Text) > 1000 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Text length exceeds 1000 characters"})
+		return
+	}
+
+	analysis, err := h.aiService.AnalyzeSentiment(c.Request.Context(), req.Text)
+	if err != nil {
+		h.logger.Error("Failed to analyze sentiment", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to analyze sentiment"})
+		return
+	}
+
+	c.JSON(http.StatusOK, analysis)
+}
+
+// ExtractKeywords 提取关键词
+// @Summary 提取文本关键词
+// @Description 从输入文本中提取重要关键词
+// @Tags AI服务
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param body body map[string]string true "关键词提取请求" example:{"text":"人工智能技术在现代社会中发挥着重要作用"}
+// @Success 200 {object} map[string][]string "提取的关键词列表"
+// @Failure 400 {object} map[string]string "请求错误"
+// @Failure 401 {object} map[string]string "未授权"
+// @Failure 500 {object} map[string]string "服务器错误"
+// @Router /api/v1/ai/extract-keywords [post]
+func (h *AIHandler) ExtractKeywords(c *gin.Context) {
+	_, err := utils.GetUserID(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		return
+	}
+
+	var req struct {
+		Text string `json:"text" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if len(req.Text) > 2000 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Text length exceeds 2000 characters"})
+		return
+	}
+
+	keywords, err := h.aiService.ExtractKeywords(c.Request.Context(), req.Text)
+	if err != nil {
+		h.logger.Error("Failed to extract keywords", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to extract keywords"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"keywords": keywords,
+		"count":    len(keywords),
+	})
+}
+
+// GenerateVariations 生成模板变体
+// @Summary 生成模板变体
+// @Description 基于输入模板生成多个不同的变体版本
+// @Tags AI服务
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param body body map[string]interface{} true "变体生成请求" example:{"template":"欢迎加入我们的社群！","count":3}
+// @Success 200 {object} map[string][]string "生成的变体列表"
+// @Failure 400 {object} map[string]string "请求错误"
+// @Failure 401 {object} map[string]string "未授权"
+// @Failure 500 {object} map[string]string "服务器错误"
+// @Router /api/v1/ai/generate-variations [post]
+func (h *AIHandler) GenerateVariations(c *gin.Context) {
+	_, err := utils.GetUserID(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		return
+	}
+
+	var req struct {
+		Template string `json:"template" binding:"required"`
+		Count    int    `json:"count"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// 设置默认值和限制
+	if req.Count == 0 {
+		req.Count = 3
+	}
+	if req.Count > 10 {
+		req.Count = 10 // 最多生成10个变体
+	}
+
+	if len(req.Template) > 500 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Template length exceeds 500 characters"})
+		return
+	}
+
+	variations, err := h.aiService.GenerateVariations(c.Request.Context(), req.Template, req.Count)
+	if err != nil {
+		h.logger.Error("Failed to generate variations", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate variations"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"variations":      variations,
+		"generated_count": len(variations),
+		"requested_count": req.Count,
+	})
+}
+
+// GetAIConfig 获取AI服务配置
+// @Summary 获取AI服务配置
+// @Description 获取当前AI服务的配置信息和可用功能
+// @Tags AI服务
+// @Produce json
+// @Security ApiKeyAuth
+// @Success 200 {object} map[string]interface{} "AI服务配置信息"
+// @Failure 401 {object} map[string]string "未授权"
+// @Router /api/v1/ai/config [get]
+func (h *AIHandler) GetAIConfig(c *gin.Context) {
+	_, err := utils.GetUserID(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		return
+	}
+
+	config := gin.H{
+		"providers": []string{"openai", "claude", "local", "custom"},
+		"features": gin.H{
+			"group_chat":      true,
+			"private_message": true,
+			"sentiment":       true,
+			"keywords":        true,
+			"variations":      true,
+		},
+		"limits": gin.H{
+			"max_text_length":     2000,
+			"max_template_length": 500,
+			"max_variations":      10,
+			"max_chat_history":    50,
+		},
+		"supported_languages": []string{
+			"zh-CN", "en-US", "ja-JP", "ko-KR", "es-ES", "fr-FR", "de-DE", "ru-RU",
+		},
+		"response_types": []string{
+			"casual", "professional", "humorous", "formal", "friendly",
+		},
+		"message_goals": []string{
+			"greeting", "sales", "follow_up", "support", "engagement",
+		},
+	}
+
+	c.JSON(http.StatusOK, config)
+}
+
+// TestAIService 测试AI服务连接
+// @Summary 测试AI服务连接
+// @Description 测试AI服务是否可用
+// @Tags AI服务
+// @Produce json
+// @Security ApiKeyAuth
+// @Success 200 {object} map[string]interface{} "测试结果"
+// @Failure 401 {object} map[string]string "未授权"
+// @Failure 500 {object} map[string]string "服务器错误"
+// @Router /api/v1/ai/test [post]
+func (h *AIHandler) TestAIService(c *gin.Context) {
+	_, err := utils.GetUserID(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		return
+	}
+
+	// 执行简单的AI功能测试
+	testText := "测试AI服务连接"
+
+	// 测试情感分析
+	sentimentResult, sentimentErr := h.aiService.AnalyzeSentiment(c.Request.Context(), testText)
+
+	// 测试关键词提取
+	keywordsResult, keywordsErr := h.aiService.ExtractKeywords(c.Request.Context(), testText)
+
+	result := gin.H{
+		"service_status": "available",
+		"tests": gin.H{
+			"sentiment_analysis": gin.H{
+				"success": sentimentErr == nil,
+				"result":  sentimentResult,
+				"error":   getErrorString(sentimentErr),
+			},
+			"keyword_extraction": gin.H{
+				"success": keywordsErr == nil,
+				"result":  keywordsResult,
+				"error":   getErrorString(keywordsErr),
+			},
+		},
+		"timestamp": c.GetHeader("X-Request-ID"),
+	}
+
+	// 如果所有测试都失败，返回错误状态
+	if sentimentErr != nil && keywordsErr != nil {
+		result["service_status"] = "unavailable"
+		c.JSON(http.StatusServiceUnavailable, result)
+		return
+	}
+
+	c.JSON(http.StatusOK, result)
+}
+
+// getErrorString 获取错误字符串，如果错误为nil则返回nil
+func getErrorString(err error) interface{} {
+	if err != nil {
+		return err.Error()
+	}
+	return nil
+}

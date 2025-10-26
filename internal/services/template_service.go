@@ -26,12 +26,12 @@ type TemplateService interface {
 
 	// 模板操作
 	RenderTemplate(ctx context.Context, userID uint64, req *models.RenderRequest) (*models.RenderResponse, error)
-	ValidateTemplate(ctx context.Context, content string) (*TemplateValidationResult, error)
+	ValidateTemplate(ctx context.Context, content string) (*models.TemplateValidationResult, error)
 	DuplicateTemplate(ctx context.Context, userID uint64, templateID uint64, newName string) (*models.MessageTemplate, error)
 
 	// 批量操作
-	BatchOperation(ctx context.Context, userID uint64, operation *models.BatchTemplateOperation) (*BatchOperationResult, error)
-	ImportTemplates(ctx context.Context, userID uint64, templates []*models.CreateTemplateRequest) (*ImportResult, error)
+	BatchOperation(ctx context.Context, userID uint64, operation *models.BatchTemplateOperation) (*models.BatchOperationResult, error)
+	ImportTemplates(ctx context.Context, userID uint64, templates []*models.CreateTemplateRequest) (*models.ImportResult, error)
 	ExportTemplates(ctx context.Context, userID uint64, templateIDs []uint64) ([]byte, error)
 
 	// 统计和分析
@@ -207,8 +207,8 @@ func (s *templateService) RenderTemplate(ctx context.Context, userID uint64, req
 }
 
 // ValidateTemplate 验证模板
-func (s *templateService) ValidateTemplate(ctx context.Context, content string) (*TemplateValidationResult, error) {
-	result := &TemplateValidationResult{
+func (s *templateService) ValidateTemplate(ctx context.Context, content string) (*models.TemplateValidationResult, error) {
+	result := &models.TemplateValidationResult{
 		IsValid: true,
 		Errors:  []string{},
 	}
@@ -272,8 +272,8 @@ func (s *templateService) DuplicateTemplate(ctx context.Context, userID uint64, 
 }
 
 // BatchOperation 批量操作
-func (s *templateService) BatchOperation(ctx context.Context, userID uint64, operation *models.BatchTemplateOperation) (*BatchOperationResult, error) {
-	result := &BatchOperationResult{
+func (s *templateService) BatchOperation(ctx context.Context, userID uint64, operation *models.BatchTemplateOperation) (*models.BatchOperationResult, error) {
+	result := &models.BatchOperationResult{
 		Total:      len(operation.TemplateIDs),
 		Successful: 0,
 		Failed:     0,
@@ -312,8 +312,8 @@ func (s *templateService) BatchOperation(ctx context.Context, userID uint64, ope
 }
 
 // ImportTemplates 导入模板
-func (s *templateService) ImportTemplates(ctx context.Context, userID uint64, templates []*models.CreateTemplateRequest) (*ImportResult, error) {
-	result := &ImportResult{
+func (s *templateService) ImportTemplates(ctx context.Context, userID uint64, templates []*models.CreateTemplateRequest) (*models.ImportResult, error) {
+	result := &models.ImportResult{
 		Total:       len(templates),
 		Successful:  0,
 		Failed:      0,
@@ -441,29 +441,4 @@ func isValidVariableName(name string) bool {
 	// 变量名应该是字母、数字和下划线的组合，不能以数字开头
 	matched, _ := regexp.MatchString(`^[a-zA-Z_][a-zA-Z0-9_]*$`, name)
 	return matched
-}
-
-// 辅助类型定义
-
-// TemplateValidationResult 模板验证结果
-type TemplateValidationResult struct {
-	IsValid bool     `json:"is_valid"`
-	Errors  []string `json:"errors"`
-}
-
-// BatchOperationResult 批量操作结果
-type BatchOperationResult struct {
-	Total      int      `json:"total"`
-	Successful int      `json:"successful"`
-	Failed     int      `json:"failed"`
-	Errors     []string `json:"errors"`
-}
-
-// ImportResult 导入结果
-type ImportResult struct {
-	Total       int      `json:"total"`
-	Successful  int      `json:"successful"`
-	Failed      int      `json:"failed"`
-	Errors      []string `json:"errors"`
-	ImportedIDs []uint64 `json:"imported_ids"`
 }

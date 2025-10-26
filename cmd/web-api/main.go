@@ -97,12 +97,24 @@ func main() {
 	accountRepo := repository.NewAccountRepository(db)
 	taskRepo := repository.NewTaskRepository(db)
 	proxyRepo := repository.NewProxyRepository(db)
+	templateRepo := repository.NewTemplateRepository(db)
+	fileRepo := repository.NewFileRepository(db)
 
 	// 初始化服务层
 	authService := services.NewAuthService(userRepo, cfg)
 	accountService := services.NewAccountService(accountRepo, proxyRepo)
 	proxyService := services.NewProxyService(proxyRepo)
 	taskService := services.NewTaskService(taskRepo, accountRepo)
+	templateService := services.NewTemplateService(templateRepo)
+	fileService := services.NewFileService(fileRepo, map[string]interface{}{
+		"upload_path":   "./uploads",
+		"base_url":      "http://localhost:8080",
+		"max_file_size": 50 * 1024 * 1024, // 50MB
+	})
+	aiService := services.NewAIService(services.ProviderLocal, map[string]interface{}{
+		"api_key": "",
+		"model":   "default",
+	})
 	statsService := services.NewStatsService(userRepo, accountRepo, taskRepo, proxyRepo)
 
 	// 初始化定时任务服务
@@ -114,6 +126,9 @@ func main() {
 	taskHandler := handlers.NewTaskHandler(taskService)
 	proxyHandler := handlers.NewProxyHandler(proxyService)
 	moduleHandler := handlers.NewModuleHandler(taskService, accountService)
+	templateHandler := handlers.NewTemplateHandler(templateService)
+	fileHandler := handlers.NewFileHandler(fileService)
+	aiHandler := handlers.NewAIHandler(aiService)
 	statsHandler := handlers.NewStatsHandler(statsService)
 
 	// 设置Gin模式
@@ -136,7 +151,7 @@ func main() {
 
 	// 注册路由
 	routes.RegisterAuthRoutes(router, authHandler)
-	routes.RegisterAPIRoutes(router, accountHandler, taskHandler, proxyHandler, moduleHandler, statsHandler, authService, cfg)
+	routes.RegisterAPIRoutes(router, accountHandler, taskHandler, proxyHandler, moduleHandler, statsHandler, templateHandler, fileHandler, aiHandler, authService, cfg)
 	routes.RegisterWebSocketRoutes(router, redisClient, authService)
 
 	// 注册指标端点

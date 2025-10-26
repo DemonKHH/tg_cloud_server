@@ -187,7 +187,7 @@ func (s *proxyService) testProxyConnection(proxy *models.ProxyIP) error {
 		proxy.Protocol, proxy.Username, proxy.Password, proxy.Host, proxy.Port)
 
 	// 简单的连接测试 - 尝试连接到代理服务器
-	address := fmt.Sprintf("%s:%d", proxy.Host, proxy.Port)
+	address := net.JoinHostPort(proxy.Host, fmt.Sprintf("%d", proxy.Port))
 	conn, err := net.DialTimeout("tcp", address, 5*time.Second)
 	if err != nil {
 		return fmt.Errorf("failed to connect to proxy server: %w", err)

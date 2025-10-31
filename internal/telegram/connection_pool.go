@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gotd/td/telegram"
+	"github.com/gotd/td/telegram/dcs"
 	"github.com/gotd/td/tg"
 	"go.uber.org/zap"
 
@@ -157,18 +158,36 @@ func (cp *ConnectionPool) createNewConnection(accountID string, config *ClientCo
 	}
 
 	// 配置代理 (固定绑定)
-	// 注意：gotd/td库的代理配置方式
-	// 由于gotd/td的Options结构限制，代理配置需要在连接建立时通过dialer实现
-	// 这里我们创建一个包装器，在实际使用时会通过自定义dialer处理代理
 	if config.ProxyConfig != nil {
-		// 创建代理dialer并存储到config中，在连接时使用
-		// 由于gotd/td的架构，我们需要在连接建立前准备好代理dialer
-		cp.logger.Info("Proxy configuration prepared for account",
+		// 创建代理dialer
+		proxyDialer, err := createProxyDialer(config.ProxyConfig)
+		if err != nil {
+			cancel()
+			return nil, fmt.Errorf("failed to create proxy dialer: %w", err)
+		}
+
+		// 将proxy.Dialer适配为context-aware dialer供gotd/td使用
+		adapter := &proxyDialerAdapter{dialer: proxyDialer}
+
+		// 创建使用代理的Resolver
+		resolver := dcs.Plain(dcs.PlainOptions{
+			Dial: adapter.DialContext,
+		})
+		options.Resolver = resolver
+
+		cp.logger.Info("Proxy configuration applied for account",
 			zap.String("account_id", accountID),
 			zap.String("proxy", fmt.Sprintf("%s://%s:%d", config.ProxyConfig.Protocol, config.ProxyConfig.Host, config.ProxyConfig.Port)))
-		// 注意：实际代理使用需要在gotd/td连接建立时配置
-		// 由于gotd/td的Options结构限制，建议通过环境变量或MTProto层配置代理
-		// 当前版本通过ProxyConfig配置，实际代理逻辑在connection_pool中管理
+
+		// 测试代理连接（可选，用于验证代理是否可用）
+		if err := testProxyConnection(config.ProxyConfig); err != nil {
+			cp.logger.Warn("Proxy connection test failed, but will continue",
+				zap.String("account_id", accountID),
+				zap.Error(err))
+		} else {
+			cp.logger.Info("Proxy connection test successful",
+				zap.String("account_id", accountID))
+		}
 	}
 
 	client := telegram.NewClient(cp.appID, cp.appHash, options)

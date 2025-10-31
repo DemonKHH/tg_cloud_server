@@ -1,6 +1,8 @@
 package telegram
 
 import (
+	"context"
+	"encoding/base64"
 	"fmt"
 	"net"
 	"net/http"
@@ -86,16 +88,15 @@ func (d *httpProxyDialer) Dial(network, addr string) (net.Conn, error) {
 
 	// 发送CONNECT请求
 	connectReq := fmt.Sprintf("CONNECT %s HTTP/1.1\r\nHost: %s\r\n", addr, addr)
-	
+
 	// 添加代理认证（如果需要）
 	if d.proxyURL.User != nil {
 		username := d.proxyURL.User.Username()
 		password, _ := d.proxyURL.User.Password()
-		auth := fmt.Sprintf("%s:%s", username, password)
-		// 这里应该使用base64编码，为了简化示例暂时省略
+		auth := base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("%s:%s", username, password)))
 		connectReq += fmt.Sprintf("Proxy-Authorization: Basic %s\r\n", auth)
 	}
-	
+
 	connectReq += "\r\n"
 
 	if _, err := conn.Write([]byte(connectReq)); err != nil {
@@ -164,4 +165,42 @@ func contains(haystack, needle []byte) bool {
 		}
 	}
 	return false
+}
+
+// proxyDialerAdapter 将proxy.Dialer适配为net.Dialer的DialContext函数
+type proxyDialerAdapter struct {
+	dialer proxy.Dialer
+}
+
+// DialContext 实现context-aware dialer，供gotd/td使用
+func (p *proxyDialerAdapter) DialContext(ctx context.Context, network, addr string) (net.Conn, error) {
+	// proxy.Dialer接口不支持context，但我们可以通过超时控制来实现类似功能
+	type result struct {
+		conn net.Conn
+		err  error
+	}
+
+	resultChan := make(chan result, 1)
+
+	go func() {
+		conn, err := p.dialer.Dial(network, addr)
+		resultChan <- result{conn: conn, err: err}
+	}()
+
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case res := <-resultChan:
+		if res.err != nil {
+			return nil, res.err
+		}
+		// 设置连接的deadline（如果context有deadline）
+		if deadline, ok := ctx.Deadline(); ok {
+			if err := res.conn.SetDeadline(deadline); err != nil {
+				res.conn.Close()
+				return nil, fmt.Errorf("failed to set connection deadline: %w", err)
+			}
+		}
+		return res.conn, nil
+	}
 }

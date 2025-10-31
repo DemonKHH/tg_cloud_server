@@ -197,25 +197,6 @@ export const moduleAPI = {
   groupChat: (data: any) => apiClient.post('/modules/groupchat', data),
 };
 
-// 模板管理API
-export const templateAPI = {
-  list: (params?: any) => apiClient.get<PaginationResponse<any>>('/templates', params),
-  get: (id: string) => apiClient.get(`/templates/${id}`),
-  create: (data: any) => apiClient.post('/templates', data),
-  update: (id: string, data: any) => apiClient.post(`/templates/${id}/update`, data),
-  delete: (id: string) => apiClient.post(`/templates/${id}/delete`),
-  render: (data: any) => apiClient.post('/templates/render', data),
-  validate: (content: string) => apiClient.post('/templates/validate', { content }),
-  duplicate: (id: string, newName: string) =>
-    apiClient.post(`/templates/${id}/duplicate`, { new_name: newName }),
-  batch: (data: any) => apiClient.post('/templates/batch', data),
-  import: (templates: any[]) => apiClient.post('/templates/import', templates),
-  export: (ids: string[]) =>
-    apiClient.get(`/templates/export?template_ids=${ids.join(',')}`),
-  getStats: () => apiClient.get('/templates/stats'),
-  getPopular: (params?: any) => apiClient.get('/templates/popular', params),
-};
-
 // 文件管理API
 export const fileAPI = {
   list: (params?: any) => apiClient.get<PaginationResponse<any>>('/files', params),

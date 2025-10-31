@@ -23,7 +23,6 @@ const navigation = [
   { name: "账号管理", href: "/accounts", icon: Users },
   { name: "任务管理", href: "/tasks", icon: ListTodo },
   { name: "代理管理", href: "/proxies", icon: Globe },
-  { name: "模板管理", href: "/templates", icon: FileText },
   { name: "文件管理", href: "/files", icon: FileText },
   { name: "AI服务", href: "/ai", icon: Bot },
   { name: "统计分析", href: "/stats", icon: BarChart3 },

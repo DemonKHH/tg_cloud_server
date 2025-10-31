@@ -17,7 +17,6 @@ func RegisterAPIRoutes(
 	proxyHandler *handlers.ProxyHandler,
 	moduleHandler *handlers.ModuleHandler,
 	statsHandler *handlers.StatsHandler,
-	templateHandler *handlers.TemplateHandler,
 	fileHandler *handlers.FileHandler,
 	aiHandler *handlers.AIHandler,
 	authService *services.AuthService,
@@ -65,9 +64,6 @@ func RegisterAPIRoutes(
 		modules.POST("/verify", moduleHandler.VerifyCode)      // 验证码接收模块
 		modules.POST("/groupchat", moduleHandler.GroupChat)    // AI炒群模块
 	}
-
-	// 模板管理路由
-	SetupTemplateRoutes(api, templateHandler, authService)
 
 	// 文件管理路由
 	SetupFileRoutes(api, fileHandler, authService)

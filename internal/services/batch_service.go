@@ -865,8 +865,6 @@ func (s *batchService) executeDataExport(ctx context.Context, jobID, userID uint
 		result, err = s.exportTasks(ctx, userID, req)
 	case "proxies":
 		result, err = s.exportProxies(ctx, userID, req)
-	case "templates":
-		result, err = s.exportTemplates(ctx, userID, req)
 	default:
 		err = fmt.Errorf("unsupported data type: %s", req.DataType)
 	}
@@ -1013,48 +1011,6 @@ func (s *batchService) exportProxies(ctx context.Context, userID uint64, req *Ex
 	return result, nil
 }
 
-// exportTemplates 导出模板数据
-func (s *batchService) exportTemplates(ctx context.Context, userID uint64, req *ExportDataRequest) (map[string]interface{}, error) {
-	// 简化实现
-	templates := []map[string]interface{}{
-		{
-			"id":      1,
-			"name":    "欢迎模板",
-			"content": "欢迎加入我们！",
-			"type":    "welcome",
-		},
-	}
-
-	var exportedData interface{}
-	var filename string
-
-	switch req.Format {
-	case "json", "":
-		exportedData = templates
-		filename = fmt.Sprintf("templates_%d.json", time.Now().Unix())
-	case "csv":
-		csvData := s.convertTemplatesToCSV(templates)
-		exportedData = csvData
-		filename = fmt.Sprintf("templates_%d.csv", time.Now().Unix())
-	default:
-		exportedData = templates
-		filename = fmt.Sprintf("templates_%d.json", time.Now().Unix())
-	}
-
-	result := map[string]interface{}{
-		"success":          true,
-		"data_type":        "templates",
-		"format":           req.Format,
-		"total_records":    int64(len(templates)),
-		"exported_records": len(templates),
-		"filename":         filename,
-		"data":             exportedData,
-		"exported_at":      time.Now(),
-	}
-
-	return result, nil
-}
-
 // CSV转换辅助方法（简化实现）
 func (s *batchService) convertAccountsToCSV(accounts []*models.AccountSummary) string {
 	header := "ID,Phone,Status,Health Score,Last Check At\n"
@@ -1110,23 +1066,6 @@ func (s *batchService) convertProxiesToCSV(proxies []map[string]interface{}) str
 		row := fmt.Sprintf("%v,%v,%v,%v,%v,%v\n",
 			proxy["id"], proxy["name"], proxy["host"],
 			proxy["port"], proxy["protocol"], proxy["status"])
-		rows = append(rows, row)
-	}
-
-	result := ""
-	for _, row := range rows {
-		result += row
-	}
-	return result
-}
-
-func (s *batchService) convertTemplatesToCSV(templates []map[string]interface{}) string {
-	header := "ID,Name,Content,Type\n"
-	rows := []string{header}
-
-	for _, template := range templates {
-		row := fmt.Sprintf("%v,%v,%v,%v\n",
-			template["id"], template["name"], template["content"], template["type"])
 		rows = append(rows, row)
 	}
 

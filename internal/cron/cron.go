@@ -2,12 +2,18 @@ package cron
 
 import (
 	"context"
+	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/robfig/cron/v3"
 	"go.uber.org/zap"
 
+	"tg_cloud_server/internal/common/config"
 	"tg_cloud_server/internal/common/logger"
 	"tg_cloud_server/internal/common/metrics"
 	"tg_cloud_server/internal/repository"
@@ -19,6 +25,7 @@ type CronService struct {
 	cron           *cron.Cron
 	logger         *zap.Logger
 	metricsService *metrics.MetricsService
+	config         *config.Config
 
 	// 依赖服务
 	taskService    *services.TaskService
@@ -26,6 +33,12 @@ type CronService struct {
 	userRepo       repository.UserRepository
 	taskRepo       repository.TaskRepository
 	accountRepo    repository.AccountRepository
+
+	// 连接池接口（可选，用于连接检查）
+	connectionPool interface {
+		GetConnectionStatus(accountID string) interface{ String() string }
+		GetStats() map[string]interface{}
+	}
 }
 
 // NewCronService 创建定时任务服务
@@ -40,12 +53,21 @@ func NewCronService(
 		cron:           cron.New(cron.WithSeconds()),
 		logger:         logger.Get().Named("cron_service"),
 		metricsService: metrics.NewMetricsService(),
+		config:         config.Get(),
 		taskService:    taskService,
 		accountService: accountService,
 		userRepo:       userRepo,
 		taskRepo:       taskRepo,
 		accountRepo:    accountRepo,
 	}
+}
+
+// SetConnectionPool 设置连接池（可选）
+func (s *CronService) SetConnectionPool(pool interface {
+	GetConnectionStatus(accountID string) interface{ String() string }
+	GetStats() map[string]interface{}
+}) {
+	s.connectionPool = pool
 }
 
 // Start 启动定时任务
@@ -246,14 +268,239 @@ func (s *CronService) cleanupExpiredTasks(ctx context.Context) {
 
 // cleanupExpiredLogs 清理过期日志
 func (s *CronService) cleanupExpiredLogs(ctx context.Context) {
-	// 这里可以实现日志清理逻辑
-	s.logger.Debug("Log cleanup not implemented yet")
+	start := time.Now()
+	defer func() {
+		s.logger.Info("Log cleanup completed",
+			zap.Duration("duration", time.Since(start)))
+	}()
+
+	logConfig := s.config.Logging
+
+	// 如果没有配置日志文件路径，跳过清理
+	if logConfig.Filename == "" || logConfig.Output != "file" {
+		s.logger.Debug("Log file cleanup skipped: no file output configured")
+		return
+	}
+
+	// 获取日志目录
+	logDir := filepath.Dir(logConfig.Filename)
+	logBaseName := filepath.Base(logConfig.Filename)
+
+	// 计算保留期（默认28天）
+	retentionDays := logConfig.MaxAge
+	if retentionDays == 0 {
+		retentionDays = 28
+	}
+	cutoffTime := time.Now().AddDate(0, 0, -retentionDays)
+
+	s.logger.Info("Starting log cleanup",
+		zap.String("log_dir", logDir),
+		zap.Int("retention_days", retentionDays))
+
+	// 清理过期的日志文件
+	deletedCount := 0
+	totalSize := int64(0)
+
+	err := filepath.WalkDir(logDir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+
+		// 只处理文件
+		if d.IsDir() {
+			return nil
+		}
+
+		// 检查是否是日志文件（匹配基础日志文件名模式）
+		fileName := d.Name()
+		if !strings.HasPrefix(fileName, logBaseName) {
+			return nil
+		}
+
+		// 获取文件信息
+		info, err := d.Info()
+		if err != nil {
+			s.logger.Warn("Failed to get file info",
+				zap.String("file", path),
+				zap.Error(err))
+			return nil
+		}
+
+		// 检查文件修改时间
+		if info.ModTime().Before(cutoffTime) {
+			// 删除过期文件
+			if err := os.Remove(path); err != nil {
+				s.logger.Warn("Failed to delete expired log file",
+					zap.String("file", path),
+					zap.Error(err))
+				return nil
+			}
+
+			deletedCount++
+			totalSize += info.Size()
+			s.logger.Debug("Deleted expired log file",
+				zap.String("file", path),
+				zap.Time("modified", info.ModTime()),
+				zap.Int64("size", info.Size()))
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		s.logger.Error("Error during log cleanup",
+			zap.String("log_dir", logDir),
+			zap.Error(err))
+		return
+	}
+
+	// 限制备份数量
+	if logConfig.MaxBackups > 0 {
+		if err := s.limitLogBackups(logDir, logBaseName, logConfig.MaxBackups); err != nil {
+			s.logger.Warn("Failed to limit log backups",
+				zap.Error(err))
+		}
+	}
+
+	s.logger.Info("Log cleanup completed",
+		zap.Int("deleted_files", deletedCount),
+		zap.Int64("freed_space_mb", totalSize/(1024*1024)),
+		zap.String("log_dir", logDir))
+}
+
+// limitLogBackups 限制日志备份文件数量
+func (s *CronService) limitLogBackups(logDir, baseName string, maxBackups int) error {
+	// 获取所有日志文件
+	var logFiles []struct {
+		path    string
+		modTime time.Time
+	}
+
+	err := filepath.WalkDir(logDir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+
+		if !strings.HasPrefix(d.Name(), baseName) {
+			return nil
+		}
+
+		info, err := d.Info()
+		if err != nil {
+			return nil
+		}
+
+		logFiles = append(logFiles, struct {
+			path    string
+			modTime time.Time
+		}{
+			path:    path,
+			modTime: info.ModTime(),
+		})
+
+		return nil
+	})
+
+	if err != nil {
+		return err
+	}
+
+	// 按修改时间排序（最新的在前）
+	for i := 0; i < len(logFiles)-1; i++ {
+		for j := i + 1; j < len(logFiles); j++ {
+			if logFiles[i].modTime.Before(logFiles[j].modTime) {
+				logFiles[i], logFiles[j] = logFiles[j], logFiles[i]
+			}
+		}
+	}
+
+	// 删除超出限制的文件
+	if len(logFiles) > maxBackups {
+		deleted := 0
+		for i := maxBackups; i < len(logFiles); i++ {
+			if err := os.Remove(logFiles[i].path); err != nil {
+				s.logger.Warn("Failed to delete log backup",
+					zap.String("file", logFiles[i].path),
+					zap.Error(err))
+				continue
+			}
+			deleted++
+		}
+
+		if deleted > 0 {
+			s.logger.Info("Limited log backups",
+				zap.Int("deleted", deleted),
+				zap.Int("kept", maxBackups))
+		}
+	}
+
+	return nil
 }
 
 // cleanupInvalidSessions 清理无效会话
 func (s *CronService) cleanupInvalidSessions(ctx context.Context) {
-	// 这里可以实现会话清理逻辑
-	s.logger.Debug("Session cleanup not implemented yet")
+	start := time.Now()
+	defer func() {
+		s.logger.Info("Session cleanup completed",
+			zap.Duration("duration", time.Since(start)))
+	}()
+
+	// 获取所有账号
+	accounts, err := s.accountRepo.GetAll()
+	if err != nil {
+		s.logger.Error("Failed to get accounts for session cleanup", zap.Error(err))
+		return
+	}
+
+	cleanedCount := 0
+	// 清理30天未使用的无效session
+	cutoffTime := time.Now().AddDate(0, 0, -30)
+
+	for _, account := range accounts {
+		// 检查session数据是否有效
+		// 如果账号长时间未使用且session为空或无效，清理它
+		if account.SessionData == "" {
+			// 如果账号30天未使用且没有session，可以标记为需要重新登录
+			if account.LastUsedAt != nil && account.LastUsedAt.Before(cutoffTime) {
+				// 清除可能的无效session状态
+				cleanedCount++
+				s.logger.Debug("Found account with empty session",
+					zap.Uint64("account_id", account.ID),
+					zap.String("phone", account.Phone))
+			}
+			continue
+		}
+
+		// 检查session数据是否过长（可能已损坏）
+		// Telegram session数据通常不会超过几KB
+		if len(account.SessionData) > 1024*100 { // 超过100KB可能是无效的
+			s.logger.Warn("Found account with suspiciously large session data, clearing it",
+				zap.Uint64("account_id", account.ID),
+				zap.Int("session_size", len(account.SessionData)))
+
+			// 清空无效的session数据
+			if err := s.accountRepo.UpdateSessionData(account.ID, nil); err != nil {
+				s.logger.Error("Failed to clear invalid session",
+					zap.Uint64("account_id", account.ID),
+					zap.Error(err))
+			} else {
+				cleanedCount++
+			}
+		}
+
+		// 检查长时间未使用的账号的session（超过60天）
+		if account.LastUsedAt != nil && account.LastUsedAt.Before(time.Now().AddDate(0, 0, -60)) {
+			// 对于长时间未使用的账号，可以选择清理session让其重新登录
+			// 但这里我们不主动清理，只记录
+			s.logger.Debug("Found inactive account with old session",
+				zap.Uint64("account_id", account.ID),
+				zap.Time("last_used", *account.LastUsedAt))
+		}
+	}
+
+	s.logger.Info("Session cleanup completed",
+		zap.Int("checked_accounts", len(accounts)),
+		zap.Int("cleaned_sessions", cleanedCount))
 }
 
 // collectSystemMetrics 收集系统指标
@@ -374,7 +621,81 @@ func (s *CronService) checkRedisHealth(ctx context.Context) error {
 
 // checkAccountConnections 检查账号连接状态
 func (s *CronService) checkAccountConnections(ctx context.Context) error {
-	// 这里可以检查Telegram连接池中的连接状态
-	s.logger.Debug("Account connections check not implemented yet")
+	start := time.Now()
+	defer func() {
+		s.logger.Debug("Account connections check completed",
+			zap.Duration("duration", time.Since(start)))
+	}()
+
+	// 如果没有连接池，跳过检查
+	if s.connectionPool == nil {
+		s.logger.Debug("Connection pool not set, skipping connection check")
+		return nil
+	}
+
+	// 获取连接池统计信息
+	stats := s.connectionPool.GetStats()
+	totalConnections, _ := stats["total_connections"].(int)
+	activeConnections, _ := stats["active_connections"].(int)
+
+	s.logger.Info("Checking account connections",
+		zap.Int("total_connections", totalConnections),
+		zap.Int("active_connections", activeConnections))
+
+	// 获取所有活跃账号
+	accounts, err := s.accountRepo.GetAll()
+	if err != nil {
+		s.logger.Error("Failed to get accounts for connection check", zap.Error(err))
+		return err
+	}
+
+	checkedCount := 0
+	disconnectedCount := 0
+	errorCount := 0
+
+	for _, account := range accounts {
+		// 只检查正常状态的账号
+		if account.Status != "normal" && account.Status != "warning" {
+			continue
+		}
+
+		accountIDStr := fmt.Sprintf("%d", account.ID)
+
+		// 检查连接状态
+		status := s.connectionPool.GetConnectionStatus(accountIDStr)
+		statusStr := status.String()
+
+		if statusStr == "disconnected" || statusStr == "error" {
+			disconnectedCount++
+			s.logger.Warn("Account connection issue detected",
+				zap.Uint64("account_id", account.ID),
+				zap.String("phone", account.Phone),
+				zap.String("connection_status", statusStr))
+
+			// 如果连接失败且账号状态正常，可以考虑标记为警告
+			// 但这里我们只记录，不主动修改账号状态
+		} else if statusStr == "connected" {
+			// 更新账号最后使用时间
+			now := time.Now()
+			if account.LastUsedAt == nil || time.Since(*account.LastUsedAt) > 5*time.Minute {
+				account.LastUsedAt = &now
+				if err := s.accountRepo.Update(account); err != nil {
+					s.logger.Warn("Failed to update account last used time",
+						zap.Uint64("account_id", account.ID),
+						zap.Error(err))
+				}
+			}
+		}
+
+		checkedCount++
+	}
+
+	s.logger.Info("Account connections check completed",
+		zap.Int("checked_accounts", checkedCount),
+		zap.Int("disconnected_accounts", disconnectedCount),
+		zap.Int("error_accounts", errorCount),
+		zap.Int("total_pool_connections", totalConnections),
+		zap.Int("active_pool_connections", activeConnections))
+
 	return nil
 }

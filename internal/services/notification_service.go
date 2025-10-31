@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -65,6 +66,9 @@ type WSConnection struct {
 	Send       chan WSMessage
 	Hub        *WSHub
 	LastActive time.Time
+	// 订阅的事件类型集合
+	subscriptions map[string]bool
+	subMutex      sync.RWMutex
 }
 
 // WSHub WebSocket集线器
@@ -200,11 +204,12 @@ func (s *notificationService) Stop() error {
 // RegisterWSConnection 注册WebSocket连接
 func (s *notificationService) RegisterWSConnection(userID uint64, conn *websocket.Conn) *WSConnection {
 	client := &WSConnection{
-		UserID:     userID,
-		Conn:       conn,
-		Send:       make(chan WSMessage, 256),
-		Hub:        s.hub,
-		LastActive: time.Now(),
+		UserID:        userID,
+		Conn:          conn,
+		Send:          make(chan WSMessage, 256),
+		Hub:           s.hub,
+		LastActive:    time.Now(),
+		subscriptions: make(map[string]bool),
 	}
 
 	s.hub.register <- client
@@ -237,21 +242,33 @@ func (s *notificationService) SendToUser(userID uint64, notification *Notificati
 
 	// 如果用户在线，通过WebSocket发送
 	if s.IsUserOnline(userID) {
-		message := WSMessage{
-			Type:      "notification",
-			Data:      notification,
-			Timestamp: time.Now(),
-		}
-
 		s.hub.mutex.RLock()
-		if client, exists := s.hub.clients[userID]; exists {
+		client, exists := s.hub.clients[userID]
+		s.hub.mutex.RUnlock()
+
+		if exists {
+			// 检查订阅状态
+			eventType := s.mapNotificationTypeToEventType(notification.Type)
+			if !client.isSubscribed(eventType) {
+				s.logger.Debug("Client not subscribed to event type, skipping",
+					zap.Uint64("user_id", userID),
+					zap.String("event_type", eventType),
+					zap.String("notification_type", string(notification.Type)))
+				return nil
+			}
+
+			message := WSMessage{
+				Type:      "notification",
+				Data:      notification,
+				Timestamp: time.Now(),
+			}
+
 			select {
 			case client.Send <- message:
 			case <-time.After(time.Second):
 				s.logger.Warn("Failed to send notification: timeout", zap.Uint64("user_id", userID))
 			}
 		}
-		s.hub.mutex.RUnlock()
 	}
 
 	return nil
@@ -818,9 +835,164 @@ func (s *notificationService) CleanupOldNotifications(olderThan time.Duration) e
 }
 
 func (s *notificationService) handleSubscribe(client *WSConnection, msg map[string]interface{}) {
-	// TODO: 实现订阅逻辑
+	// 获取订阅的事件类型
+	eventTypes, ok := msg["events"].([]interface{})
+	if !ok {
+		// 尝试单个事件类型
+		if eventType, ok := msg["event"].(string); ok {
+			eventTypes = []interface{}{eventType}
+		} else {
+			s.logger.Warn("Invalid subscribe message format",
+				zap.Uint64("user_id", client.UserID))
+			s.sendError(client, "Invalid subscribe message format")
+			return
+		}
+	}
+
+	client.subMutex.Lock()
+	subscribed := []string{}
+	for _, et := range eventTypes {
+		if eventType, ok := et.(string); ok {
+			client.subscriptions[eventType] = true
+			subscribed = append(subscribed, eventType)
+			s.logger.Debug("Subscribed to event",
+				zap.Uint64("user_id", client.UserID),
+				zap.String("event_type", eventType))
+		}
+	}
+	client.subMutex.Unlock()
+
+	// 发送确认消息
+	response := WSMessage{
+		Type: "subscribe_success",
+		Data: map[string]interface{}{
+			"subscribed_events": subscribed,
+			"message":           "Successfully subscribed to events",
+		},
+		Timestamp: time.Now(),
+	}
+	client.Send <- response
+
+	s.logger.Info("Client subscribed to events",
+		zap.Uint64("user_id", client.UserID),
+		zap.Strings("events", subscribed))
 }
 
 func (s *notificationService) handleUnsubscribe(client *WSConnection, msg map[string]interface{}) {
-	// TODO: 实现取消订阅逻辑
+	// 获取要取消订阅的事件类型
+	eventTypes, ok := msg["events"].([]interface{})
+	if !ok {
+		// 尝试单个事件类型
+		if eventType, ok := msg["event"].(string); ok {
+			eventTypes = []interface{}{eventType}
+		} else {
+			// 如果没有指定事件，取消所有订阅
+			client.subMutex.Lock()
+			client.subscriptions = make(map[string]bool)
+			client.subMutex.Unlock()
+
+			response := WSMessage{
+				Type: "unsubscribe_success",
+				Data: map[string]interface{}{
+					"message": "Successfully unsubscribed from all events",
+				},
+				Timestamp: time.Now(),
+			}
+			client.Send <- response
+			return
+		}
+	}
+
+	client.subMutex.Lock()
+	unsubscribed := []string{}
+	for _, et := range eventTypes {
+		if eventType, ok := et.(string); ok {
+			if client.subscriptions[eventType] {
+				delete(client.subscriptions, eventType)
+				unsubscribed = append(unsubscribed, eventType)
+				s.logger.Debug("Unsubscribed from event",
+					zap.Uint64("user_id", client.UserID),
+					zap.String("event_type", eventType))
+			}
+		}
+	}
+	client.subMutex.Unlock()
+
+	// 发送确认消息
+	response := WSMessage{
+		Type: "unsubscribe_success",
+		Data: map[string]interface{}{
+			"unsubscribed_events": unsubscribed,
+			"message":             "Successfully unsubscribed from events",
+		},
+		Timestamp: time.Now(),
+	}
+	client.Send <- response
+
+	s.logger.Info("Client unsubscribed from events",
+		zap.Uint64("user_id", client.UserID),
+		zap.Strings("events", unsubscribed))
+}
+
+// sendError 发送错误消息给客户端
+func (s *notificationService) sendError(client *WSConnection, message string) {
+	response := WSMessage{
+		Type: "error",
+		Data: map[string]interface{}{
+			"message": message,
+		},
+		Timestamp: time.Now(),
+	}
+	select {
+	case client.Send <- response:
+	default:
+		s.logger.Warn("Failed to send error message, channel full",
+			zap.Uint64("user_id", client.UserID))
+	}
+}
+
+// isSubscribed 检查客户端是否订阅了指定事件类型
+func (client *WSConnection) isSubscribed(eventType string) bool {
+	client.subMutex.RLock()
+	defer client.subMutex.RUnlock()
+
+	// 如果没有订阅任何事件，则接收所有事件（向后兼容）
+	if len(client.subscriptions) == 0 {
+		return true
+	}
+
+	// 检查精确匹配或通配符匹配
+	if client.subscriptions[eventType] || client.subscriptions["*"] {
+		return true
+	}
+
+	// 检查通配符匹配（例如：订阅了 "task.*" 可以接收 "task.completed"）
+	for subType := range client.subscriptions {
+		if strings.HasSuffix(subType, ".*") {
+			prefix := strings.TrimSuffix(subType, ".*")
+			if strings.HasPrefix(eventType, prefix+".") {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+// mapNotificationTypeToEventType 将通知类型映射到事件类型
+func (s *notificationService) mapNotificationTypeToEventType(notificationType NotificationType) string {
+	switch notificationType {
+	case NotificationTypeTaskUpdate:
+		return "task.*"
+	case NotificationTypeAccountStatus:
+		return "account.*"
+	case NotificationTypeSystemAlert:
+		return "system.*"
+	case NotificationTypeProxyStatus:
+		return "proxy.*"
+	case NotificationTypeRealTimeStats:
+		return "stats.*"
+	default:
+		return string(notificationType)
+	}
 }

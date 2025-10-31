@@ -309,8 +309,15 @@ func (ts *TaskScheduler) executeTask(task *models.Task) {
 			zap.Error(err))
 	}
 
-	// 风控检查暂时跳过，后续实现
-	// TODO: 实现风控检查逻辑
+	// 执行风控检查
+	if err := ts.performRiskControlCheck(task, accountID); err != nil {
+		ts.logger.Warn("Risk control check failed, task rejected",
+			zap.Uint64("task_id", task.ID),
+			zap.String("account_id", accountID),
+			zap.Error(err))
+		ts.completeTaskWithError(task, fmt.Errorf("risk control check failed: %w", err))
+		return
+	}
 
 	// 创建任务执行器
 	taskExecutor, err := ts.createTaskExecutor(task)
@@ -352,6 +359,92 @@ func (ts *TaskScheduler) completeTaskWithSuccess(task *models.Task) {
 			zap.Uint64("task_id", task.ID),
 			zap.Error(err))
 	}
+}
+
+// performRiskControlCheck 执行风控检查
+func (ts *TaskScheduler) performRiskControlCheck(task *models.Task, accountID string) error {
+	// 获取账号信息
+	accountIDUint, err := strconv.ParseUint(accountID, 10, 64)
+	if err != nil {
+		return fmt.Errorf("invalid account ID: %w", err)
+	}
+
+	account, err := ts.accountRepo.GetByID(accountIDUint)
+	if err != nil {
+		return fmt.Errorf("failed to get account: %w", err)
+	}
+
+	// 1. 检查账号状态
+	if !account.IsAvailable() {
+		return fmt.Errorf("account is not available, status: %s", account.Status)
+	}
+
+	// 2. 检查账号健康度
+	if account.HealthScore < 0.3 {
+		return fmt.Errorf("account health score too low: %.2f (minimum: 0.3)", account.HealthScore)
+	}
+
+	// 3. 检查账号是否忙碌
+	if ts.connectionPool.IsAccountBusy(accountID) {
+		return fmt.Errorf("account is busy with another task")
+	}
+
+	// 4. 检查连接状态
+	connStatus := ts.connectionPool.GetConnectionStatus(accountID)
+	statusStr := connStatus.String()
+	if statusStr != "connected" {
+		return fmt.Errorf("account connection not ready, status: %s", statusStr)
+	}
+
+	// 5. 检查账号是否需要冷却（如果最近有失败的任务）
+	// 获取最近1小时内的失败任务数
+	oneHourAgo := time.Now().Add(-1 * time.Hour)
+	recentFailedTasks, err := ts.taskRepo.GetTasksByAccountID(accountIDUint, []string{"failed"})
+	if err == nil {
+		failedCount := 0
+		for _, t := range recentFailedTasks {
+			if t.CompletedAt != nil && t.CompletedAt.After(oneHourAgo) {
+				failedCount++
+			}
+		}
+
+		// 如果最近1小时内失败任务超过3个，拒绝新任务
+		if failedCount >= 3 {
+			return fmt.Errorf("account has too many recent failures (%d in last hour), cooling down required", failedCount)
+		}
+	}
+
+	// 6. 检查账号是否在冷却状态
+	if account.Status == models.AccountStatusCooling {
+		return fmt.Errorf("account is in cooling period")
+	}
+
+	// 7. 检查任务频率限制（避免短时间内大量相同类型任务）
+	recentTasks, err := ts.taskRepo.GetTasksByAccountID(accountIDUint, []string{"running", "queued"})
+	if err == nil {
+		sameTypeCount := 0
+		for _, t := range recentTasks {
+			if t.TaskType == task.TaskType {
+				sameTypeCount++
+			}
+		}
+
+		// 同一类型任务队列中超过5个，限制新任务
+		if sameTypeCount >= 5 {
+			ts.logger.Warn("Too many tasks of same type in queue",
+				zap.String("account_id", accountID),
+				zap.String("task_type", string(task.TaskType)),
+				zap.Int("count", sameTypeCount))
+			// 这里可以选择拒绝或允许，根据业务需求
+		}
+	}
+
+	ts.logger.Debug("Risk control check passed",
+		zap.Uint64("task_id", task.ID),
+		zap.String("account_id", accountID),
+		zap.Float64("health_score", account.HealthScore))
+
+	return nil
 }
 
 // completeTaskWithError 失败完成任务

@@ -1,0 +1,325 @@
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+bin/
+dist/
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.out
+coverage.html
+coverage.txt
+
+# Dependency directories
+vendor/
+
+# Go workspace file
+go.work
+go.work.sum
+
+# IDE and Editor files
+# VS Code
+.vscode/
+*.code-workspace
+
+# GoLand/IntelliJ IDEA
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+
+# Vim
+*.swp
+*.swo
+*~
+.vim/
+
+# Emacs
+*~
+\#*\#
+.\#*
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Configuration files with sensitive data
+.env
+.env.local
+.env.*.local
+configs/config.yaml
+configs/config.production.yaml
+configs/config.development.yaml
+!configs/config.example.yaml
+!configs/docker/*.yml
+
+# Logs
+*.log
+logs/
+*.log.*
+log/
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+data/
+*.sql.backup
+
+# Session and temporary files
+sessions/
+tmp/
+temp/
+*.tmp
+
+# OS generated files
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.Spotlight-V100
+.Trashes
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.stackdump
+
+# Linux
+*~
+.directory
+.Trash-*
+
+# Docker
+.dockerignore
+docker-compose.override.yml
+
+# Build artifacts
+build/
+*.a
+*.o
+*.so
+
+# Runtime data
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage directory used by tools like istanbul
+coverage/
+.nyc_output/
+
+# Dependency lock files (optional, depending on project)
+# go.sum  # 通常应该提交
+# go.mod  # 通常应该提交
+
+# Backup files
+*.bak
+*.backup
+*.old
+*.orig
+
+# Application specific
+# Telegram session files (sensitive)
+*.session
+sessions/
+*.auth
+*.session.backup
+
+# Uploaded files (user data)
+uploads/
+files/
+media/
+
+# Cache directories
+.cache/
+cache/
+*.cache
+
+# Migration files (if auto-generated)
+# migrations/*.sql  # 如果手动管理则保留，如果自动生成则忽略
+
+# Test data
+testdata/
+test_data/
+mock_data/
+
+# Documentation build
+docs/_build/
+site/
+
+# Performance profiling
+*.prof
+*.pprof
+
+# Local development
+.local/
+local/
+
+# Build outputs
+*.exe
+web-api.exe
+tg-manager.exe
+scheduler.exe
+ai-service.exe
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# ============================================
+# Frontend/Web (Next.js/React/Node.js)
+# ============================================
+
+# Dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Next.js
+.next/
+out/
+.next/cache
+.vercel
+*.tsbuildinfo
+next-env.d.ts
+
+# Production builds
+dist/
+build/
+standalone/
+.standalone/
+
+# Testing
+coverage/
+.nyc_output/
+.jest/
+test-results/
+playwright-report/
+playwright/.cache/
+
+# Storybook
+storybook-static/
+.out/
+.output/
+
+# Turbo
+.turbo/
+
+# Vercel
+.vercel
+
+# TypeScript
+*.tsbuildinfo
+tsconfig.tsbuildinfo
+
+# Environment variables
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env*.local
+
+# Debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+.npm
+.eslintcache
+
+# IDEs and editors for web
+.vscode/
+.idea/
+*.swp
+*.swo
+*.sublime-*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Web specific
+.cache/
+.parcel-cache/
+.next/
+.swc/
+.vercel/
+
+# Build outputs
+web/.next/
+web/out/
+web/dist/
+web/build/
+web/node_modules/
+web/.turbo/
+web/.vercel/
+
+# Lock files (uncomment if you don't want to commit them)
+# web/package-lock.json
+# web/yarn.lock
+# web/pnpm-lock.yaml
+
+# SvelteKit
+.svelte-kit/
+.svelte-kit-output/
+
+# Vite
+dist-ssr/
+*.local
+
+# Vue
+dist/
+*.local
+
+# Nuxt.js
+.nuxt/
+.output/
+
+# Remix
+.remix/
+
+# Gatsby
+.cache/
+public/
+
+# Serverless
+.serverless/
+
+# FuseBox
+.fusebox/
+
+# DynamoDB Local
+.dynamodb/
+
+# TernJS
+.tern-port
+
+# Stores
+.store/
+.vuepress/dist
+
+# Other
+*.pem
+connect.lock
+.vscode-test
+

@@ -665,7 +665,8 @@ func (s *CronService) checkAccountConnections(ctx context.Context) error {
 		status := s.connectionPool.GetConnectionStatus(accountIDStr)
 		statusStr := status.String()
 
-		if statusStr == "disconnected" || statusStr == "error" {
+		switch statusStr {
+		case "disconnected", "error":
 			disconnectedCount++
 			s.logger.Warn("Account connection issue detected",
 				zap.Uint64("account_id", account.ID),
@@ -674,7 +675,7 @@ func (s *CronService) checkAccountConnections(ctx context.Context) error {
 
 			// 如果连接失败且账号状态正常，可以考虑标记为警告
 			// 但这里我们只记录，不主动修改账号状态
-		} else if statusStr == "connected" {
+		case "connected":
 			// 更新账号最后使用时间
 			now := time.Now()
 			if account.LastUsedAt == nil || time.Since(*account.LastUsedAt) > 5*time.Minute {

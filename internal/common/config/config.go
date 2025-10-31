@@ -20,10 +20,8 @@ type Config struct {
 
 // ServerConfig 服务配置
 type ServerConfig struct {
-	WebAPI        ServiceConfig `mapstructure:"web_api"`
-	TGManager     ServiceConfig `mapstructure:"tg_manager"`
-	TaskScheduler ServiceConfig `mapstructure:"task_scheduler"`
-	AIService     ServiceConfig `mapstructure:"ai_service"`
+	WebAPI ServiceConfig `mapstructure:"web_api"`
+	// 注意：TGManager、TaskScheduler、AIService 已废弃，所有功能集成在 WebAPI 中
 }
 
 // ServiceConfig 单个服务配置
@@ -182,14 +180,6 @@ func setDefaults() {
 	// 注意：所有功能已集成在 web_api 服务中，只需一个端口
 	viper.SetDefault("server.web_api.host", "0.0.0.0")
 	viper.SetDefault("server.web_api.port", 8080)
-	
-	// 以下端口配置已废弃，保留仅为向后兼容，实际不使用
-	viper.SetDefault("server.tg_manager.host", "0.0.0.0")
-	viper.SetDefault("server.tg_manager.port", 8081)
-	viper.SetDefault("server.task_scheduler.host", "0.0.0.0")
-	viper.SetDefault("server.task_scheduler.port", 8082)
-	viper.SetDefault("server.ai_service.host", "0.0.0.0")
-	viper.SetDefault("server.ai_service.port", 8083)
 
 	// 数据库默认配置
 	viper.SetDefault("database.mysql.host", "localhost")
@@ -266,16 +256,8 @@ func validateConfig(config *Config) error {
 
 // GetServiceAddr 获取服务地址
 func (c *Config) GetServiceAddr(service string) string {
-	switch service {
-	case "web_api":
+	if service == "web_api" {
 		return fmt.Sprintf("%s:%d", c.Server.WebAPI.Host, c.Server.WebAPI.Port)
-	case "tg_manager":
-		return fmt.Sprintf("%s:%d", c.Server.TGManager.Host, c.Server.TGManager.Port)
-	case "task_scheduler":
-		return fmt.Sprintf("%s:%d", c.Server.TaskScheduler.Host, c.Server.TaskScheduler.Port)
-	case "ai_service":
-		return fmt.Sprintf("%s:%d", c.Server.AIService.Host, c.Server.AIService.Port)
-	default:
-		return ""
 	}
+	return ""
 }

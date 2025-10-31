@@ -26,5 +26,8 @@ func SetupProxyRoutes(router *gin.Engine, proxyHandler *handlers.ProxyHandler, a
 
 		// 代理统计
 		proxyGroup.GET("/stats", proxyHandler.GetProxyStats) // 获取代理统计
+
+		// 批量操作（需要高级用户权限）
+		proxyGroup.POST("/batch/test", middleware.RequirePermission("advanced_features"), proxyHandler.TestProxy) // 批量测试代理
 	}
 }

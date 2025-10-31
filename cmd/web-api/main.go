@@ -142,12 +142,13 @@ func main() {
 	router := gin.New()
 
 	// 添加中间件
-	router.Use(response.SetRequestID())           // 请求ID中间件
-	router.Use(middleware.Logger(logger))         // 日志中间件
-	router.Use(middleware.Recovery(logger))       // 恢复中间件
-	router.Use(middleware.CORS())                 // CORS中间件
-	router.Use(middleware.RateLimit(redisClient)) // 限流中间件
-	router.Use(metrics.PrometheusMiddleware())    // 指标收集中间件
+	router.Use(response.SetRequestID())                     // 请求ID中间件
+	router.Use(middleware.Logger(logger))                   // 日志中间件
+	router.Use(middleware.Recovery(logger))                 // 恢复中间件
+	router.Use(middleware.CORS())                           // CORS中间件
+	router.Use(middleware.RateLimit(redisClient))           // IP限流中间件
+	router.Use(middleware.AccessLogMiddleware(redisClient)) // 接口访问日志和统计中间件
+	router.Use(metrics.PrometheusMiddleware())              // 指标收集中间件
 
 	// 注册路由
 	routes.RegisterAuthRoutes(router, authHandler)

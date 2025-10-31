@@ -50,10 +50,14 @@ func RegisterAPIRoutes(
 		accounts.GET("/:id/health", accountHandler.CheckAccountHealth)           // 检查健康度
 		accounts.GET("/:id/availability", accountHandler.GetAccountAvailability) // 获取可用性
 		accounts.POST("/:id/bind-proxy", accountHandler.BindProxy)               // 绑定代理
+
+		// 批量操作（需要高级用户权限）
+		accounts.POST("/batch/bind-proxy", middleware.RequirePermission("advanced_features"), accountHandler.BindProxy) // 批量绑定代理
 	}
 
-	// 模块功能路由（五大核心模块）
+	// 模块功能路由（五大核心模块）- 需要基础权限
 	modules := api.Group("/modules")
+	modules.Use(middleware.RequirePermission("basic_features"))
 	{
 		modules.POST("/check", moduleHandler.AccountCheck)     // 账号检查模块
 		modules.POST("/private", moduleHandler.PrivateMessage) // 私信模块
@@ -71,8 +75,9 @@ func RegisterAPIRoutes(
 	// AI服务路由
 	SetupAIRoutes(api, aiHandler, authService)
 
-	// 统计和监控路由
+	// 统计和监控路由（需要标准用户权限）
 	stats := api.Group("/stats")
+	stats.Use(middleware.RequirePermission("basic_features"))
 	{
 		stats.GET("/overview", statsHandler.GetOverview)       // 系统统计概览
 		stats.GET("/accounts", statsHandler.GetAccountStats)   // 账号统计详情

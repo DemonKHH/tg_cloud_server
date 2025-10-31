@@ -1,13 +1,13 @@
 package handlers
 
 import (
-	"net/http"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
 	"tg_cloud_server/internal/common/logger"
+	"tg_cloud_server/internal/common/response"
 	"tg_cloud_server/internal/common/utils"
 	"tg_cloud_server/internal/models"
 	"tg_cloud_server/internal/services"
@@ -31,13 +31,13 @@ func NewProxyHandler(proxyService services.ProxyService) *ProxyHandler {
 func (h *ProxyHandler) CreateProxy(c *gin.Context) {
 	userID, err := utils.GetUserID(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		response.Unauthorized(c, err.Error())
 		return
 	}
 
 	var req models.CreateProxyRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		response.InvalidParam(c, err.Error())
 		return
 	}
 
@@ -46,21 +46,18 @@ func (h *ProxyHandler) CreateProxy(c *gin.Context) {
 		h.logger.Error("Failed to create proxy",
 			zap.Uint64("user_id", userID),
 			zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		response.InternalError(c, err.Error())
 		return
 	}
 
-	c.JSON(http.StatusCreated, gin.H{
-		"message": "Proxy created successfully",
-		"data":    proxy,
-	})
+	response.SuccessWithMessage(c, "代理创建成功", proxy)
 }
 
 // GetProxies 获取代理列表
 func (h *ProxyHandler) GetProxies(c *gin.Context) {
 	userID, err := utils.GetUserID(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		response.Unauthorized(c, err.Error())
 		return
 	}
 
@@ -82,158 +79,143 @@ func (h *ProxyHandler) GetProxies(c *gin.Context) {
 		h.logger.Error("Failed to get proxies",
 			zap.Uint64("user_id", userID),
 			zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get proxies"})
+		response.InternalError(c, "获取代理列表失败")
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"data":  proxies,
-		"total": total,
-		"page":  page,
-		"limit": limit,
-	})
+	response.Paginated(c, proxies, page, limit, total)
 }
 
 // GetProxy 获取代理详情
 func (h *ProxyHandler) GetProxy(c *gin.Context) {
 	userID, err := utils.GetUserID(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		response.Unauthorized(c, err.Error())
 		return
 	}
 	proxyID, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid proxy ID"})
+		response.InvalidParam(c, "无效的代理ID")
 		return
 	}
 
 	proxy, err := h.proxyService.GetProxy(userID, proxyID)
 	if err != nil {
 		if err == services.ErrProxyNotFound {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Proxy not found"})
+			response.ProxyNotFound(c)
 			return
 		}
 		h.logger.Error("Failed to get proxy",
 			zap.Uint64("user_id", userID),
 			zap.Uint64("proxy_id", proxyID),
 			zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get proxy"})
+		response.InternalError(c, "获取代理失败")
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"data": proxy,
-	})
+	response.Success(c, proxy)
 }
 
 // UpdateProxy 更新代理
 func (h *ProxyHandler) UpdateProxy(c *gin.Context) {
 	userID, err := utils.GetUserID(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		response.Unauthorized(c, err.Error())
 		return
 	}
 	proxyID, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid proxy ID"})
+		response.InvalidParam(c, "无效的代理ID")
 		return
 	}
 
 	var req models.UpdateProxyRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		response.InvalidParam(c, err.Error())
 		return
 	}
 
 	proxy, err := h.proxyService.UpdateProxy(userID, proxyID, &req)
 	if err != nil {
 		if err == services.ErrProxyNotFound {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Proxy not found"})
+			response.ProxyNotFound(c)
 			return
 		}
 		h.logger.Error("Failed to update proxy",
 			zap.Uint64("user_id", userID),
 			zap.Uint64("proxy_id", proxyID),
 			zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		response.InternalError(c, err.Error())
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"message": "Proxy updated successfully",
-		"data":    proxy,
-	})
+	response.SuccessWithMessage(c, "代理更新成功", proxy)
 }
 
 // DeleteProxy 删除代理
 func (h *ProxyHandler) DeleteProxy(c *gin.Context) {
 	userID, err := utils.GetUserID(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		response.Unauthorized(c, err.Error())
 		return
 	}
 	proxyID, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid proxy ID"})
+		response.InvalidParam(c, "无效的代理ID")
 		return
 	}
 
 	if err := h.proxyService.DeleteProxy(userID, proxyID); err != nil {
 		if err == services.ErrProxyNotFound {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Proxy not found"})
+			response.ProxyNotFound(c)
 			return
 		}
 		h.logger.Error("Failed to delete proxy",
 			zap.Uint64("user_id", userID),
 			zap.Uint64("proxy_id", proxyID),
 			zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		response.InternalError(c, err.Error())
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"message": "Proxy deleted successfully",
-	})
+	response.SuccessWithMessage(c, "代理删除成功", nil)
 }
 
 // TestProxy 测试代理
 func (h *ProxyHandler) TestProxy(c *gin.Context) {
 	userID, err := utils.GetUserID(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		response.Unauthorized(c, err.Error())
 		return
 	}
 	proxyID, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid proxy ID"})
+		response.InvalidParam(c, "无效的代理ID")
 		return
 	}
 
 	result, err := h.proxyService.TestProxy(userID, proxyID)
 	if err != nil {
 		if err == services.ErrProxyNotFound {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Proxy not found"})
+			response.ProxyNotFound(c)
 			return
 		}
 		h.logger.Error("Failed to test proxy",
 			zap.Uint64("user_id", userID),
 			zap.Uint64("proxy_id", proxyID),
 			zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		response.InternalError(c, err.Error())
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"message": "Proxy test completed",
-		"data":    result,
-	})
+	response.SuccessWithMessage(c, "代理测试完成", result)
 }
 
 // GetProxyStats 获取代理统计
 func (h *ProxyHandler) GetProxyStats(c *gin.Context) {
 	userID, err := utils.GetUserID(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		response.Unauthorized(c, err.Error())
 		return
 	}
 
@@ -242,11 +224,9 @@ func (h *ProxyHandler) GetProxyStats(c *gin.Context) {
 		h.logger.Error("Failed to get proxy stats",
 			zap.Uint64("user_id", userID),
 			zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get proxy stats"})
+		response.InternalError(c, "获取代理统计失败")
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"data": stats,
-	})
+	response.Success(c, stats)
 }

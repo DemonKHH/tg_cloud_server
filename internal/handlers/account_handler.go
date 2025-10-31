@@ -1,13 +1,13 @@
 package handlers
 
 import (
-	"net/http"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
 	"tg_cloud_server/internal/common/logger"
+	"tg_cloud_server/internal/common/response"
 	"tg_cloud_server/internal/models"
 	"tg_cloud_server/internal/services"
 )
@@ -49,11 +49,7 @@ func (h *AccountHandler) CreateAccount(c *gin.Context) {
 	var req models.CreateAccountRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		h.logger.Warn("Invalid create account request", zap.Error(err))
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "invalid_request",
-			"message": "请求参数无效",
-			"details": err.Error(),
-		})
+		response.InvalidParam(c, "请求参数无效："+err.Error())
 		return
 	}
 
@@ -61,20 +57,14 @@ func (h *AccountHandler) CreateAccount(c *gin.Context) {
 	account, err := h.accountService.CreateAccount(userID, &req)
 	if err != nil {
 		if err == services.ErrAccountExists {
-			c.JSON(http.StatusConflict, gin.H{
-				"error":   "account_exists",
-				"message": "该手机号已存在",
-			})
+			response.Conflict(c, "该手机号已存在")
 			return
 		}
 
 		h.logger.Error("Failed to create account",
 			zap.Uint64("user_id", userID),
 			zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "create_failed",
-			"message": "创建账号失败",
-		})
+		response.InternalError(c, "创建账号失败")
 		return
 	}
 
@@ -83,7 +73,7 @@ func (h *AccountHandler) CreateAccount(c *gin.Context) {
 		zap.Uint64("account_id", account.ID),
 		zap.String("phone", account.Phone))
 
-	c.JSON(http.StatusCreated, account)
+	response.SuccessWithMessage(c, "账号创建成功", account)
 }
 
 // GetAccounts 获取账号列表
@@ -125,23 +115,11 @@ func (h *AccountHandler) GetAccounts(c *gin.Context) {
 		h.logger.Error("Failed to get accounts",
 			zap.Uint64("user_id", userID),
 			zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "get_failed",
-			"message": "获取账号列表失败",
-		})
+		response.InternalError(c, "获取账号列表失败")
 		return
 	}
 
-	// 构建分页响应
-	response := &models.PaginationResponse{
-		Data:       accounts,
-		Total:      total,
-		Page:       page,
-		Limit:      limit,
-		TotalPages: int((total + int64(limit) - 1) / int64(limit)),
-	}
-
-	c.JSON(http.StatusOK, response)
+	response.Paginated(c, accounts, page, limit, total)
 }
 
 // GetAccount 获取账号详情
@@ -173,10 +151,7 @@ func (h *AccountHandler) GetAccount(c *gin.Context) {
 	account, err := h.accountService.GetAccount(userID, accountID)
 	if err != nil {
 		if err == services.ErrAccountNotFound {
-			c.JSON(http.StatusNotFound, gin.H{
-				"error":   "account_not_found",
-				"message": "账号不存在",
-			})
+			response.AccountNotFound(c)
 			return
 		}
 
@@ -184,14 +159,11 @@ func (h *AccountHandler) GetAccount(c *gin.Context) {
 			zap.Uint64("user_id", userID),
 			zap.Uint64("account_id", accountID),
 			zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "get_failed",
-			"message": "获取账号详情失败",
-		})
+		response.InternalError(c, "获取账号详情失败")
 		return
 	}
 
-	c.JSON(http.StatusOK, account)
+	response.Success(c, account)
 }
 
 // UpdateAccount 更新账号信息
@@ -223,11 +195,7 @@ func (h *AccountHandler) UpdateAccount(c *gin.Context) {
 	var req models.UpdateAccountRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		h.logger.Warn("Invalid update account request", zap.Error(err))
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "invalid_request",
-			"message": "请求参数无效",
-			"details": err.Error(),
-		})
+		response.InvalidParam(c, "请求参数无效："+err.Error())
 		return
 	}
 
@@ -235,10 +203,7 @@ func (h *AccountHandler) UpdateAccount(c *gin.Context) {
 	account, err := h.accountService.UpdateAccount(userID, accountID, &req)
 	if err != nil {
 		if err == services.ErrAccountNotFound {
-			c.JSON(http.StatusNotFound, gin.H{
-				"error":   "account_not_found",
-				"message": "账号不存在",
-			})
+			response.AccountNotFound(c)
 			return
 		}
 
@@ -246,10 +211,7 @@ func (h *AccountHandler) UpdateAccount(c *gin.Context) {
 			zap.Uint64("user_id", userID),
 			zap.Uint64("account_id", accountID),
 			zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "update_failed",
-			"message": "更新账号失败",
-		})
+		response.InternalError(c, "更新账号失败")
 		return
 	}
 
@@ -257,7 +219,7 @@ func (h *AccountHandler) UpdateAccount(c *gin.Context) {
 		zap.Uint64("user_id", userID),
 		zap.Uint64("account_id", accountID))
 
-	c.JSON(http.StatusOK, account)
+	response.SuccessWithMessage(c, "账号更新成功", account)
 }
 
 // DeleteAccount 删除账号
@@ -289,10 +251,7 @@ func (h *AccountHandler) DeleteAccount(c *gin.Context) {
 	err := h.accountService.DeleteAccount(userID, accountID)
 	if err != nil {
 		if err == services.ErrAccountNotFound {
-			c.JSON(http.StatusNotFound, gin.H{
-				"error":   "account_not_found",
-				"message": "账号不存在",
-			})
+			response.AccountNotFound(c)
 			return
 		}
 
@@ -300,10 +259,7 @@ func (h *AccountHandler) DeleteAccount(c *gin.Context) {
 			zap.Uint64("user_id", userID),
 			zap.Uint64("account_id", accountID),
 			zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "delete_failed",
-			"message": "删除账号失败",
-		})
+		response.InternalError(c, "删除账号失败")
 		return
 	}
 
@@ -311,9 +267,7 @@ func (h *AccountHandler) DeleteAccount(c *gin.Context) {
 		zap.Uint64("user_id", userID),
 		zap.Uint64("account_id", accountID))
 
-	c.JSON(http.StatusOK, gin.H{
-		"message": "账号删除成功",
-	})
+	response.SuccessWithMessage(c, "账号删除成功", nil)
 }
 
 // CheckAccountHealth 检查账号健康度
@@ -345,10 +299,7 @@ func (h *AccountHandler) CheckAccountHealth(c *gin.Context) {
 	report, err := h.accountService.CheckAccountHealth(userID, accountID)
 	if err != nil {
 		if err == services.ErrAccountNotFound {
-			c.JSON(http.StatusNotFound, gin.H{
-				"error":   "account_not_found",
-				"message": "账号不存在",
-			})
+			response.AccountNotFound(c)
 			return
 		}
 
@@ -356,14 +307,11 @@ func (h *AccountHandler) CheckAccountHealth(c *gin.Context) {
 			zap.Uint64("user_id", userID),
 			zap.Uint64("account_id", accountID),
 			zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "health_check_failed",
-			"message": "健康度检查失败",
-		})
+		response.InternalError(c, "健康度检查失败")
 		return
 	}
 
-	c.JSON(http.StatusOK, report)
+	response.Success(c, report)
 }
 
 // GetAccountAvailability 获取账号可用性
@@ -395,10 +343,7 @@ func (h *AccountHandler) GetAccountAvailability(c *gin.Context) {
 	availability, err := h.accountService.GetAccountAvailability(userID, accountID)
 	if err != nil {
 		if err == services.ErrAccountNotFound {
-			c.JSON(http.StatusNotFound, gin.H{
-				"error":   "account_not_found",
-				"message": "账号不存在",
-			})
+			response.AccountNotFound(c)
 			return
 		}
 
@@ -406,14 +351,11 @@ func (h *AccountHandler) GetAccountAvailability(c *gin.Context) {
 			zap.Uint64("user_id", userID),
 			zap.Uint64("account_id", accountID),
 			zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "availability_check_failed",
-			"message": "获取可用性失败",
-		})
+		response.InternalError(c, "获取可用性失败")
 		return
 	}
 
-	c.JSON(http.StatusOK, availability)
+	response.Success(c, availability)
 }
 
 // BindProxy 绑定代理到账号
@@ -445,22 +387,19 @@ func (h *AccountHandler) BindProxy(c *gin.Context) {
 	var req models.BindProxyRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		h.logger.Warn("Invalid bind proxy request", zap.Error(err))
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "invalid_request",
-			"message": "请求参数无效",
-			"details": err.Error(),
-		})
+		response.InvalidParam(c, "请求参数无效："+err.Error())
 		return
 	}
 
 	// 绑定代理
 	account, err := h.accountService.BindProxy(userID, accountID, req.ProxyID)
 	if err != nil {
-		if err == services.ErrAccountNotFound || err == services.ErrProxyNotFound {
-			c.JSON(http.StatusNotFound, gin.H{
-				"error":   "resource_not_found",
-				"message": "账号或代理不存在",
-			})
+		if err == services.ErrAccountNotFound {
+			response.AccountNotFound(c)
+			return
+		}
+		if err == services.ErrProxyNotFound {
+			response.ProxyNotFound(c)
 			return
 		}
 
@@ -469,10 +408,7 @@ func (h *AccountHandler) BindProxy(c *gin.Context) {
 			zap.Uint64("account_id", accountID),
 			zap.Any("proxy_id", req.ProxyID),
 			zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "bind_failed",
-			"message": "代理绑定失败",
-		})
+		response.InternalError(c, "代理绑定失败")
 		return
 	}
 
@@ -481,7 +417,7 @@ func (h *AccountHandler) BindProxy(c *gin.Context) {
 		zap.Uint64("account_id", accountID),
 		zap.Any("proxy_id", req.ProxyID))
 
-	c.JSON(http.StatusOK, account)
+	response.SuccessWithMessage(c, "代理绑定成功", account)
 }
 
 // 辅助方法
@@ -490,19 +426,13 @@ func (h *AccountHandler) BindProxy(c *gin.Context) {
 func (h *AccountHandler) getUserID(c *gin.Context) uint64 {
 	userID, exists := c.Get("user_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":   "unauthorized",
-			"message": "未找到用户信息",
-		})
+		response.Unauthorized(c, "未找到用户信息")
 		return 0
 	}
 
 	uid, ok := userID.(uint64)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":   "unauthorized",
-			"message": "用户ID格式错误",
-		})
+		response.Unauthorized(c, "用户ID格式错误")
 		return 0
 	}
 
@@ -514,10 +444,7 @@ func (h *AccountHandler) getIDParam(c *gin.Context, param string) uint64 {
 	idStr := c.Param(param)
 	id, err := strconv.ParseUint(idStr, 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "invalid_id",
-			"message": "无效的ID参数",
-		})
+		response.InvalidParam(c, "无效的ID参数")
 		return 0
 	}
 	return id

@@ -1,12 +1,11 @@
 package handlers
 
 import (
-	"net/http"
-
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
 	"tg_cloud_server/internal/common/logger"
+	"tg_cloud_server/internal/common/response"
 	"tg_cloud_server/internal/models"
 	"tg_cloud_server/internal/services"
 )
@@ -54,7 +53,7 @@ func (h *ModuleHandler) AccountCheck(c *gin.Context) {
 		zap.Uint64("task_id", task.ID),
 		zap.Uint64("account_id", task.AccountID))
 
-	c.JSON(http.StatusCreated, task)
+	response.SuccessWithMessage(c, "账号检查任务创建成功", task)
 }
 
 // PrivateMessage 私信模块
@@ -75,28 +74,18 @@ func (h *ModuleHandler) PrivateMessage(c *gin.Context) {
 	var req PrivateMessageRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		h.logger.Warn("Invalid private message request", zap.Error(err))
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "invalid_request",
-			"message": "请求参数无效",
-			"details": err.Error(),
-		})
+		response.InvalidParam(c, "请求参数无效："+err.Error())
 		return
 	}
 
 	// 验证必需的配置参数
 	if len(req.Targets) == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "missing_targets",
-			"message": "缺少目标用户列表",
-		})
+		response.InvalidParam(c, "缺少目标用户列表")
 		return
 	}
 
 	if req.Message == "" {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "missing_message",
-			"message": "缺少消息内容",
-		})
+		response.InvalidParam(c, "缺少消息内容")
 		return
 	}
 
@@ -119,7 +108,7 @@ func (h *ModuleHandler) PrivateMessage(c *gin.Context) {
 		zap.Uint64("account_id", task.AccountID),
 		zap.Int("target_count", len(req.Targets)))
 
-	c.JSON(http.StatusCreated, task)
+	response.SuccessWithMessage(c, "私信任务创建成功", task)
 }
 
 // Broadcast 群发模块
@@ -140,28 +129,18 @@ func (h *ModuleHandler) Broadcast(c *gin.Context) {
 	var req BroadcastRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		h.logger.Warn("Invalid broadcast request", zap.Error(err))
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "invalid_request",
-			"message": "请求参数无效",
-			"details": err.Error(),
-		})
+		response.InvalidParam(c, "请求参数无效："+err.Error())
 		return
 	}
 
 	// 验证必需的配置参数
 	if len(req.Groups) == 0 && len(req.Channels) == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "missing_targets",
-			"message": "缺少目标群组或频道",
-		})
+		response.InvalidParam(c, "缺少目标群组或频道")
 		return
 	}
 
 	if req.Message == "" {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "missing_message",
-			"message": "缺少消息内容",
-		})
+		response.InvalidParam(c, "缺少消息内容")
 		return
 	}
 
@@ -190,7 +169,7 @@ func (h *ModuleHandler) Broadcast(c *gin.Context) {
 		zap.Uint64("account_id", task.AccountID),
 		zap.Int("total_targets", totalTargets))
 
-	c.JSON(http.StatusCreated, task)
+	response.SuccessWithMessage(c, "群发任务创建成功", task)
 }
 
 // VerifyCode 验证码接收模块
@@ -211,11 +190,7 @@ func (h *ModuleHandler) VerifyCode(c *gin.Context) {
 	var req VerifyCodeRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		h.logger.Warn("Invalid verify code request", zap.Error(err))
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "invalid_request",
-			"message": "请求参数无效",
-			"details": err.Error(),
-		})
+		response.InvalidParam(c, "请求参数无效："+err.Error())
 		return
 	}
 
@@ -239,7 +214,7 @@ func (h *ModuleHandler) VerifyCode(c *gin.Context) {
 		zap.Uint64("task_id", task.ID),
 		zap.Uint64("account_id", task.AccountID))
 
-	c.JSON(http.StatusCreated, task)
+	response.SuccessWithMessage(c, "验证码接收任务创建成功", task)
 }
 
 // GroupChat AI炒群模块
@@ -260,19 +235,12 @@ func (h *ModuleHandler) GroupChat(c *gin.Context) {
 	var req GroupChatRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		h.logger.Warn("Invalid group chat request", zap.Error(err))
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "invalid_request",
-			"message": "请求参数无效",
-			"details": err.Error(),
-		})
+		response.InvalidParam(c, "请求参数无效："+err.Error())
 		return
 	}
 
 	if req.GroupID == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "missing_group_id",
-			"message": "缺少群组ID",
-		})
+		response.InvalidParam(c, "缺少群组ID")
 		return
 	}
 
@@ -292,7 +260,7 @@ func (h *ModuleHandler) GroupChat(c *gin.Context) {
 		zap.Uint64("account_id", task.AccountID),
 		zap.Int64("group_id", req.GroupID))
 
-	c.JSON(http.StatusCreated, task)
+	response.SuccessWithMessage(c, "AI炒群任务创建成功", task)
 }
 
 // createModuleTask 创建模块任务的通用方法
@@ -300,19 +268,13 @@ func (h *ModuleHandler) createModuleTask(c *gin.Context, taskType models.TaskTyp
 	// 获取用户ID
 	userID, exists := c.Get("user_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":   "unauthorized",
-			"message": "未找到用户信息",
-		})
+		response.Unauthorized(c, "未找到用户信息")
 		return nil, gin.Error{}
 	}
 
 	uid, ok := userID.(uint64)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":   "unauthorized",
-			"message": "用户ID格式错误",
-		})
+		response.Unauthorized(c, "用户ID格式错误")
 		return nil, gin.Error{}
 	}
 
@@ -323,10 +285,7 @@ func (h *ModuleHandler) createModuleTask(c *gin.Context, taskType models.TaskTyp
 	}{
 		AccountID: accountID,
 	}); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "missing_account_id",
-			"message": "所有任务都必须指定account_id参数",
-		})
+		response.InvalidParam(c, "所有任务都必须指定account_id参数")
 		return nil, gin.Error{}
 	}
 
@@ -338,17 +297,12 @@ func (h *ModuleHandler) createModuleTask(c *gin.Context, taskType models.TaskTyp
 			zap.Uint64("account_id", accountID),
 			zap.String("task_type", string(taskType)),
 			zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "validation_failed",
-			"message": "账号验证失败",
-		})
+		response.InternalError(c, "账号验证失败")
 		return nil, gin.Error{}
 	}
 
 	if !validation.IsValid {
-		c.JSON(http.StatusUnprocessableEntity, gin.H{
-			"error":    "account_invalid",
-			"message":  "账号不可用",
+		response.ErrorWithData(c, response.CodeInternalError, "账号不可用", gin.H{
 			"warnings": validation.Warnings,
 			"errors":   validation.Errors,
 		})
@@ -371,10 +325,7 @@ func (h *ModuleHandler) createModuleTask(c *gin.Context, taskType models.TaskTyp
 			zap.Uint64("account_id", accountID),
 			zap.String("task_type", string(taskType)),
 			zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "task_creation_failed",
-			"message": "任务创建失败",
-		})
+		response.InternalError(c, "任务创建失败")
 		return nil, gin.Error{}
 	}
 

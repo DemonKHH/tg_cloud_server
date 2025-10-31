@@ -9,6 +9,7 @@ import (
 	"go.uber.org/zap"
 
 	"tg_cloud_server/internal/common/logger"
+	"tg_cloud_server/internal/common/response"
 	"tg_cloud_server/internal/common/utils"
 	"tg_cloud_server/internal/models"
 	"tg_cloud_server/internal/services"
@@ -44,24 +45,24 @@ func NewTemplateHandler(templateService services.TemplateService) *TemplateHandl
 func (h *TemplateHandler) CreateTemplate(c *gin.Context) {
 	userID, err := utils.GetUserID(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		response.Unauthorized(c, err.Error())
 		return
 	}
 
 	var req models.CreateTemplateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		response.InvalidParam(c, err.Error())
 		return
 	}
 
 	template, err := h.templateService.CreateTemplate(c.Request.Context(), userID, &req)
 	if err != nil {
 		h.logger.Error("Failed to create template", zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create template"})
+		response.InternalError(c, "创建模板失败")
 		return
 	}
 
-	c.JSON(http.StatusCreated, template)
+	response.SuccessWithMessage(c, "模板创建成功", template)
 }
 
 // GetTemplate 获取模板详情
@@ -80,25 +81,25 @@ func (h *TemplateHandler) CreateTemplate(c *gin.Context) {
 func (h *TemplateHandler) GetTemplate(c *gin.Context) {
 	userID, err := utils.GetUserID(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		response.Unauthorized(c, err.Error())
 		return
 	}
 
 	templateIDStr := c.Param("id")
 	templateID, err := strconv.ParseUint(templateIDStr, 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid template ID"})
+		response.InvalidParam(c, "无效的模板ID")
 		return
 	}
 
 	template, err := h.templateService.GetTemplate(c.Request.Context(), userID, templateID)
 	if err != nil {
 		h.logger.Error("Failed to get template", zap.Error(err))
-		c.JSON(http.StatusNotFound, gin.H{"error": "Template not found"})
+		response.NotFound(c, "模板不存在")
 		return
 	}
 
-	c.JSON(http.StatusOK, template)
+	response.Success(c, template)
 }
 
 // GetTemplates 获取模板列表
@@ -120,7 +121,7 @@ func (h *TemplateHandler) GetTemplate(c *gin.Context) {
 func (h *TemplateHandler) GetTemplates(c *gin.Context) {
 	userID, err := utils.GetUserID(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		response.Unauthorized(c, err.Error())
 		return
 	}
 
@@ -167,23 +168,11 @@ func (h *TemplateHandler) GetTemplates(c *gin.Context) {
 	templates, total, err := h.templateService.GetTemplates(c.Request.Context(), userID, filter)
 	if err != nil {
 		h.logger.Error("Failed to get templates", zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get templates"})
+		response.InternalError(c, "获取模板列表失败")
 		return
 	}
 
-	// 构建分页响应
-	totalPages := int((total + int64(limit) - 1) / int64(limit))
-	response := &models.PaginationResponse{
-		Total:       total,
-		Page:        page,
-		Limit:       limit,
-		TotalPages:  totalPages,
-		HasNext:     page < totalPages,
-		HasPrevious: page > 1,
-		Data:        templates,
-	}
-
-	c.JSON(http.StatusOK, response)
+	response.Paginated(c, templates, page, limit, total)
 }
 
 // UpdateTemplate 更新模板
@@ -204,31 +193,31 @@ func (h *TemplateHandler) GetTemplates(c *gin.Context) {
 func (h *TemplateHandler) UpdateTemplate(c *gin.Context) {
 	userID, err := utils.GetUserID(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		response.Unauthorized(c, err.Error())
 		return
 	}
 
 	templateIDStr := c.Param("id")
 	templateID, err := strconv.ParseUint(templateIDStr, 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid template ID"})
+		response.InvalidParam(c, "无效的模板ID")
 		return
 	}
 
 	var req models.UpdateTemplateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		response.InvalidParam(c, err.Error())
 		return
 	}
 
 	template, err := h.templateService.UpdateTemplate(c.Request.Context(), userID, templateID, &req)
 	if err != nil {
 		h.logger.Error("Failed to update template", zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update template"})
+		response.InternalError(c, "更新模板失败")
 		return
 	}
 
-	c.JSON(http.StatusOK, template)
+	response.SuccessWithMessage(c, "模板更新成功", template)
 }
 
 // DeleteTemplate 删除模板
@@ -246,25 +235,25 @@ func (h *TemplateHandler) UpdateTemplate(c *gin.Context) {
 func (h *TemplateHandler) DeleteTemplate(c *gin.Context) {
 	userID, err := utils.GetUserID(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		response.Unauthorized(c, err.Error())
 		return
 	}
 
 	templateIDStr := c.Param("id")
 	templateID, err := strconv.ParseUint(templateIDStr, 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid template ID"})
+		response.InvalidParam(c, "无效的模板ID")
 		return
 	}
 
 	err = h.templateService.DeleteTemplate(c.Request.Context(), userID, templateID)
 	if err != nil {
 		h.logger.Error("Failed to delete template", zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete template"})
+		response.InternalError(c, "删除模板失败")
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Template deleted successfully"})
+	response.SuccessWithMessage(c, "模板删除成功", nil)
 }
 
 // RenderTemplate 渲染模板
@@ -284,24 +273,24 @@ func (h *TemplateHandler) DeleteTemplate(c *gin.Context) {
 func (h *TemplateHandler) RenderTemplate(c *gin.Context) {
 	userID, err := utils.GetUserID(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		response.Unauthorized(c, err.Error())
 		return
 	}
 
 	var req models.RenderRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		response.InvalidParam(c, err.Error())
 		return
 	}
 
-	response, err := h.templateService.RenderTemplate(c.Request.Context(), userID, &req)
+	renderResp, err := h.templateService.RenderTemplate(c.Request.Context(), userID, &req)
 	if err != nil {
 		h.logger.Error("Failed to render template", zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to render template"})
+		response.InternalError(c, "渲染模板失败")
 		return
 	}
 
-	c.JSON(http.StatusOK, response)
+	response.Success(c, renderResp)
 }
 
 // ValidateTemplate 验证模板
@@ -320,7 +309,7 @@ func (h *TemplateHandler) RenderTemplate(c *gin.Context) {
 func (h *TemplateHandler) ValidateTemplate(c *gin.Context) {
 	_, err := utils.GetUserID(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		response.Unauthorized(c, err.Error())
 		return
 	}
 
@@ -328,18 +317,18 @@ func (h *TemplateHandler) ValidateTemplate(c *gin.Context) {
 		Content string `json:"content" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		response.InvalidParam(c, err.Error())
 		return
 	}
 
 	result, err := h.templateService.ValidateTemplate(c.Request.Context(), req.Content)
 	if err != nil {
 		h.logger.Error("Failed to validate template", zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to validate template"})
+		response.InternalError(c, "验证模板失败")
 		return
 	}
 
-	c.JSON(http.StatusOK, result)
+	response.Success(c, result)
 }
 
 // DuplicateTemplate 复制模板
@@ -360,14 +349,14 @@ func (h *TemplateHandler) ValidateTemplate(c *gin.Context) {
 func (h *TemplateHandler) DuplicateTemplate(c *gin.Context) {
 	userID, err := utils.GetUserID(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		response.Unauthorized(c, err.Error())
 		return
 	}
 
 	templateIDStr := c.Param("id")
 	templateID, err := strconv.ParseUint(templateIDStr, 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid template ID"})
+		response.InvalidParam(c, "无效的模板ID")
 		return
 	}
 
@@ -375,18 +364,18 @@ func (h *TemplateHandler) DuplicateTemplate(c *gin.Context) {
 		NewName string `json:"new_name" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		response.InvalidParam(c, err.Error())
 		return
 	}
 
 	template, err := h.templateService.DuplicateTemplate(c.Request.Context(), userID, templateID, req.NewName)
 	if err != nil {
 		h.logger.Error("Failed to duplicate template", zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to duplicate template"})
+		response.InternalError(c, "复制模板失败")
 		return
 	}
 
-	c.JSON(http.StatusCreated, template)
+	response.SuccessWithMessage(c, "模板复制成功", template)
 }
 
 // BatchOperation 批量操作模板
@@ -405,24 +394,24 @@ func (h *TemplateHandler) DuplicateTemplate(c *gin.Context) {
 func (h *TemplateHandler) BatchOperation(c *gin.Context) {
 	userID, err := utils.GetUserID(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		response.Unauthorized(c, err.Error())
 		return
 	}
 
 	var req models.BatchTemplateOperation
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		response.InvalidParam(c, err.Error())
 		return
 	}
 
 	result, err := h.templateService.BatchOperation(c.Request.Context(), userID, &req)
 	if err != nil {
 		h.logger.Error("Failed to perform batch operation", zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to perform batch operation"})
+		response.InternalError(c, "批量操作失败")
 		return
 	}
 
-	c.JSON(http.StatusOK, result)
+	response.Success(c, result)
 }
 
 // ImportTemplates 导入模板
@@ -441,24 +430,24 @@ func (h *TemplateHandler) BatchOperation(c *gin.Context) {
 func (h *TemplateHandler) ImportTemplates(c *gin.Context) {
 	userID, err := utils.GetUserID(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		response.Unauthorized(c, err.Error())
 		return
 	}
 
 	var templates []*models.CreateTemplateRequest
 	if err := c.ShouldBindJSON(&templates); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		response.InvalidParam(c, err.Error())
 		return
 	}
 
 	result, err := h.templateService.ImportTemplates(c.Request.Context(), userID, templates)
 	if err != nil {
 		h.logger.Error("Failed to import templates", zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to import templates"})
+		response.InternalError(c, "导入模板失败")
 		return
 	}
 
-	c.JSON(http.StatusOK, result)
+	response.Success(c, result)
 }
 
 // ExportTemplates 导出模板
@@ -476,13 +465,13 @@ func (h *TemplateHandler) ImportTemplates(c *gin.Context) {
 func (h *TemplateHandler) ExportTemplates(c *gin.Context) {
 	userID, err := utils.GetUserID(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		response.Unauthorized(c, err.Error())
 		return
 	}
 
 	templateIDsStr := c.Query("template_ids")
 	if templateIDsStr == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "template_ids parameter is required"})
+		response.InvalidParam(c, "template_ids参数是必需的")
 		return
 	}
 
@@ -492,7 +481,7 @@ func (h *TemplateHandler) ExportTemplates(c *gin.Context) {
 	for _, idStr := range templateIDsStrSlice {
 		id, err := strconv.ParseUint(strings.TrimSpace(idStr), 10, 64)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid template ID: " + idStr})
+			response.InvalidParam(c, "无效的模板ID: "+idStr)
 			return
 		}
 		templateIDs = append(templateIDs, id)
@@ -501,7 +490,7 @@ func (h *TemplateHandler) ExportTemplates(c *gin.Context) {
 	data, err := h.templateService.ExportTemplates(c.Request.Context(), userID, templateIDs)
 	if err != nil {
 		h.logger.Error("Failed to export templates", zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to export templates"})
+		response.InternalError(c, "导出模板失败")
 		return
 	}
 
@@ -524,18 +513,18 @@ func (h *TemplateHandler) ExportTemplates(c *gin.Context) {
 func (h *TemplateHandler) GetTemplateStats(c *gin.Context) {
 	userID, err := utils.GetUserID(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		response.Unauthorized(c, err.Error())
 		return
 	}
 
 	stats, err := h.templateService.GetTemplateStats(c.Request.Context(), userID)
 	if err != nil {
 		h.logger.Error("Failed to get template stats", zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get template stats"})
+		response.InternalError(c, "获取模板统计失败")
 		return
 	}
 
-	c.JSON(http.StatusOK, stats)
+	response.Success(c, stats)
 }
 
 // GetPopularTemplates 获取热门模板
@@ -553,7 +542,7 @@ func (h *TemplateHandler) GetTemplateStats(c *gin.Context) {
 func (h *TemplateHandler) GetPopularTemplates(c *gin.Context) {
 	userID, err := utils.GetUserID(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		response.Unauthorized(c, err.Error())
 		return
 	}
 
@@ -567,9 +556,9 @@ func (h *TemplateHandler) GetPopularTemplates(c *gin.Context) {
 	templates, err := h.templateService.GetPopularTemplates(c.Request.Context(), userID, templateType, limit)
 	if err != nil {
 		h.logger.Error("Failed to get popular templates", zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get popular templates"})
+		response.InternalError(c, "获取热门模板失败")
 		return
 	}
 
-	c.JSON(http.StatusOK, templates)
+	response.Success(c, templates)
 }

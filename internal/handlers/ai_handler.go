@@ -7,6 +7,7 @@ import (
 	"go.uber.org/zap"
 
 	"tg_cloud_server/internal/common/logger"
+	"tg_cloud_server/internal/common/response"
 	"tg_cloud_server/internal/common/utils"
 	"tg_cloud_server/internal/services"
 )
@@ -41,13 +42,13 @@ func NewAIHandler(aiService services.AIService) *AIHandler {
 func (h *AIHandler) GenerateGroupChatResponse(c *gin.Context) {
 	_, err := utils.GetUserID(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		response.Unauthorized(c, err.Error())
 		return
 	}
 
 	var config services.GroupChatConfig
 	if err := c.ShouldBindJSON(&config); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		response.InvalidParam(c, err.Error())
 		return
 	}
 
@@ -62,17 +63,17 @@ func (h *AIHandler) GenerateGroupChatResponse(c *gin.Context) {
 		config.ResponseType = "casual"
 	}
 
-	response, err := h.aiService.GenerateGroupChatResponse(c.Request.Context(), &config)
+	aiResponse, err := h.aiService.GenerateGroupChatResponse(c.Request.Context(), &config)
 	if err != nil {
 		h.logger.Error("Failed to generate group chat response", zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate AI response"})
+		response.InternalError(c, "生成AI回复失败")
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"response": response,
+	response.Success(c, gin.H{
+		"response": aiResponse,
 		"metadata": gin.H{
-			"length":        len(response),
+			"length":        len(aiResponse),
 			"response_type": config.ResponseType,
 			"language":      config.Language,
 		},
@@ -95,13 +96,13 @@ func (h *AIHandler) GenerateGroupChatResponse(c *gin.Context) {
 func (h *AIHandler) GeneratePrivateMessage(c *gin.Context) {
 	_, err := utils.GetUserID(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		response.Unauthorized(c, err.Error())
 		return
 	}
 
 	var config services.PrivateMessageConfig
 	if err := c.ShouldBindJSON(&config); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		response.InvalidParam(c, err.Error())
 		return
 	}
 
@@ -119,11 +120,11 @@ func (h *AIHandler) GeneratePrivateMessage(c *gin.Context) {
 	message, err := h.aiService.GeneratePrivateMessage(c.Request.Context(), &config)
 	if err != nil {
 		h.logger.Error("Failed to generate private message", zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate private message"})
+		response.InternalError(c, "生成私信内容失败")
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	response.Success(c, gin.H{
 		"message": message,
 		"metadata": gin.H{
 			"length":       len(message),
@@ -149,7 +150,7 @@ func (h *AIHandler) GeneratePrivateMessage(c *gin.Context) {
 func (h *AIHandler) AnalyzeSentiment(c *gin.Context) {
 	_, err := utils.GetUserID(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		response.Unauthorized(c, err.Error())
 		return
 	}
 
@@ -157,23 +158,23 @@ func (h *AIHandler) AnalyzeSentiment(c *gin.Context) {
 		Text string `json:"text" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		response.InvalidParam(c, err.Error())
 		return
 	}
 
 	if len(req.Text) > 1000 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Text length exceeds 1000 characters"})
+		response.InvalidParam(c, "文本长度超过1000个字符")
 		return
 	}
 
 	analysis, err := h.aiService.AnalyzeSentiment(c.Request.Context(), req.Text)
 	if err != nil {
 		h.logger.Error("Failed to analyze sentiment", zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to analyze sentiment"})
+		response.InternalError(c, "情感分析失败")
 		return
 	}
 
-	c.JSON(http.StatusOK, analysis)
+	response.Success(c, analysis)
 }
 
 // ExtractKeywords 提取关键词
@@ -192,7 +193,7 @@ func (h *AIHandler) AnalyzeSentiment(c *gin.Context) {
 func (h *AIHandler) ExtractKeywords(c *gin.Context) {
 	_, err := utils.GetUserID(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		response.Unauthorized(c, err.Error())
 		return
 	}
 
@@ -200,23 +201,23 @@ func (h *AIHandler) ExtractKeywords(c *gin.Context) {
 		Text string `json:"text" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		response.InvalidParam(c, err.Error())
 		return
 	}
 
 	if len(req.Text) > 2000 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Text length exceeds 2000 characters"})
+		response.InvalidParam(c, "文本长度超过2000个字符")
 		return
 	}
 
 	keywords, err := h.aiService.ExtractKeywords(c.Request.Context(), req.Text)
 	if err != nil {
 		h.logger.Error("Failed to extract keywords", zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to extract keywords"})
+		response.InternalError(c, "关键词提取失败")
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	response.Success(c, gin.H{
 		"keywords": keywords,
 		"count":    len(keywords),
 	})
@@ -238,7 +239,7 @@ func (h *AIHandler) ExtractKeywords(c *gin.Context) {
 func (h *AIHandler) GenerateVariations(c *gin.Context) {
 	_, err := utils.GetUserID(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		response.Unauthorized(c, err.Error())
 		return
 	}
 
@@ -247,7 +248,7 @@ func (h *AIHandler) GenerateVariations(c *gin.Context) {
 		Count    int    `json:"count"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		response.InvalidParam(c, err.Error())
 		return
 	}
 
@@ -260,18 +261,18 @@ func (h *AIHandler) GenerateVariations(c *gin.Context) {
 	}
 
 	if len(req.Template) > 500 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Template length exceeds 500 characters"})
+		response.InvalidParam(c, "模板长度超过500个字符")
 		return
 	}
 
 	variations, err := h.aiService.GenerateVariations(c.Request.Context(), req.Template, req.Count)
 	if err != nil {
 		h.logger.Error("Failed to generate variations", zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate variations"})
+		response.InternalError(c, "生成模板变体失败")
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	response.Success(c, gin.H{
 		"variations":      variations,
 		"generated_count": len(variations),
 		"requested_count": req.Count,
@@ -290,7 +291,7 @@ func (h *AIHandler) GenerateVariations(c *gin.Context) {
 func (h *AIHandler) GetAIConfig(c *gin.Context) {
 	_, err := utils.GetUserID(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		response.Unauthorized(c, err.Error())
 		return
 	}
 
@@ -320,7 +321,7 @@ func (h *AIHandler) GetAIConfig(c *gin.Context) {
 		},
 	}
 
-	c.JSON(http.StatusOK, config)
+	response.Success(c, config)
 }
 
 // TestAIService 测试AI服务连接
@@ -336,7 +337,7 @@ func (h *AIHandler) GetAIConfig(c *gin.Context) {
 func (h *AIHandler) TestAIService(c *gin.Context) {
 	_, err := utils.GetUserID(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		response.Unauthorized(c, err.Error())
 		return
 	}
 
@@ -369,11 +370,11 @@ func (h *AIHandler) TestAIService(c *gin.Context) {
 	// 如果所有测试都失败，返回错误状态
 	if sentimentErr != nil && keywordsErr != nil {
 		result["service_status"] = "unavailable"
-		c.JSON(http.StatusServiceUnavailable, result)
+		response.Error(c, response.CodeInternalError, "AI服务不可用")
 		return
 	}
 
-	c.JSON(http.StatusOK, result)
+	response.Success(c, result)
 }
 
 // getErrorString 获取错误字符串，如果错误为nil则返回nil

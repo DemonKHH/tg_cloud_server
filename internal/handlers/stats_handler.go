@@ -1,12 +1,11 @@
 package handlers
 
 import (
-	"net/http"
-
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
 	"tg_cloud_server/internal/common/logger"
+	"tg_cloud_server/internal/common/response"
 	"tg_cloud_server/internal/common/utils"
 	"tg_cloud_server/internal/services"
 )
@@ -40,7 +39,7 @@ func NewStatsHandler(statsService services.StatsService) *StatsHandler {
 func (h *StatsHandler) GetOverview(c *gin.Context) {
 	userID, err := utils.GetUserID(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		response.Unauthorized(c, err.Error())
 		return
 	}
 
@@ -53,14 +52,11 @@ func (h *StatsHandler) GetOverview(c *gin.Context) {
 			zap.Uint64("user_id", userID),
 			zap.String("period", period),
 			zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取统计数据失败"})
+		response.InternalError(c, "获取统计数据失败")
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data":    overview,
-	})
+	response.Success(c, overview)
 }
 
 // GetAccountStats 获取账号统计
@@ -79,7 +75,7 @@ func (h *StatsHandler) GetOverview(c *gin.Context) {
 func (h *StatsHandler) GetAccountStats(c *gin.Context) {
 	userID, err := utils.GetUserID(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		response.Unauthorized(c, err.Error())
 		return
 	}
 
@@ -94,14 +90,11 @@ func (h *StatsHandler) GetAccountStats(c *gin.Context) {
 			zap.String("period", period),
 			zap.String("status", status),
 			zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取账号统计失败"})
+		response.InternalError(c, "获取账号统计失败")
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data":    accountStats,
-	})
+	response.Success(c, accountStats)
 }
 
 // GetUserDashboard 获取用户仪表盘数据
@@ -118,7 +111,7 @@ func (h *StatsHandler) GetAccountStats(c *gin.Context) {
 func (h *StatsHandler) GetUserDashboard(c *gin.Context) {
 	userID, err := utils.GetUserID(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		response.Unauthorized(c, err.Error())
 		return
 	}
 
@@ -127,12 +120,9 @@ func (h *StatsHandler) GetUserDashboard(c *gin.Context) {
 		h.logger.Error("Failed to get user dashboard",
 			zap.Uint64("user_id", userID),
 			zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取仪表盘数据失败"})
+		response.InternalError(c, "获取仪表盘数据失败")
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data":    dashboard,
-	})
+	response.Success(c, dashboard)
 }

@@ -11,6 +11,7 @@ import (
 	"go.uber.org/zap"
 
 	"tg_cloud_server/internal/common/logger"
+	"tg_cloud_server/internal/common/response"
 	"tg_cloud_server/internal/common/utils"
 	"tg_cloud_server/internal/models"
 	"tg_cloud_server/internal/services"
@@ -48,14 +49,14 @@ func NewFileHandler(fileService services.FileService) *FileHandler {
 func (h *FileHandler) UploadFile(c *gin.Context) {
 	userID, err := utils.GetUserID(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		response.Unauthorized(c, err.Error())
 		return
 	}
 
 	// 获取上传的文件
 	file, header, err := c.Request.FormFile("file")
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to get file from request"})
+		response.InvalidParam(c, "无法从请求中获取文件")
 		return
 	}
 	defer file.Close()
@@ -69,7 +70,7 @@ func (h *FileHandler) UploadFile(c *gin.Context) {
 
 	// 验证文件大小 (10MB限制)
 	if header.Size > 10*1024*1024 {
-		c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "File size exceeds 10MB limit"})
+		response.InvalidParam(c, "文件大小超过10MB限制")
 		return
 	}
 
@@ -84,18 +85,18 @@ func (h *FileHandler) UploadFile(c *gin.Context) {
 	}
 
 	if !allowedExts[ext] {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "File type not allowed"})
+		response.InvalidParam(c, "不允许的文件类型")
 		return
 	}
 
 	fileInfo, err := h.fileService.UploadFile(c.Request.Context(), userID, file, header, category)
 	if err != nil {
 		h.logger.Error("Failed to upload file", zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to upload file"})
+		response.InternalError(c, "文件上传失败")
 		return
 	}
 
-	c.JSON(http.StatusOK, fileInfo)
+	response.SuccessWithMessage(c, "文件上传成功", fileInfo)
 }
 
 // UploadFromURL 从URL上传文件
@@ -114,7 +115,7 @@ func (h *FileHandler) UploadFile(c *gin.Context) {
 func (h *FileHandler) UploadFromURL(c *gin.Context) {
 	userID, err := utils.GetUserID(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		response.Unauthorized(c, err.Error())
 		return
 	}
 
@@ -123,7 +124,7 @@ func (h *FileHandler) UploadFromURL(c *gin.Context) {
 		Category string `json:"category"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		response.InvalidParam(c, err.Error())
 		return
 	}
 
@@ -135,11 +136,11 @@ func (h *FileHandler) UploadFromURL(c *gin.Context) {
 	fileInfo, err := h.fileService.UploadFromURL(c.Request.Context(), userID, req.URL, category)
 	if err != nil {
 		h.logger.Error("Failed to upload file from URL", zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to upload file from URL"})
+		response.InternalError(c, "从URL上传文件失败")
 		return
 	}
 
-	c.JSON(http.StatusOK, fileInfo)
+	response.SuccessWithMessage(c, "文件上传成功", fileInfo)
 }
 
 // GetFile 获取文件信息
@@ -158,25 +159,25 @@ func (h *FileHandler) UploadFromURL(c *gin.Context) {
 func (h *FileHandler) GetFile(c *gin.Context) {
 	userID, err := utils.GetUserID(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		response.Unauthorized(c, err.Error())
 		return
 	}
 
 	fileIDStr := c.Param("id")
 	fileID, err := strconv.ParseUint(fileIDStr, 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid file ID"})
+		response.InvalidParam(c, "无效的文件ID")
 		return
 	}
 
 	fileInfo, err := h.fileService.GetFile(c.Request.Context(), userID, fileID)
 	if err != nil {
 		h.logger.Error("Failed to get file", zap.Error(err))
-		c.JSON(http.StatusNotFound, gin.H{"error": "File not found"})
+		response.NotFound(c, "文件不存在")
 		return
 	}
 
-	c.JSON(http.StatusOK, fileInfo)
+	response.Success(c, fileInfo)
 }
 
 // GetFiles 获取文件列表
@@ -196,7 +197,7 @@ func (h *FileHandler) GetFile(c *gin.Context) {
 func (h *FileHandler) GetFiles(c *gin.Context) {
 	userID, err := utils.GetUserID(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		response.Unauthorized(c, err.Error())
 		return
 	}
 
@@ -220,23 +221,11 @@ func (h *FileHandler) GetFiles(c *gin.Context) {
 	files, total, err := h.fileService.GetFilesByUser(c.Request.Context(), userID, category, page, limit)
 	if err != nil {
 		h.logger.Error("Failed to get files", zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get files"})
+		response.InternalError(c, "获取文件列表失败")
 		return
 	}
 
-	// 构建分页响应
-	totalPages := int((total + int64(limit) - 1) / int64(limit))
-	response := &models.PaginationResponse{
-		Total:       total,
-		Page:        page,
-		Limit:       limit,
-		TotalPages:  totalPages,
-		HasNext:     page < totalPages,
-		HasPrevious: page > 1,
-		Data:        files,
-	}
-
-	c.JSON(http.StatusOK, response)
+	response.Paginated(c, files, page, limit, total)
 }
 
 // DownloadFile 下载文件
@@ -255,14 +244,14 @@ func (h *FileHandler) GetFiles(c *gin.Context) {
 func (h *FileHandler) DownloadFile(c *gin.Context) {
 	userID, err := utils.GetUserID(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		response.Unauthorized(c, err.Error())
 		return
 	}
 
 	fileIDStr := c.Param("id")
 	fileID, err := strconv.ParseUint(fileIDStr, 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid file ID"})
+		response.InvalidParam(c, "无效的文件ID")
 		return
 	}
 
@@ -270,7 +259,7 @@ func (h *FileHandler) DownloadFile(c *gin.Context) {
 	fileInfo, err := h.fileService.GetFile(c.Request.Context(), userID, fileID)
 	if err != nil {
 		h.logger.Error("Failed to get file", zap.Error(err))
-		c.JSON(http.StatusNotFound, gin.H{"error": "File not found"})
+		response.NotFound(c, "文件不存在")
 		return
 	}
 
@@ -278,7 +267,7 @@ func (h *FileHandler) DownloadFile(c *gin.Context) {
 	content, err := h.fileService.GetFileContent(c.Request.Context(), userID, fileID)
 	if err != nil {
 		h.logger.Error("Failed to get file content", zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get file content"})
+		response.InternalError(c, "获取文件内容失败")
 		return
 	}
 
@@ -306,14 +295,14 @@ func (h *FileHandler) DownloadFile(c *gin.Context) {
 func (h *FileHandler) PreviewFile(c *gin.Context) {
 	userID, err := utils.GetUserID(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		response.Unauthorized(c, err.Error())
 		return
 	}
 
 	fileIDStr := c.Param("id")
 	fileID, err := strconv.ParseUint(fileIDStr, 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid file ID"})
+		response.InvalidParam(c, "无效的文件ID")
 		return
 	}
 
@@ -321,13 +310,13 @@ func (h *FileHandler) PreviewFile(c *gin.Context) {
 	fileInfo, err := h.fileService.GetFile(c.Request.Context(), userID, fileID)
 	if err != nil {
 		h.logger.Error("Failed to get file", zap.Error(err))
-		c.JSON(http.StatusNotFound, gin.H{"error": "File not found"})
+		response.NotFound(c, "文件不存在")
 		return
 	}
 
 	// 检查是否支持预览
 	if fileInfo.FileType != models.FileTypeImage {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "File type not supported for preview"})
+		response.InvalidParam(c, "该文件类型不支持预览")
 		return
 	}
 
@@ -338,7 +327,7 @@ func (h *FileHandler) PreviewFile(c *gin.Context) {
 		// 如果预览生成失败，直接返回原文件
 		content, err := h.fileService.GetFileContent(c.Request.Context(), userID, fileID)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get file content"})
+			response.InternalError(c, "获取文件内容失败")
 			return
 		}
 
@@ -347,7 +336,7 @@ func (h *FileHandler) PreviewFile(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"preview_url": previewURL})
+	response.Success(c, gin.H{"preview_url": previewURL})
 }
 
 // DeleteFile 删除文件
@@ -365,25 +354,25 @@ func (h *FileHandler) PreviewFile(c *gin.Context) {
 func (h *FileHandler) DeleteFile(c *gin.Context) {
 	userID, err := utils.GetUserID(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		response.Unauthorized(c, err.Error())
 		return
 	}
 
 	fileIDStr := c.Param("id")
 	fileID, err := strconv.ParseUint(fileIDStr, 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid file ID"})
+		response.InvalidParam(c, "无效的文件ID")
 		return
 	}
 
 	err = h.fileService.DeleteFile(c.Request.Context(), userID, fileID)
 	if err != nil {
 		h.logger.Error("Failed to delete file", zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete file"})
+		response.InternalError(c, "删除文件失败")
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "File deleted successfully"})
+	response.SuccessWithMessage(c, "文件删除成功", nil)
 }
 
 // BatchUpload 批量上传文件
@@ -403,20 +392,20 @@ func (h *FileHandler) DeleteFile(c *gin.Context) {
 func (h *FileHandler) BatchUpload(c *gin.Context) {
 	userID, err := utils.GetUserID(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		response.Unauthorized(c, err.Error())
 		return
 	}
 
 	// 解析多文件上传
 	form, err := c.MultipartForm()
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to parse multipart form"})
+		response.InvalidParam(c, "无法解析multipart表单")
 		return
 	}
 
 	files := form.File["files"]
 	if len(files) == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "No files provided"})
+		response.InvalidParam(c, "未提供文件")
 		return
 	}
 
@@ -429,7 +418,7 @@ func (h *FileHandler) BatchUpload(c *gin.Context) {
 
 	// 限制批量上传数量
 	if len(files) > 10 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Maximum 10 files allowed per batch"})
+		response.InvalidParam(c, "每批最多允许10个文件")
 		return
 	}
 
@@ -439,13 +428,13 @@ func (h *FileHandler) BatchUpload(c *gin.Context) {
 	for _, fileHeader := range files {
 		file, err := fileHeader.Open()
 		if err != nil {
-			errors = append(errors, fmt.Sprintf("Failed to open file %s: %v", fileHeader.Filename, err))
+			errors = append(errors, fmt.Sprintf("无法打开文件 %s: %v", fileHeader.Filename, err))
 			continue
 		}
 
 		fileInfo, err := h.fileService.UploadFile(c.Request.Context(), userID, file, fileHeader, category)
 		if err != nil {
-			errors = append(errors, fmt.Sprintf("Failed to upload file %s: %v", fileHeader.Filename, err))
+			errors = append(errors, fmt.Sprintf("上传文件 %s 失败: %v", fileHeader.Filename, err))
 			file.Close()
 			continue
 		}
@@ -454,18 +443,18 @@ func (h *FileHandler) BatchUpload(c *gin.Context) {
 		file.Close()
 	}
 
-	response := gin.H{
+	data := gin.H{
 		"uploaded_files": uploadedFiles,
 		"success_count":  len(uploadedFiles),
 		"total_count":    len(files),
 	}
 
 	if len(errors) > 0 {
-		response["errors"] = errors
-		response["error_count"] = len(errors)
+		data["errors"] = errors
+		data["error_count"] = len(errors)
 	}
 
-	c.JSON(http.StatusOK, response)
+	response.Success(c, data)
 }
 
 // BatchDelete 批量删除文件
@@ -484,7 +473,7 @@ func (h *FileHandler) BatchUpload(c *gin.Context) {
 func (h *FileHandler) BatchDelete(c *gin.Context) {
 	userID, err := utils.GetUserID(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		response.Unauthorized(c, err.Error())
 		return
 	}
 
@@ -492,23 +481,23 @@ func (h *FileHandler) BatchDelete(c *gin.Context) {
 		FileIDs []uint64 `json:"file_ids" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		response.InvalidParam(c, err.Error())
 		return
 	}
 
 	if len(req.FileIDs) > 50 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Maximum 50 files allowed per batch delete"})
+		response.InvalidParam(c, "每批最多允许删除50个文件")
 		return
 	}
 
 	deletedCount, err := h.fileService.BatchDelete(c.Request.Context(), userID, req.FileIDs)
 	if err != nil {
 		h.logger.Error("Failed to batch delete files", zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete files"})
+		response.InternalError(c, "批量删除文件失败")
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	response.Success(c, gin.H{
 		"deleted_count": deletedCount,
 		"total_count":   len(req.FileIDs),
 		"success_rate":  float64(deletedCount) / float64(len(req.FileIDs)) * 100,
@@ -531,25 +520,25 @@ func (h *FileHandler) BatchDelete(c *gin.Context) {
 func (h *FileHandler) GetFileURL(c *gin.Context) {
 	userID, err := utils.GetUserID(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		response.Unauthorized(c, err.Error())
 		return
 	}
 
 	fileIDStr := c.Param("id")
 	fileID, err := strconv.ParseUint(fileIDStr, 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid file ID"})
+		response.InvalidParam(c, "无效的文件ID")
 		return
 	}
 
 	url, err := h.fileService.GetFileURL(c.Request.Context(), userID, fileID)
 	if err != nil {
 		h.logger.Error("Failed to get file URL", zap.Error(err))
-		c.JSON(http.StatusNotFound, gin.H{"error": "Failed to get file URL"})
+		response.NotFound(c, "获取文件URL失败")
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	response.Success(c, gin.H{
 		"url":        url,
 		"expires_in": "1 hour", // 临时URL有效期
 	})

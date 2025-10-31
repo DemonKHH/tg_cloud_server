@@ -22,7 +22,9 @@ export default function TemplatesPage() {
       setLoading(true)
       const response = await templateAPI.list({ page: 1, limit: 20 })
       if (response.data) {
-        setTemplates(response.data.data || [])
+        // 后端返回格式：{ items: [], pagination: { total, current_page, ... } }
+        const data = response.data as any
+        setTemplates(data.items || [])
       }
     } catch (error) {
       toast.error("加载模板失败，请稍后重试")

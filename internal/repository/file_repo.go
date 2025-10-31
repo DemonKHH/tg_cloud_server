@@ -67,6 +67,11 @@ func (r *fileRepository) GetByUserIDAndCategory(userID uint64, category string, 
 		Order("created_at DESC").
 		Find(&files).Error
 
+	// 确保返回空数组而不是 nil
+	if files == nil {
+		files = []*models.FileInfo{}
+	}
+
 	return files, total, err
 }
 

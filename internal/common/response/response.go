@@ -193,6 +193,11 @@ func ConnectionFailed(c *gin.Context, msg ...string) {
 func Paginated(c *gin.Context, items interface{}, page, limit int, total int64, meta ...map[string]interface{}) {
 	totalPages := int((total + int64(limit) - 1) / int64(limit))
 
+	// 确保 items 不是 nil，返回空数组
+	if items == nil {
+		items = []interface{}{}
+	}
+
 	pagination := &PaginationInfo{
 		CurrentPage: page,
 		PerPage:     limit,

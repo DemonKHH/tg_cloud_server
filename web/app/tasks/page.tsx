@@ -23,7 +23,9 @@ export default function TasksPage() {
       setLoading(true)
       const response = await taskAPI.list({ page, limit: 20 })
       if (response.data) {
-        setTasks(response.data.data || [])
+        // 后端返回格式：{ items: [], pagination: { total, current_page, ... } }
+        const data = response.data as any
+        setTasks(data.items || [])
       }
     } catch (error) {
       toast.error("加载任务失败，请稍后重试")

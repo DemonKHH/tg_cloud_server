@@ -234,6 +234,11 @@ func (r *accountRepository) GetAccountsWithFilters(filters map[string]interface{
 		Order("created_at DESC").
 		Find(&accounts).Error
 
+	// 确保返回空数组而不是 nil
+	if accounts == nil {
+		accounts = []*models.TGAccount{}
+	}
+
 	return accounts, total, err
 }
 
@@ -251,12 +256,17 @@ func (r *accountRepository) GetAccountSummaries(userID uint64, page, limit int) 
 
 	// 获取摘要数据
 	err := r.db.Model(&models.TGAccount{}).
-		Select("id, user_id, phone, status, health_score, last_active_at, created_at").
+		Select("id, user_id, phone, status, health_score, last_used_at, created_at").
 		Where("user_id = ?", userID).
 		Offset(offset).
 		Limit(limit).
 		Order("created_at DESC").
 		Scan(&summaries).Error
+
+	// 确保返回空数组而不是 nil
+	if summaries == nil {
+		summaries = []*models.AccountSummary{}
+	}
 
 	return summaries, total, err
 }

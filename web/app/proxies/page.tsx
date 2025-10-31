@@ -21,7 +21,9 @@ export default function ProxiesPage() {
       setLoading(true)
       const response = await proxyAPI.list({ page: 1, limit: 50 })
       if (response.data) {
-        setProxies(response.data.data || [])
+        // 后端返回格式：{ items: [], pagination: { total, current_page, ... } }
+        const data = response.data as any
+        setProxies(data.items || [])
       }
     } catch (error) {
       toast.error("加载代理失败，请稍后重试")

@@ -29,13 +29,15 @@ export default function LoginPage() {
         // 登录逻辑
         const response = await authAPI.login(username, password)
         if (response.code === ResponseCode.SUCCESS && response.data) {
-          const data = response.data as { token: string }
-          if (data.token) {
-            apiClient.setToken(data.token)
+          const data = response.data as { access_token?: string; token?: string }
+          // 后端返回的是 access_token
+          const token = data.access_token || data.token
+          if (token) {
+            apiClient.setToken(token)
             toast.success("登录成功")
             router.push("/dashboard")
           } else {
-            toast.error(response.msg || "登录失败")
+            toast.error(response.msg || "登录失败：未获取到token")
           }
         } else {
           toast.error(response.msg || "登录失败")

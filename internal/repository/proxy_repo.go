@@ -70,6 +70,11 @@ func (r *proxyRepository) GetByUserID(userID uint64, page, limit int) ([]*models
 		Order("created_at DESC").
 		Find(&proxies).Error
 
+	// 确保返回空数组而不是 nil
+	if proxies == nil {
+		proxies = []*models.ProxyIP{}
+	}
+
 	return proxies, total, err
 }
 
@@ -163,6 +168,11 @@ func (r *proxyRepository) GetByUserIDAndStatus(userID uint64, status string, pag
 		Limit(limit).
 		Order("created_at DESC").
 		Find(&proxies).Error
+
+	// 确保返回空数组而不是 nil
+	if proxies == nil {
+		proxies = []*models.ProxyIP{}
+	}
 
 	return proxies, total, err
 }

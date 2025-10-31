@@ -104,6 +104,11 @@ func (r *taskRepository) GetTaskSummaries(conditions map[string]interface{}, off
 		Order("created_at DESC").
 		Find(&tasks).Error
 
+	// 确保返回空数组而不是 nil
+	if tasks == nil {
+		tasks = []*models.TaskSummary{}
+	}
+
 	return tasks, total, err
 }
 
@@ -115,6 +120,9 @@ func (r *taskRepository) GetPendingTasks(limit int) ([]*models.Task, error) {
 		Order("priority DESC, created_at ASC").
 		Limit(limit).
 		Find(&tasks).Error
+	if tasks == nil {
+		tasks = []*models.Task{}
+	}
 	return tasks, err
 }
 
@@ -128,6 +136,9 @@ func (r *taskRepository) GetTasksByAccountID(accountID uint64, statuses []string
 	}
 
 	err := query.Order("created_at DESC").Find(&tasks).Error
+	if tasks == nil {
+		tasks = []*models.Task{}
+	}
 	return tasks, err
 }
 
@@ -137,6 +148,9 @@ func (r *taskRepository) GetTaskLogs(taskID uint64) ([]*models.TaskLog, error) {
 	err := r.db.Where("task_id = ?", taskID).
 		Order("created_at ASC").
 		Find(&logs).Error
+	if logs == nil {
+		logs = []*models.TaskLog{}
+	}
 	return logs, err
 }
 

@@ -25,8 +25,10 @@ export default function AccountsPage() {
       setLoading(true)
       const response = await accountAPI.list({ page, limit: 20 })
       if (response.data) {
-        setAccounts(response.data.data || [])
-        setTotal(response.data.total || 0)
+        // 后端返回格式：{ items: [], pagination: { total, current_page, ... } }
+        const data = response.data as any
+        setAccounts(data.items || [])
+        setTotal(data.pagination?.total || 0)
       }
     } catch (error) {
       toast.error("加载账号失败，请稍后重试")

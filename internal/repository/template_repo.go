@@ -78,6 +78,11 @@ func (r *templateRepository) GetByUserIDWithFilter(userID uint64, filter *models
 		Order("updated_at DESC").
 		Find(&templates).Error
 
+	// 确保返回空数组而不是 nil
+	if templates == nil {
+		templates = []*models.MessageTemplate{}
+	}
+
 	return templates, total, err
 }
 

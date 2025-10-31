@@ -139,7 +139,7 @@ export const apiClient = new ApiClient(API_BASE_URL);
 export const authAPI = {
   login: (username: string, password: string) =>
     apiClient.post('/auth/login', { username, password }),
-  register: (data: { username: string; password: string; email?: string }) =>
+  register: (data: { username: string; password: string; email: string }) =>
     apiClient.post('/auth/register', data),
   logout: () => apiClient.post('/auth/logout'),
   getProfile: () => apiClient.get('/auth/profile'),

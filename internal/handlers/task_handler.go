@@ -321,7 +321,7 @@ func (h *TaskHandler) GetQueueInfo(c *gin.Context) {
 		response.Unauthorized(c, err.Error())
 		return
 	}
-	accountID, err := strconv.ParseUint(c.Param("account_id"), 10, 64)
+	accountID, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
 		response.InvalidParam(c, "无效的账号ID")
 		return

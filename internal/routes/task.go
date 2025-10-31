@@ -34,7 +34,7 @@ func SetupTaskRoutes(router *gin.Engine, taskHandler *handlers.TaskHandler, auth
 	}
 
 	// 账号队列信息路由
-	queueGroup := router.Group("/api/v1/accounts/:account_id/queue")
+	queueGroup := router.Group("/api/v1/accounts/:id/queue")
 	queueGroup.Use(middleware.JWTAuthMiddleware(authService))
 	{
 		queueGroup.GET("", taskHandler.GetQueueInfo) // 获取队列信息

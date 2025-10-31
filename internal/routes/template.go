@@ -30,10 +30,10 @@ func SetupTemplateRoutes(
 	templateGroup.POST("/validate", templateHandler.ValidateTemplate)       // 验证模板
 	templateGroup.POST("/:id/duplicate", templateHandler.DuplicateTemplate) // 复制模板
 
-	// 批量操作
-	templateGroup.POST("/batch", templateHandler.BatchOperation)   // 批量操作
-	templateGroup.POST("/import", templateHandler.ImportTemplates) // 导入模板
-	templateGroup.GET("/export", templateHandler.ExportTemplates)  // 导出模板
+	// 批量操作（需要高级用户权限）
+	templateGroup.POST("/batch", middleware.RequirePermission("advanced_features"), templateHandler.BatchOperation)   // 批量操作
+	templateGroup.POST("/import", middleware.RequirePermission("advanced_features"), templateHandler.ImportTemplates) // 导入模板
+	templateGroup.GET("/export", middleware.RequirePermission("advanced_features"), templateHandler.ExportTemplates)  // 导出模板
 
 	// 统计分析
 	templateGroup.GET("/stats", templateHandler.GetTemplateStats)      // 模板统计

@@ -15,11 +15,11 @@ func SetupTaskRoutes(router *gin.Engine, taskHandler *handlers.TaskHandler, auth
 	taskGroup.Use(middleware.JWTAuthMiddleware(authService))
 	{
 		// 任务基本操作
-		taskGroup.POST("", taskHandler.CreateTask)       // 创建任务
-		taskGroup.GET("", taskHandler.GetTasks)          // 获取任务列表
-		taskGroup.GET("/:id", taskHandler.GetTask)       // 获取任务详情
-		taskGroup.PUT("/:id", taskHandler.UpdateTask)    // 更新任务
-		taskGroup.DELETE("/:id", taskHandler.CancelTask) // 取消任务
+		taskGroup.POST("", taskHandler.CreateTask)            // 创建任务
+		taskGroup.GET("", taskHandler.GetTasks)               // 获取任务列表
+		taskGroup.GET("/:id", taskHandler.GetTask)            // 获取任务详情
+		taskGroup.POST("/:id/update", taskHandler.UpdateTask) // 更新任务
+		taskGroup.POST("/:id/cancel", taskHandler.CancelTask) // 取消任务
 
 		// 任务操作
 		taskGroup.POST("/:id/retry", taskHandler.RetryTask) // 重试任务

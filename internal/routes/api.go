@@ -35,7 +35,7 @@ func RegisterAPIRoutes(
 	{
 		authHandler := handlers.NewAuthHandler(authService)
 		api.GET("/auth/profile", authHandler.GetProfile)
-		api.PUT("/auth/profile", authHandler.UpdateProfile)
+		api.POST("/auth/profile", authHandler.UpdateProfile)
 		api.POST("/auth/logout", authHandler.Logout)
 	}
 
@@ -45,8 +45,8 @@ func RegisterAPIRoutes(
 		accounts.POST("", accountHandler.CreateAccount)                          // 创建账号
 		accounts.GET("", accountHandler.GetAccounts)                             // 获取账号列表
 		accounts.GET("/:id", accountHandler.GetAccount)                          // 获取账号详情
-		accounts.PUT("/:id", accountHandler.UpdateAccount)                       // 更新账号
-		accounts.DELETE("/:id", accountHandler.DeleteAccount)                    // 删除账号
+		accounts.POST("/:id/update", accountHandler.UpdateAccount)               // 更新账号
+		accounts.POST("/:id/delete", accountHandler.DeleteAccount)               // 删除账号
 		accounts.GET("/:id/health", accountHandler.CheckAccountHealth)           // 检查健康度
 		accounts.GET("/:id/availability", accountHandler.GetAccountAvailability) // 获取可用性
 		accounts.POST("/:id/bind-proxy", accountHandler.BindProxy)               // 绑定代理

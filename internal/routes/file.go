@@ -23,7 +23,7 @@ func SetupFileRoutes(
 	fileGroup.POST("/upload-url", fileHandler.UploadFromURL) // 从URL上传文件
 	fileGroup.GET("/", fileHandler.GetFiles)                 // 获取文件列表
 	fileGroup.GET("/:id", fileHandler.GetFile)               // 获取文件信息
-	fileGroup.DELETE("/:id", fileHandler.DeleteFile)         // 删除文件
+	fileGroup.POST("/:id/delete", fileHandler.DeleteFile)    // 删除文件
 
 	// 文件访问
 	fileGroup.GET("/:id/download", fileHandler.DownloadFile) // 下载文件
@@ -31,6 +31,6 @@ func SetupFileRoutes(
 	fileGroup.GET("/:id/url", fileHandler.GetFileURL)        // 获取文件URL
 
 	// 批量操作（需要高级用户权限）
-	fileGroup.POST("/batch-upload", middleware.RequirePermission("advanced_features"), fileHandler.BatchUpload)   // 批量上传
-	fileGroup.DELETE("/batch-delete", middleware.RequirePermission("advanced_features"), fileHandler.BatchDelete) // 批量删除
+	fileGroup.POST("/batch-upload", middleware.RequirePermission("advanced_features"), fileHandler.BatchUpload) // 批量上传
+	fileGroup.POST("/batch-delete", middleware.RequirePermission("advanced_features"), fileHandler.BatchDelete) // 批量删除
 }

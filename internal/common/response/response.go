@@ -1,30 +1,41 @@
 package response
 
 import (
+	"math/rand"
 	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
+)
 
-	"tg_cloud_server/internal/common/errors"
+// 统一的响应码定义
+const (
+	CodeSuccess = 0 // 成功
+
+	// 通用错误码 1xxx
+	CodeInvalidParam  = 1001 // 参数错误
+	CodeUnauthorized  = 1002 // 未授权
+	CodeForbidden     = 1003 // 禁止访问
+	CodeNotFound      = 1004 // 资源不存在
+	CodeInternalError = 1005 // 服务器内部错误
+	CodeRateLimit     = 1006 // 请求过于频繁
+	CodeConflict      = 1007 // 资源冲突
+
+	// 业务错误码 2xxx
+	CodeUserExists         = 2001 // 用户已存在
+	CodeInvalidCredentials = 2002 // 凭证无效
+	CodeAccountNotFound    = 2003 // 账号不存在
+	CodeTaskNotFound       = 2004 // 任务不存在
+	CodeProxyNotFound      = 2005 // 代理不存在
+	CodeAccountBusy        = 2006 // 账号忙碌
+	CodeConnectionFailed   = 2007 // 连接失败
 )
 
 // APIResponse 统一API响应格式
 type APIResponse struct {
-	Success   bool        `json:"success"`
-	Code      int         `json:"code"`
-	Message   string      `json:"message"`
-	Data      interface{} `json:"data,omitempty"`
-	Error     *ErrorInfo  `json:"error,omitempty"`
-	Timestamp int64       `json:"timestamp"`
-	RequestID string      `json:"request_id,omitempty"`
-}
-
-// ErrorInfo 错误详情
-type ErrorInfo struct {
-	Code    int    `json:"code"`
-	Message string `json:"message"`
-	Details string `json:"details,omitempty"`
+	Code int         `json:"code"`           // 响应码，0表示成功，非0表示失败
+	Msg  string      `json:"msg"`            // 响应消息
+	Data interface{} `json:"data,omitempty"` // 响应数据
 }
 
 // PaginatedResponse 分页响应
@@ -47,99 +58,135 @@ type PaginationInfo struct {
 // Success 成功响应
 func Success(c *gin.Context, data interface{}) {
 	response := &APIResponse{
-		Success:   true,
-		Code:      200,
-		Message:   "Success",
-		Data:      data,
-		Timestamp: time.Now().Unix(),
-		RequestID: getRequestID(c),
+		Code: CodeSuccess,
+		Msg:  "success",
+		Data: data,
 	}
 	c.JSON(http.StatusOK, response)
 }
 
 // SuccessWithMessage 带消息的成功响应
-func SuccessWithMessage(c *gin.Context, message string, data interface{}) {
+func SuccessWithMessage(c *gin.Context, msg string, data interface{}) {
 	response := &APIResponse{
-		Success:   true,
-		Code:      200,
-		Message:   message,
-		Data:      data,
-		Timestamp: time.Now().Unix(),
-		RequestID: getRequestID(c),
+		Code: CodeSuccess,
+		Msg:  msg,
+		Data: data,
 	}
 	c.JSON(http.StatusOK, response)
 }
 
-// Created 创建成功响应
-func Created(c *gin.Context, message string, data interface{}) {
-	response := &APIResponse{
-		Success:   true,
-		Code:      201,
-		Message:   message,
-		Data:      data,
-		Timestamp: time.Now().Unix(),
-		RequestID: getRequestID(c),
-	}
-	c.JSON(http.StatusCreated, response)
-}
-
 // Error 错误响应
-func Error(c *gin.Context, err *errors.APIError) {
+func Error(c *gin.Context, code int, msg string) {
 	response := &APIResponse{
-		Success: false,
-		Code:    err.Code,
-		Message: "Request failed",
-		Error: &ErrorInfo{
-			Code:    err.Code,
-			Message: err.Message,
-			Details: err.Details,
-		},
-		Timestamp: time.Now().Unix(),
-		RequestID: getRequestID(c),
+		Code: code,
+		Msg:  msg,
+		Data: nil,
 	}
-	c.JSON(err.GetHTTPStatus(), response)
+	c.JSON(http.StatusOK, response)
 }
 
-// InternalError 内部错误响应
-func InternalError(c *gin.Context, message string) {
-	err := errors.InternalServerError(message)
-	Error(c, err)
+// ErrorWithData 带数据的错误响应
+func ErrorWithData(c *gin.Context, code int, msg string, data interface{}) {
+	response := &APIResponse{
+		Code: code,
+		Msg:  msg,
+		Data: data,
+	}
+	c.JSON(http.StatusOK, response)
 }
 
-// BadRequest 请求错误响应
-func BadRequest(c *gin.Context, message string) {
-	err := errors.InvalidParameter(message)
-	Error(c, err)
+// InvalidParam 参数错误响应
+func InvalidParam(c *gin.Context, msg string) {
+	Error(c, CodeInvalidParam, msg)
 }
 
 // Unauthorized 未授权响应
-func Unauthorized(c *gin.Context) {
-	err := errors.Unauthorized()
-	Error(c, err)
+func Unauthorized(c *gin.Context, msg ...string) {
+	message := "未授权"
+	if len(msg) > 0 && msg[0] != "" {
+		message = msg[0]
+	}
+	Error(c, CodeUnauthorized, message)
 }
 
 // Forbidden 禁止访问响应
-func Forbidden(c *gin.Context) {
-	err := errors.Forbidden()
-	Error(c, err)
+func Forbidden(c *gin.Context, msg ...string) {
+	message := "权限不足"
+	if len(msg) > 0 && msg[0] != "" {
+		message = msg[0]
+	}
+	Error(c, CodeForbidden, message)
 }
 
 // NotFound 资源未找到响应
-func NotFound(c *gin.Context, resource string) {
-	err := errors.NotFound(resource)
-	Error(c, err)
+func NotFound(c *gin.Context, msg ...string) {
+	message := "资源不存在"
+	if len(msg) > 0 && msg[0] != "" {
+		message = msg[0]
+	}
+	Error(c, CodeNotFound, message)
+}
+
+// InternalError 内部错误响应
+func InternalError(c *gin.Context, msg ...string) {
+	message := "服务器内部错误"
+	if len(msg) > 0 && msg[0] != "" {
+		message = msg[0]
+	}
+	Error(c, CodeInternalError, message)
 }
 
 // Conflict 冲突响应
-func Conflict(c *gin.Context, message string) {
-	err := errors.Conflict(message)
-	Error(c, err)
+func Conflict(c *gin.Context, msg string) {
+	Error(c, CodeConflict, msg)
 }
 
 // TooManyRequests 限流响应
-func TooManyRequests(c *gin.Context) {
-	err := errors.TooManyRequests()
-	Error(c, err)
+func TooManyRequests(c *gin.Context, msg ...string) {
+	message := "请求过于频繁，请稍后重试"
+	if len(msg) > 0 && msg[0] != "" {
+		message = msg[0]
+	}
+	Error(c, CodeRateLimit, message)
+}
+
+// UserExists 用户已存在
+func UserExists(c *gin.Context) {
+	Error(c, CodeUserExists, "用户已存在")
+}
+
+// InvalidCredentials 凭证无效
+func InvalidCredentials(c *gin.Context) {
+	Error(c, CodeInvalidCredentials, "用户名或密码错误")
+}
+
+// AccountNotFound 账号不存在
+func AccountNotFound(c *gin.Context) {
+	Error(c, CodeAccountNotFound, "账号不存在")
+}
+
+// TaskNotFound 任务不存在
+func TaskNotFound(c *gin.Context) {
+	Error(c, CodeTaskNotFound, "任务不存在")
+}
+
+// ProxyNotFound 代理不存在
+func ProxyNotFound(c *gin.Context) {
+	Error(c, CodeProxyNotFound, "代理不存在")
+}
+
+// AccountBusy 账号忙碌
+func AccountBusy(c *gin.Context) {
+	Error(c, CodeAccountBusy, "账号正在执行其他任务，请稍后重试")
+}
+
+// ConnectionFailed 连接失败
+func ConnectionFailed(c *gin.Context, msg ...string) {
+	message := "连接失败"
+	if len(msg) > 0 && msg[0] != "" {
+		message = msg[0]
+	}
+	Error(c, CodeConnectionFailed, message)
 }
 
 // Paginated 分页响应
@@ -201,8 +248,9 @@ func generateRequestID() string {
 func randString(n int) string {
 	const letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 	b := make([]byte, n)
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
 	for i := range b {
-		b[i] = letters[time.Now().UnixNano()%int64(len(letters))]
+		b[i] = letters[r.Intn(len(letters))]
 	}
 	return string(b)
 }

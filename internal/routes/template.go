@@ -19,11 +19,11 @@ func SetupTemplateRoutes(
 	templateGroup.Use(middleware.JWTAuthMiddleware(authService))
 
 	// 基本CRUD操作
-	templateGroup.POST("/", templateHandler.CreateTemplate)      // 创建模板
-	templateGroup.GET("/", templateHandler.GetTemplates)         // 获取模板列表
-	templateGroup.GET("/:id", templateHandler.GetTemplate)       // 获取模板详情
-	templateGroup.PUT("/:id", templateHandler.UpdateTemplate)    // 更新模板
-	templateGroup.DELETE("/:id", templateHandler.DeleteTemplate) // 删除模板
+	templateGroup.POST("/", templateHandler.CreateTemplate)           // 创建模板
+	templateGroup.GET("/", templateHandler.GetTemplates)              // 获取模板列表
+	templateGroup.GET("/:id", templateHandler.GetTemplate)            // 获取模板详情
+	templateGroup.POST("/:id/update", templateHandler.UpdateTemplate) // 更新模板
+	templateGroup.POST("/:id/delete", templateHandler.DeleteTemplate) // 删除模板
 
 	// 模板操作
 	templateGroup.POST("/render", templateHandler.RenderTemplate)           // 渲染模板

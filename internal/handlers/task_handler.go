@@ -1,13 +1,13 @@
 package handlers
 
 import (
-	"net/http"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
 	"tg_cloud_server/internal/common/logger"
+	"tg_cloud_server/internal/common/response"
 	"tg_cloud_server/internal/common/utils"
 	"tg_cloud_server/internal/models"
 	"tg_cloud_server/internal/services"
@@ -31,13 +31,13 @@ func NewTaskHandler(taskService *services.TaskService) *TaskHandler {
 func (h *TaskHandler) CreateTask(c *gin.Context) {
 	userID, err := utils.GetUserID(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		response.Unauthorized(c, err.Error())
 		return
 	}
 
 	var req models.CreateTaskRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		response.InvalidParam(c, err.Error())
 		return
 	}
 
@@ -46,21 +46,18 @@ func (h *TaskHandler) CreateTask(c *gin.Context) {
 		h.logger.Error("Failed to create task",
 			zap.Uint64("user_id", userID),
 			zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		response.InternalError(c, err.Error())
 		return
 	}
 
-	c.JSON(http.StatusCreated, gin.H{
-		"message": "Task created successfully",
-		"data":    task,
-	})
+	response.SuccessWithMessage(c, "任务创建成功", task)
 }
 
 // GetTasks 获取任务列表
 func (h *TaskHandler) GetTasks(c *gin.Context) {
 	userID, err := utils.GetUserID(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		response.Unauthorized(c, err.Error())
 		return
 	}
 
@@ -102,195 +99,173 @@ func (h *TaskHandler) GetTasks(c *gin.Context) {
 		h.logger.Error("Failed to get tasks",
 			zap.Uint64("user_id", userID),
 			zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get tasks"})
+		response.InternalError(c, "获取任务列表失败")
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"data": gin.H{
-			"tasks": tasks,
-			"pagination": gin.H{
-				"current_page": filter.Page,
-				"per_page":     filter.Limit,
-				"total":        total,
-				"total_pages":  (total + int64(filter.Limit) - 1) / int64(filter.Limit),
-			},
-		},
-	})
+	response.Paginated(c, tasks, filter.Page, filter.Limit, total)
 }
 
 // GetTask 获取任务详情
 func (h *TaskHandler) GetTask(c *gin.Context) {
 	userID, err := utils.GetUserID(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		response.Unauthorized(c, err.Error())
 		return
 	}
 	taskID, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid task ID"})
+		response.InvalidParam(c, "无效的任务ID")
 		return
 	}
 
 	task, err := h.taskService.GetTask(userID, taskID)
 	if err != nil {
 		if err == services.ErrTaskNotFound {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Task not found"})
+			response.TaskNotFound(c)
 			return
 		}
 		h.logger.Error("Failed to get task",
 			zap.Uint64("user_id", userID),
 			zap.Uint64("task_id", taskID),
 			zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get task"})
+		response.InternalError(c, "获取任务失败")
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"data": task,
-	})
+	response.Success(c, task)
 }
 
 // UpdateTask 更新任务
 func (h *TaskHandler) UpdateTask(c *gin.Context) {
 	userID, err := utils.GetUserID(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		response.Unauthorized(c, err.Error())
 		return
 	}
 	taskID, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid task ID"})
+		response.InvalidParam(c, "无效的任务ID")
 		return
 	}
 
 	var req models.UpdateTaskRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		response.InvalidParam(c, err.Error())
 		return
 	}
 
 	task, err := h.taskService.UpdateTask(userID, taskID, &req)
 	if err != nil {
 		if err == services.ErrTaskNotFound {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Task not found"})
+			response.TaskNotFound(c)
 			return
 		}
 		h.logger.Error("Failed to update task",
 			zap.Uint64("user_id", userID),
 			zap.Uint64("task_id", taskID),
 			zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		response.InternalError(c, err.Error())
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"message": "Task updated successfully",
-		"data":    task,
-	})
+	response.SuccessWithMessage(c, "任务更新成功", task)
 }
 
 // CancelTask 取消任务
 func (h *TaskHandler) CancelTask(c *gin.Context) {
 	userID, err := utils.GetUserID(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		response.Unauthorized(c, err.Error())
 		return
 	}
 	taskID, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid task ID"})
+		response.InvalidParam(c, "无效的任务ID")
 		return
 	}
 
 	if err := h.taskService.CancelTask(userID, taskID); err != nil {
 		if err == services.ErrTaskNotFound {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Task not found"})
+			response.TaskNotFound(c)
 			return
 		}
 		h.logger.Error("Failed to cancel task",
 			zap.Uint64("user_id", userID),
 			zap.Uint64("task_id", taskID),
 			zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		response.InternalError(c, err.Error())
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"message": "Task cancelled successfully",
-	})
+	response.SuccessWithMessage(c, "任务取消成功", nil)
 }
 
 // RetryTask 重试任务
 func (h *TaskHandler) RetryTask(c *gin.Context) {
 	userID, err := utils.GetUserID(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		response.Unauthorized(c, err.Error())
 		return
 	}
 	taskID, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid task ID"})
+		response.InvalidParam(c, "无效的任务ID")
 		return
 	}
 
 	task, err := h.taskService.RetryTask(userID, taskID)
 	if err != nil {
 		if err == services.ErrTaskNotFound {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Task not found"})
+			response.TaskNotFound(c)
 			return
 		}
 		h.logger.Error("Failed to retry task",
 			zap.Uint64("user_id", userID),
 			zap.Uint64("task_id", taskID),
 			zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		response.InternalError(c, err.Error())
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"message": "Task retry scheduled",
-		"data":    task,
-	})
+	response.SuccessWithMessage(c, "任务重试已调度", task)
 }
 
 // GetTaskLogs 获取任务日志
 func (h *TaskHandler) GetTaskLogs(c *gin.Context) {
 	userID, err := utils.GetUserID(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		response.Unauthorized(c, err.Error())
 		return
 	}
 	taskID, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid task ID"})
+		response.InvalidParam(c, "无效的任务ID")
 		return
 	}
 
 	logs, err := h.taskService.GetTaskLogs(userID, taskID)
 	if err != nil {
 		if err == services.ErrTaskNotFound {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Task not found"})
+			response.TaskNotFound(c)
 			return
 		}
 		h.logger.Error("Failed to get task logs",
 			zap.Uint64("user_id", userID),
 			zap.Uint64("task_id", taskID),
 			zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get task logs"})
+		response.InternalError(c, "获取任务日志失败")
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"data": logs,
-	})
+	response.Success(c, logs)
 }
 
 // GetTaskStats 获取任务统计
 func (h *TaskHandler) GetTaskStats(c *gin.Context) {
 	userID, err := utils.GetUserID(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		response.Unauthorized(c, err.Error())
 		return
 	}
 	timeRange := c.DefaultQuery("range", "all")
@@ -301,26 +276,24 @@ func (h *TaskHandler) GetTaskStats(c *gin.Context) {
 			zap.Uint64("user_id", userID),
 			zap.String("range", timeRange),
 			zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get task stats"})
+		response.InternalError(c, "获取任务统计失败")
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"data": stats,
-	})
+	response.Success(c, stats)
 }
 
 // BatchCancel 批量取消任务
 func (h *TaskHandler) BatchCancel(c *gin.Context) {
 	userID, err := utils.GetUserID(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		response.Unauthorized(c, err.Error())
 		return
 	}
 
 	var req models.BatchCancelRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		response.InvalidParam(c, err.Error())
 		return
 	}
 
@@ -330,17 +303,14 @@ func (h *TaskHandler) BatchCancel(c *gin.Context) {
 			zap.Uint64("user_id", userID),
 			zap.Int("total", len(req.TaskIDs)),
 			zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to batch cancel tasks"})
+		response.InternalError(c, "批量取消任务失败")
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"message": "Batch cancel completed",
-		"data": gin.H{
-			"total":   len(req.TaskIDs),
-			"success": successCount,
-			"failed":  len(req.TaskIDs) - successCount,
-		},
+	response.SuccessWithMessage(c, "批量取消完成", gin.H{
+		"total":   len(req.TaskIDs),
+		"success": successCount,
+		"failed":  len(req.TaskIDs) - successCount,
 	})
 }
 
@@ -348,12 +318,12 @@ func (h *TaskHandler) BatchCancel(c *gin.Context) {
 func (h *TaskHandler) GetQueueInfo(c *gin.Context) {
 	userID, err := utils.GetUserID(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		response.Unauthorized(c, err.Error())
 		return
 	}
 	accountID, err := strconv.ParseUint(c.Param("account_id"), 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid account ID"})
+		response.InvalidParam(c, "无效的账号ID")
 		return
 	}
 
@@ -363,26 +333,24 @@ func (h *TaskHandler) GetQueueInfo(c *gin.Context) {
 			zap.Uint64("user_id", userID),
 			zap.Uint64("account_id", accountID),
 			zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		response.InternalError(c, err.Error())
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"data": info,
-	})
+	response.Success(c, info)
 }
 
 // CleanupTasks 清理已完成任务
 func (h *TaskHandler) CleanupTasks(c *gin.Context) {
 	userID, err := utils.GetUserID(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		response.Unauthorized(c, err.Error())
 		return
 	}
 
 	var req models.CleanupRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		response.InvalidParam(c, err.Error())
 		return
 	}
 
@@ -392,14 +360,11 @@ func (h *TaskHandler) CleanupTasks(c *gin.Context) {
 			zap.Uint64("user_id", userID),
 			zap.Int("days", req.OlderThanDays),
 			zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		response.InternalError(c, err.Error())
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"message": "Tasks cleaned up successfully",
-		"data": gin.H{
-			"deleted_count": count,
-		},
+	response.SuccessWithMessage(c, "任务清理成功", gin.H{
+		"deleted_count": count,
 	})
 }

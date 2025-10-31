@@ -1,12 +1,11 @@
 package handlers
 
 import (
-	"net/http"
-
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
 	"tg_cloud_server/internal/common/logger"
+	"tg_cloud_server/internal/common/response"
 	"tg_cloud_server/internal/models"
 	"tg_cloud_server/internal/services"
 )
@@ -41,11 +40,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	var req models.RegisterRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		h.logger.Warn("Invalid register request", zap.Error(err))
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "invalid_request",
-			"message": "请求参数无效",
-			"details": err.Error(),
-		})
+		response.InvalidParam(c, "请求参数无效："+err.Error())
 		return
 	}
 
@@ -53,18 +48,12 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	user, err := h.authService.Register(&req)
 	if err != nil {
 		if err == services.ErrUserExists {
-			c.JSON(http.StatusConflict, gin.H{
-				"error":   "user_exists",
-				"message": "用户名或邮箱已存在",
-			})
+			response.UserExists(c)
 			return
 		}
 
 		h.logger.Error("Register failed", zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "register_failed",
-			"message": "注册失败，请稍后重试",
-		})
+		response.InternalError(c, "注册失败，请稍后重试")
 		return
 	}
 
@@ -72,7 +61,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		zap.String("username", user.Username),
 		zap.Uint64("user_id", user.ID))
 
-	c.JSON(http.StatusCreated, user)
+	response.SuccessWithMessage(c, "注册成功", user)
 }
 
 // Login 用户登录
@@ -91,37 +80,27 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	var req models.LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		h.logger.Warn("Invalid login request", zap.Error(err))
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "invalid_request",
-			"message": "请求参数无效",
-			"details": err.Error(),
-		})
+		response.InvalidParam(c, "请求参数无效："+err.Error())
 		return
 	}
 
 	// 调用服务层登录
-	response, err := h.authService.Login(&req)
+	loginResp, err := h.authService.Login(&req)
 	if err != nil {
 		if err == services.ErrInvalidCredentials {
-			c.JSON(http.StatusUnauthorized, gin.H{
-				"error":   "invalid_credentials",
-				"message": "用户名或密码错误",
-			})
+			response.InvalidCredentials(c)
 			return
 		}
 
 		h.logger.Error("Login failed", zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "login_failed",
-			"message": "登录失败，请稍后重试",
-		})
+		response.InternalError(c, "登录失败，请稍后重试")
 		return
 	}
 
 	h.logger.Info("User logged in successfully", 
 		zap.String("username", req.Username))
 
-	c.JSON(http.StatusOK, response)
+	response.SuccessWithMessage(c, "登录成功", loginResp)
 }
 
 // GetProfile 获取用户资料
@@ -139,19 +118,13 @@ func (h *AuthHandler) GetProfile(c *gin.Context) {
 	// 从JWT中间件获取用户信息
 	userID, exists := c.Get("user_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":   "unauthorized",
-			"message": "未找到用户信息",
-		})
+		response.Unauthorized(c, "未找到用户信息")
 		return
 	}
 
 	uid, ok := userID.(uint64)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":   "unauthorized",
-			"message": "用户ID格式错误",
-		})
+		response.Unauthorized(c, "用户ID格式错误")
 		return
 	}
 
@@ -161,14 +134,11 @@ func (h *AuthHandler) GetProfile(c *gin.Context) {
 		h.logger.Error("Failed to get user profile", 
 			zap.Uint64("user_id", uid),
 			zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "profile_failed",
-			"message": "获取用户资料失败",
-		})
+		response.InternalError(c, "获取用户资料失败")
 		return
 	}
 
-	c.JSON(http.StatusOK, profile)
+	response.Success(c, profile)
 }
 
 // UpdateProfile 更新用户资料
@@ -188,30 +158,20 @@ func (h *AuthHandler) UpdateProfile(c *gin.Context) {
 	// 获取用户ID
 	userID, exists := c.Get("user_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":   "unauthorized",
-			"message": "未找到用户信息",
-		})
+		response.Unauthorized(c, "未找到用户信息")
 		return
 	}
 
 	uid, ok := userID.(uint64)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":   "unauthorized",
-			"message": "用户ID格式错误",
-		})
+		response.Unauthorized(c, "用户ID格式错误")
 		return
 	}
 
 	var req models.UpdateProfileRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		h.logger.Warn("Invalid update profile request", zap.Error(err))
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "invalid_request",
-			"message": "请求参数无效",
-			"details": err.Error(),
-		})
+		response.InvalidParam(c, "请求参数无效："+err.Error())
 		return
 	}
 
@@ -221,17 +181,14 @@ func (h *AuthHandler) UpdateProfile(c *gin.Context) {
 		h.logger.Error("Failed to update user profile", 
 			zap.Uint64("user_id", uid),
 			zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "update_failed",
-			"message": "更新用户资料失败",
-		})
+		response.InternalError(c, "更新用户资料失败")
 		return
 	}
 
 	h.logger.Info("User profile updated successfully", 
 		zap.Uint64("user_id", uid))
 
-	c.JSON(http.StatusOK, profile)
+	response.SuccessWithMessage(c, "更新成功", profile)
 }
 
 // RefreshToken 刷新访问令牌
@@ -248,33 +205,24 @@ func (h *AuthHandler) UpdateProfile(c *gin.Context) {
 func (h *AuthHandler) RefreshToken(c *gin.Context) {
 	refreshToken := c.GetHeader("Refresh-Token")
 	if refreshToken == "" {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "missing_token",
-			"message": "缺少刷新令牌",
-		})
+		response.InvalidParam(c, "缺少刷新令牌")
 		return
 	}
 
 	// 刷新令牌
-	response, err := h.authService.RefreshToken(refreshToken)
+	refreshResp, err := h.authService.RefreshToken(refreshToken)
 	if err != nil {
 		if err == services.ErrInvalidToken {
-			c.JSON(http.StatusUnauthorized, gin.H{
-				"error":   "invalid_token",
-				"message": "无效的刷新令牌",
-			})
+			response.Unauthorized(c, "无效的刷新令牌")
 			return
 		}
 
 		h.logger.Error("Token refresh failed", zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "refresh_failed",
-			"message": "令牌刷新失败",
-		})
+		response.InternalError(c, "令牌刷新失败")
 		return
 	}
 
-	c.JSON(http.StatusOK, response)
+	response.Success(c, refreshResp)
 }
 
 // Logout 用户登出
@@ -291,29 +239,20 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 	// 获取用户ID
 	userID, exists := c.Get("user_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":   "unauthorized",
-			"message": "未找到用户信息",
-		})
+		response.Unauthorized(c, "未找到用户信息")
 		return
 	}
 
 	uid, ok := userID.(uint64)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":   "unauthorized",
-			"message": "用户ID格式错误",
-		})
+		response.Unauthorized(c, "用户ID格式错误")
 		return
 	}
 
 	// 获取令牌
 	token := c.GetHeader("Authorization")
 	if token == "" {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "missing_token",
-			"message": "缺少访问令牌",
-		})
+		response.InvalidParam(c, "缺少访问令牌")
 		return
 	}
 
@@ -322,17 +261,12 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 		h.logger.Error("Logout failed", 
 			zap.Uint64("user_id", uid),
 			zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "logout_failed",
-			"message": "登出失败",
-		})
+		response.InternalError(c, "登出失败")
 		return
 	}
 
 	h.logger.Info("User logged out successfully", 
 		zap.Uint64("user_id", uid))
 
-	c.JSON(http.StatusOK, gin.H{
-		"message": "登出成功",
-	})
+	response.SuccessWithMessage(c, "登出成功", nil)
 }

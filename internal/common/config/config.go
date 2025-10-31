@@ -179,8 +179,11 @@ func Get() *Config {
 // setDefaults 设置默认值
 func setDefaults() {
 	// 服务默认配置
+	// 注意：所有功能已集成在 web_api 服务中，只需一个端口
 	viper.SetDefault("server.web_api.host", "0.0.0.0")
 	viper.SetDefault("server.web_api.port", 8080)
+	
+	// 以下端口配置已废弃，保留仅为向后兼容，实际不使用
 	viper.SetDefault("server.tg_manager.host", "0.0.0.0")
 	viper.SetDefault("server.tg_manager.port", 8081)
 	viper.SetDefault("server.task_scheduler.host", "0.0.0.0")

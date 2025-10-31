@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"mime/multipart"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -159,10 +160,88 @@ func (s *fileService) UploadFile(ctx context.Context, userID uint64, file multip
 }
 
 // UploadFromURL 从URL上传文件
-func (s *fileService) UploadFromURL(ctx context.Context, userID uint64, url string, category models.FileCategory) (*models.FileInfo, error) {
-	// 实现从URL下载并保存文件的逻辑
-	// 这里是一个简化的实现
-	return nil, fmt.Errorf("upload from URL not implemented yet")
+func (s *fileService) UploadFromURL(ctx context.Context, userID uint64, fileURL string, category models.FileCategory) (*models.FileInfo, error) {
+	// HTTP客户端下载文件
+	httpClient := &http.Client{
+		Timeout: 30 * time.Second,
+	}
+
+	resp, err := httpClient.Get(fileURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to download file from URL: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// 检查HTTP状态码
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("failed to download file: HTTP %d", resp.StatusCode)
+	}
+
+	// 读取文件内容
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read file data: %w", err)
+	}
+
+	// 验证文件大小
+	if int64(len(data)) > s.maxFileSize {
+		return nil, fmt.Errorf("file size exceeds limit: %d bytes", len(data))
+	}
+
+	// 从URL或Content-Type获取文件名
+	fileName := filepath.Base(fileURL)
+	if fileName == "" || fileName == "/" {
+		// 尝试从Content-Disposition头获取文件名
+		contentDisposition := resp.Header.Get("Content-Disposition")
+		if contentDisposition != "" {
+			// 简单解析 Content-Disposition: attachment; filename="example.jpg"
+			if strings.Contains(contentDisposition, "filename=") {
+				parts := strings.Split(contentDisposition, "filename=")
+				if len(parts) > 1 {
+					fileName = strings.Trim(strings.TrimSpace(parts[1]), `"`)
+				}
+			}
+		}
+		if fileName == "" {
+			// 使用Content-Type推断文件扩展名
+			contentType := resp.Header.Get("Content-Type")
+			if contentType != "" {
+				ext := getExtensionFromMimeType(contentType)
+				fileName = fmt.Sprintf("download_%d%s", time.Now().Unix(), ext)
+			} else {
+				fileName = fmt.Sprintf("download_%d", time.Now().Unix())
+			}
+		}
+	}
+
+	// 使用UploadFromBytes保存文件
+	return s.UploadFromBytes(ctx, userID, data, fileName, category)
+}
+
+// getExtensionFromMimeType 根据MIME类型获取文件扩展名
+func getExtensionFromMimeType(mimeType string) string {
+	mimeMap := map[string]string{
+		"image/jpeg":       ".jpg",
+		"image/png":        ".png",
+		"image/gif":        ".gif",
+		"image/webp":       ".webp",
+		"application/pdf":  ".pdf",
+		"text/plain":       ".txt",
+		"text/html":        ".html",
+		"application/json": ".json",
+		"application/zip":  ".zip",
+		"video/mp4":        ".mp4",
+		"audio/mpeg":       ".mp3",
+	}
+
+	// 提取主类型
+	parts := strings.Split(mimeType, ";")
+	mainType := strings.TrimSpace(parts[0])
+
+	if ext, ok := mimeMap[mainType]; ok {
+		return ext
+	}
+	return ""
 }
 
 // UploadFromBytes 从字节数据上传文件

@@ -26,6 +26,7 @@ type AccountRepository interface {
 	GetAccountsNeedingHealthCheck() ([]*models.TGAccount, error)
 	GetAccountSummaries(userID uint64, page, limit int) ([]*models.AccountSummary, int64, error)
 	GetAll() ([]*models.TGAccount, error)
+	UpdateSessionData(accountID uint64, sessionData []byte) error
 }
 
 // accountRepository 账号数据访问实现
@@ -265,4 +266,11 @@ func (r *accountRepository) GetAll() ([]*models.TGAccount, error) {
 	var accounts []*models.TGAccount
 	err := r.db.Find(&accounts).Error
 	return accounts, err
+}
+
+// UpdateSessionData 更新账号的Session数据
+func (r *accountRepository) UpdateSessionData(accountID uint64, sessionData []byte) error {
+	return r.db.Model(&models.TGAccount{}).
+		Where("id = ?", accountID).
+		Update("session_data", string(sessionData)).Error
 }

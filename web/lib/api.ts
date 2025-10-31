@@ -3,7 +3,9 @@
  * 统一处理API请求，包含认证、错误处理等
  */
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
+// 开发环境使用相对路径（通过 Next.js rewrites 代理）
+// 生产环境可以使用完整 URL 或继续使用代理
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '/api/v1';
 
 export interface APIResponse<T = any> {
   code: number;
@@ -58,9 +60,9 @@ class ApiClient {
     options: RequestInit = {}
   ): Promise<APIResponse<T>> {
     const url = `${this.baseURL}${endpoint}`;
-    const headers: HeadersInit = {
+    const headers: Record<string, string> = {
       'Content-Type': 'application/json',
-      ...options.headers,
+      ...(options.headers as Record<string, string>),
     };
 
     if (this.token) {
@@ -111,7 +113,7 @@ class ApiClient {
 
   async postFormData<T>(endpoint: string, formData: FormData): Promise<APIResponse<T>> {
     const url = `${this.baseURL}${endpoint}`;
-    const headers: HeadersInit = {};
+    const headers: Record<string, string> = {};
 
     if (this.token) {
       headers['Authorization'] = `Bearer ${this.token}`;

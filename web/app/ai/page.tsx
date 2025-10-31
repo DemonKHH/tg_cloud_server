@@ -1,5 +1,6 @@
 "use client"
 
+import { toast } from "sonner"
 import { MainLayout } from "@/components/layout/main-layout"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -14,14 +15,19 @@ export default function AIPage() {
   const [loading, setLoading] = useState(false)
 
   const handleAnalyzeSentiment = async () => {
-    if (!text.trim()) return
+    if (!text.trim()) {
+      toast.warning("请输入要分析的文本")
+      return
+    }
     try {
       setLoading(true)
       const response = await aiAPI.analyzeSentiment(text)
       if (response.data) {
         setResult(response.data)
+        toast.success("情感分析完成")
       }
     } catch (error) {
+      toast.error("情感分析失败")
       console.error("分析失败:", error)
     } finally {
       setLoading(false)
@@ -29,14 +35,19 @@ export default function AIPage() {
   }
 
   const handleExtractKeywords = async () => {
-    if (!text.trim()) return
+    if (!text.trim()) {
+      toast.warning("请输入要提取关键词的文本")
+      return
+    }
     try {
       setLoading(true)
       const response = await aiAPI.extractKeywords(text)
       if (response.data) {
         setResult(response.data)
+        toast.success("关键词提取完成")
       }
     } catch (error) {
+      toast.error("关键词提取失败")
       console.error("提取失败:", error)
     } finally {
       setLoading(false)

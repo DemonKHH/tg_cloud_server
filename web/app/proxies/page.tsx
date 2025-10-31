@@ -1,5 +1,6 @@
 "use client"
 
+import { toast } from "sonner"
 import { MainLayout } from "@/components/layout/main-layout"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -23,6 +24,7 @@ export default function ProxiesPage() {
         setProxies(response.data.data || [])
       }
     } catch (error) {
+      toast.error("加载代理失败，请稍后重试")
       console.error("加载代理失败:", error)
     } finally {
       setLoading(false)
@@ -31,9 +33,11 @@ export default function ProxiesPage() {
 
   const handleTest = async (id: string) => {
     try {
-      await proxyAPI.test(id)
+      const response = await proxyAPI.test(id)
+      toast.success("代理测试成功")
       loadProxies()
     } catch (error) {
+      toast.error("代理测试失败")
       console.error("测试代理失败:", error)
     }
   }

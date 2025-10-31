@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
+import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -13,23 +14,27 @@ export default function LoginPage() {
   const [username, setUsername] = useState("")
   const [password, setPassword] = useState("")
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState("")
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setError("")
     setLoading(true)
 
     try {
       const response = await authAPI.login(username, password)
-      if (response.code === ResponseCode.SUCCESS && response.data?.token) {
-        apiClient.setToken(response.data.token)
-        router.push("/dashboard")
+      if (response.code === ResponseCode.SUCCESS && response.data) {
+        const data = response.data as { token: string }
+        if (data.token) {
+          apiClient.setToken(data.token)
+          toast.success("登录成功")
+          router.push("/dashboard")
+        } else {
+          toast.error(response.msg || "登录失败")
+        }
       } else {
-        setError(response.msg || "登录失败")
+        toast.error(response.msg || "登录失败")
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "登录失败，请稍后重试")
+      toast.error(err instanceof Error ? err.message : "登录失败，请稍后重试")
     } finally {
       setLoading(false)
     }
@@ -72,11 +77,6 @@ export default function LoginPage() {
                 required
               />
             </div>
-            {error && (
-              <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
-                {error}
-              </div>
-            )}
             <Button type="submit" className="w-full" disabled={loading}>
               {loading ? "登录中..." : "登录"}
             </Button>

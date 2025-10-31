@@ -1,5 +1,6 @@
 "use client"
 
+import { toast } from "sonner"
 import { MainLayout } from "@/components/layout/main-layout"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -24,6 +25,7 @@ export default function TemplatesPage() {
         setTemplates(response.data.data || [])
       }
     } catch (error) {
+      toast.error("加载模板失败，请稍后重试")
       console.error("加载模板失败:", error)
     } finally {
       setLoading(false)

@@ -139,7 +139,6 @@ sessions/
 
 # Uploaded files (user data)
 uploads/
-files/
 media/
 
 # Cache directories

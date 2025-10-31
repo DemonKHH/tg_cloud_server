@@ -1,5 +1,6 @@
 "use client"
 
+import { toast } from "sonner"
 import { MainLayout } from "@/components/layout/main-layout"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { TrendingUp, Users, ListTodo, Globe, Activity } from "lucide-react"
@@ -25,6 +26,7 @@ export default function StatsPage() {
       if (overviewRes.data) setOverview(overviewRes.data)
       if (accountRes.data) setAccountStats(accountRes.data)
     } catch (error) {
+      toast.error("加载统计失败，请稍后重试")
       console.error("加载统计失败:", error)
     } finally {
       setLoading(false)

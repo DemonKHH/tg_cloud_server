@@ -1,5 +1,6 @@
 "use client"
 
+import { toast } from "sonner"
 import { MainLayout } from "@/components/layout/main-layout"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Users, ListTodo, Globe, Activity, TrendingUp, AlertCircle } from "lucide-react"
@@ -21,6 +22,7 @@ export default function DashboardPage() {
         setOverview(response.data)
       }
     } catch (error) {
+      toast.error("加载数据失败，请稍后重试")
       console.error("加载数据失败:", error)
     } finally {
       setLoading(false)

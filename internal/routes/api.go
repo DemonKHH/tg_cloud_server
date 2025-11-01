@@ -49,6 +49,7 @@ func RegisterAPIRoutes(
 		accounts.GET("/:id/health", accountHandler.CheckAccountHealth)           // 检查健康度
 		accounts.GET("/:id/availability", accountHandler.GetAccountAvailability) // 获取可用性
 		accounts.POST("/:id/bind-proxy", accountHandler.BindProxy)               // 绑定代理
+		accounts.POST("/upload", accountHandler.UploadAccountFiles)             // 上传并解析账号文件
 
 		// 批量操作（需要高级用户权限）
 		accounts.POST("/batch/bind-proxy", middleware.RequirePermission("advanced_features"), accountHandler.BindProxy) // 批量绑定代理

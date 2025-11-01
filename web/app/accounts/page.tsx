@@ -5,9 +5,17 @@ import { MainLayout } from "@/components/layout/main-layout"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Plus, Search, Filter, MoreVertical, CheckCircle2, XCircle, AlertCircle } from "lucide-react"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
+import { Plus, Search, Filter, MoreVertical, CheckCircle2, XCircle, AlertCircle, Upload, FileArchive } from "lucide-react"
 import { accountAPI } from "@/lib/api"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 
 export default function AccountsPage() {
   const [accounts, setAccounts] = useState<any[]>([])
@@ -15,6 +23,9 @@ export default function AccountsPage() {
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
   const [search, setSearch] = useState("")
+  const [uploadDialogOpen, setUploadDialogOpen] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     loadAccounts()
@@ -60,6 +71,67 @@ export default function AccountsPage() {
     }
   }
 
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    // 验证文件类型
+    const fileName = file.name.toLowerCase()
+    const isValidType = 
+      fileName.endsWith('.zip') ||
+      fileName.endsWith('.session') ||
+      fileName.includes('tdata')
+
+    if (!isValidType) {
+      toast.error("不支持的文件类型，请上传 .zip、.session 文件或 tdata 文件夹")
+      return
+    }
+
+    // 验证文件大小（100MB限制）
+    if (file.size > 100 * 1024 * 1024) {
+      toast.error("文件大小超过100MB限制")
+      return
+    }
+
+    try {
+      setUploading(true)
+      const response = await accountAPI.uploadFiles(file)
+      
+      if (response.data) {
+        const data = response.data as any
+        const created = data.created || 0
+        const failed = data.failed || 0
+        const total = data.total || 0
+
+        if (created > 0) {
+          toast.success(`成功创建 ${created} 个账号${failed > 0 ? `，失败 ${failed} 个` : ''}`)
+          setUploadDialogOpen(false)
+          loadAccounts() // 重新加载账号列表
+          
+          // 如果有错误信息，显示详细信息
+          if (failed > 0 && data.errors && data.errors.length > 0) {
+            console.warn("创建账号时的错误：", data.errors)
+          }
+        } else {
+          toast.error(`未能创建任何账号。${data.errors?.length > 0 ? '错误：' + data.errors.join(', ') : ''}`)
+        }
+      } else {
+        toast.success("文件上传成功")
+        setUploadDialogOpen(false)
+        loadAccounts()
+      }
+    } catch (error: any) {
+      console.error("上传账号文件失败:", error)
+      toast.error(error.message || "上传账号文件失败")
+    } finally {
+      setUploading(false)
+      // 清空文件输入
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ''
+      }
+    }
+  }
+
   return (
     <MainLayout>
       <div className="space-y-6">
@@ -71,10 +143,62 @@ export default function AccountsPage() {
               管理和监控您的TG账号
             </p>
           </div>
-          <Button>
-            <Plus className="h-4 w-4 mr-2" />
-            添加账号
-          </Button>
+          <div className="flex gap-2">
+            <Dialog open={uploadDialogOpen} onOpenChange={setUploadDialogOpen}>
+              <DialogTrigger asChild>
+                <Button variant="outline">
+                  <Upload className="h-4 w-4 mr-2" />
+                  上传账号文件
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>上传账号文件</DialogTitle>
+                  <DialogDescription>
+                    支持上传 .zip、.session 文件或 tdata 文件夹。系统将自动解析并创建账号。
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4 py-4">
+                  <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-8 text-center">
+                    <FileArchive className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+                    <p className="text-sm text-muted-foreground mb-2">
+                      支持的文件格式：
+                    </p>
+                    <ul className="text-xs text-muted-foreground space-y-1 mb-4">
+                      <li>• .zip 压缩包（可包含多个账号文件）</li>
+                      <li>• .session 文件（gotd/td格式）</li>
+                      <li>• tdata 文件夹（Telegram Desktop格式）</li>
+                    </ul>
+                    <Input
+                      ref={fileInputRef}
+                      type="file"
+                      className="hidden"
+                      id="account-file-upload"
+                      accept=".zip,.session"
+                      onChange={handleFileUpload}
+                      disabled={uploading}
+                    />
+                    <Button
+                      variant="outline"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={uploading}
+                    >
+                      {uploading ? "上传中..." : "选择文件"}
+                    </Button>
+                    {uploading && (
+                      <p className="text-sm text-muted-foreground mt-2">
+                        正在解析文件，请稍候...
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </DialogContent>
+            </Dialog>
+            <Button>
+              <Plus className="h-4 w-4 mr-2" />
+              手动添加
+            </Button>
+          </div>
         </div>
 
         {/* Filters */}

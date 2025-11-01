@@ -57,6 +57,11 @@ func (s *AccountService) CreateAccount(userID uint64, req *models.CreateAccountR
 		HealthScore: 1.0,
 	}
 
+	// 如果提供了session数据，设置它
+	if req.SessionData != "" {
+		account.SessionData = req.SessionData
+	}
+
 	// 如果指定了代理，验证代理是否存在且属于该用户
 	if req.ProxyID != nil {
 		proxy, err := s.proxyRepo.GetByUserIDAndID(userID, *req.ProxyID)
@@ -488,4 +493,60 @@ func (s *AccountService) generateDetailedHealthReport(account *models.TGAccount)
 
 	report.Score = report.HealthScore
 	return report
+}
+
+// CreateAccountsFromParsedData 从解析的数据批量创建账号
+func (s *AccountService) CreateAccountsFromParsedData(userID uint64, parsedAccounts []*ParsedAccount, proxyID *uint64) ([]*models.TGAccount, []string, error) {
+	var createdAccounts []*models.TGAccount
+	var errors []string
+
+	for _, parsed := range parsedAccounts {
+		if parsed.Error != "" {
+			errors = append(errors, fmt.Sprintf("账号 %s: %s", parsed.Phone, parsed.Error))
+			continue
+		}
+
+		// 检查账号是否已存在
+		existingAccount, _ := s.accountRepo.GetByPhone(parsed.Phone)
+		if existingAccount != nil {
+			errors = append(errors, fmt.Sprintf("账号 %s 已存在", parsed.Phone))
+			continue
+		}
+
+		account := &models.TGAccount{
+			UserID:      userID,
+			Phone:       parsed.Phone,
+			SessionData: parsed.SessionData,
+			Status:      models.AccountStatusNew,
+			HealthScore: 1.0,
+			ProxyID:     proxyID,
+		}
+
+		// 如果指定了代理，验证代理是否存在且属于该用户
+		if proxyID != nil {
+			proxy, err := s.proxyRepo.GetByUserIDAndID(userID, *proxyID)
+			if err != nil {
+				errors = append(errors, fmt.Sprintf("账号 %s: 代理不存在", parsed.Phone))
+				continue
+			}
+			if !proxy.IsActive {
+				errors = append(errors, fmt.Sprintf("账号 %s: 代理未激活", parsed.Phone))
+				continue
+			}
+		}
+
+		if err := s.accountRepo.Create(account); err != nil {
+			errors = append(errors, fmt.Sprintf("账号 %s: 创建失败 - %v", parsed.Phone, err))
+			continue
+		}
+
+		createdAccounts = append(createdAccounts, account)
+		s.logger.Info("Account created from parsed file",
+			zap.Uint64("user_id", userID),
+			zap.Uint64("account_id", account.ID),
+			zap.String("phone", account.Phone),
+			zap.String("source", parsed.Source))
+	}
+
+	return createdAccounts, errors, nil
 }

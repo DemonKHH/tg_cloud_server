@@ -159,6 +159,14 @@ export const accountAPI = {
   getAvailability: (id: string) => apiClient.get(`/accounts/${id}/availability`),
   bindProxy: (id: string, proxyId: number) =>
     apiClient.post(`/accounts/${id}/bind-proxy`, { proxy_id: proxyId }),
+  uploadFiles: (file: File, proxyId?: number) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    if (proxyId) {
+      formData.append('proxy_id', proxyId.toString());
+    }
+    return apiClient.postFormData('/accounts/upload', formData);
+  },
 };
 
 // 任务管理API

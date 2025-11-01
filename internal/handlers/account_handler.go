@@ -2,9 +2,6 @@ package handlers
 
 import (
 	"fmt"
-	"io"
-	"mime/multipart"
-	"os"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
@@ -19,7 +16,6 @@ import (
 // AccountHandler 账号管理处理器
 type AccountHandler struct {
 	accountService *services.AccountService
-	accountParser  *services.AccountParser
 	logger         *zap.Logger
 }
 
@@ -27,7 +23,6 @@ type AccountHandler struct {
 func NewAccountHandler(accountService *services.AccountService) *AccountHandler {
 	return &AccountHandler{
 		accountService: accountService,
-		accountParser:  services.NewAccountParser(),
 		logger:         logger.Get().Named("account_handler"),
 	}
 }
@@ -471,15 +466,14 @@ func (h *AccountHandler) getIntParam(c *gin.Context, param string, defaultValue 
 	return value
 }
 
-// UploadAccountFiles 上传并解析账号文件
-// @Summary 上传账号文件
-// @Description 上传zip、.session文件或tdata文件夹，自动解析并创建账号
+// UploadAccountFiles 批量上传账号信息
+// @Summary 批量上传账号信息
+// @Description 批量上传Telegram账号信息（直接接收phone和sessionString），创建账号
 // @Tags 账号管理
-// @Accept multipart/form-data
+// @Accept json
 // @Produce json
 // @Security ApiKeyAuth
-// @Param file formData file true "账号文件（zip、.session或tdata文件夹）"
-// @Param proxy_id formData int false "代理ID（可选）"
+// @Param request body models.BatchUploadAccountRequest true "批量账号信息"
 // @Success 200 {object} map[string]interface{} "上传结果"
 // @Failure 400 {object} map[string]string "请求错误"
 // @Failure 401 {object} map[string]string "未授权"
@@ -491,54 +485,21 @@ func (h *AccountHandler) UploadAccountFiles(c *gin.Context) {
 		return
 	}
 
-	// 获取上传的文件
-	file, header, err := c.Request.FormFile("file")
-	if err != nil {
-		h.logger.Warn("无法获取上传文件", zap.Error(err))
-		response.InvalidParam(c, "请选择要上传的文件")
-		return
-	}
-	defer file.Close()
-
-	// 验证文件大小（限制100MB）
-	if header.Size > 100*1024*1024 {
-		response.InvalidParam(c, "文件大小超过100MB限制")
+	// 解析请求体
+	var req models.BatchUploadAccountRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		h.logger.Warn("解析请求失败", zap.Error(err))
+		response.InvalidParam(c, "请求参数错误: "+err.Error())
 		return
 	}
 
-	// 保存上传的文件到临时目录
-	tempFile, err := h.saveUploadedFile(file, header)
-	if err != nil {
-		h.logger.Error("保存上传文件失败", zap.Error(err))
-		response.InternalError(c, "保存文件失败")
-		return
-	}
-	defer os.Remove(tempFile) // 清理临时文件
-
-	// 获取可选的代理ID
-	var proxyID *uint64
-	if proxyIDStr := c.PostForm("proxy_id"); proxyIDStr != "" {
-		id, err := strconv.ParseUint(proxyIDStr, 10, 64)
-		if err == nil && id > 0 {
-			proxyID = &id
-		}
-	}
-
-	// 解析账号文件
-	parsedAccounts, err := h.accountParser.ParseAccountFiles(tempFile)
-	if err != nil {
-		h.logger.Error("解析账号文件失败", zap.Error(err))
-		response.InternalError(c, "解析文件失败: "+err.Error())
-		return
-	}
-
-	if len(parsedAccounts) == 0 {
-		response.InvalidParam(c, "文件中未找到有效的账号信息")
+	if len(req.Accounts) == 0 {
+		response.InvalidParam(c, "账号列表不能为空")
 		return
 	}
 
 	// 批量创建账号
-	createdAccounts, errors, err := h.accountService.CreateAccountsFromParsedData(userID, parsedAccounts, proxyID)
+	createdAccounts, errors, err := h.accountService.CreateAccountsFromUploadData(userID, req.Accounts, req.ProxyID)
 	if err != nil {
 		h.logger.Error("批量创建账号失败", zap.Error(err))
 		response.InternalError(c, "创建账号失败: "+err.Error())
@@ -546,7 +507,7 @@ func (h *AccountHandler) UploadAccountFiles(c *gin.Context) {
 	}
 
 	result := gin.H{
-		"total":    len(parsedAccounts),
+		"total":    len(req.Accounts),
 		"created":  len(createdAccounts),
 		"failed":   len(errors),
 		"accounts": createdAccounts,
@@ -555,35 +516,16 @@ func (h *AccountHandler) UploadAccountFiles(c *gin.Context) {
 
 	if len(errors) > 0 {
 		h.logger.Warn("部分账号创建失败",
-			zap.Int("total", len(parsedAccounts)),
+			zap.Int("total", len(req.Accounts)),
 			zap.Int("created", len(createdAccounts)),
 			zap.Int("failed", len(errors)))
 	}
 
-	h.logger.Info("账号文件上传并解析完成",
+	h.logger.Info("账号批量上传完成",
 		zap.Uint64("user_id", userID),
-		zap.Int("total", len(parsedAccounts)),
+		zap.Int("total", len(req.Accounts)),
 		zap.Int("created", len(createdAccounts)),
-		zap.String("file", header.Filename))
+		zap.Int("failed", len(errors)))
 
 	response.SuccessWithMessage(c, fmt.Sprintf("成功创建 %d 个账号，失败 %d 个", len(createdAccounts), len(errors)), result)
-}
-
-// saveUploadedFile 保存上传的文件到临时目录
-func (h *AccountHandler) saveUploadedFile(file multipart.File, header *multipart.FileHeader) (string, error) {
-	// 创建临时文件
-	tempFile, err := os.CreateTemp("", "account_upload_*")
-	if err != nil {
-		return "", err
-	}
-	defer tempFile.Close()
-
-	// 复制文件内容
-	_, err = io.Copy(tempFile, file)
-	if err != nil {
-		os.Remove(tempFile.Name())
-		return "", err
-	}
-
-	return tempFile.Name(), nil
 }

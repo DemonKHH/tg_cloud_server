@@ -246,13 +246,14 @@ func (s *AccountService) ValidateAccountForTask(userID, accountID uint64, taskTy
 	}
 
 	// 检查账号状态
-	if account.Status == models.AccountStatusDead {
+	switch account.Status {
+	case models.AccountStatusDead:
 		result.IsValid = false
 		result.Errors = append(result.Errors, "账号已死亡，无法执行任务")
-	} else if account.Status == models.AccountStatusCooling {
+	case models.AccountStatusCooling:
 		result.IsValid = false
 		result.Errors = append(result.Errors, "账号处于冷却期，暂时无法执行任务")
-	} else if account.Status == models.AccountStatusMaintenance {
+	case models.AccountStatusMaintenance:
 		result.IsValid = false
 		result.Errors = append(result.Errors, "账号处于维护状态，暂时无法执行任务")
 	}
@@ -495,28 +496,33 @@ func (s *AccountService) generateDetailedHealthReport(account *models.TGAccount)
 	return report
 }
 
-// CreateAccountsFromParsedData 从解析的数据批量创建账号
-func (s *AccountService) CreateAccountsFromParsedData(userID uint64, parsedAccounts []*ParsedAccount, proxyID *uint64) ([]*models.TGAccount, []string, error) {
+// CreateAccountsFromUploadData 从上传的数据批量创建账号
+func (s *AccountService) CreateAccountsFromUploadData(userID uint64, accounts []models.AccountUploadItem, proxyID *uint64) ([]*models.TGAccount, []string, error) {
 	var createdAccounts []*models.TGAccount
 	var errors []string
 
-	for _, parsed := range parsedAccounts {
-		if parsed.Error != "" {
-			errors = append(errors, fmt.Sprintf("账号 %s: %s", parsed.Phone, parsed.Error))
+	for _, item := range accounts {
+		// 验证必需字段
+		if item.Phone == "" {
+			errors = append(errors, "手机号不能为空")
+			continue
+		}
+		if item.SessionData == "" {
+			errors = append(errors, fmt.Sprintf("账号 %s: session数据不能为空", item.Phone))
 			continue
 		}
 
 		// 检查账号是否已存在
-		existingAccount, _ := s.accountRepo.GetByPhone(parsed.Phone)
+		existingAccount, _ := s.accountRepo.GetByPhone(item.Phone)
 		if existingAccount != nil {
-			errors = append(errors, fmt.Sprintf("账号 %s 已存在", parsed.Phone))
+			errors = append(errors, fmt.Sprintf("账号 %s 已存在", item.Phone))
 			continue
 		}
 
 		account := &models.TGAccount{
 			UserID:      userID,
-			Phone:       parsed.Phone,
-			SessionData: parsed.SessionData,
+			Phone:       item.Phone,
+			SessionData: item.SessionData,
 			Status:      models.AccountStatusNew,
 			HealthScore: 1.0,
 			ProxyID:     proxyID,
@@ -526,26 +532,25 @@ func (s *AccountService) CreateAccountsFromParsedData(userID uint64, parsedAccou
 		if proxyID != nil {
 			proxy, err := s.proxyRepo.GetByUserIDAndID(userID, *proxyID)
 			if err != nil {
-				errors = append(errors, fmt.Sprintf("账号 %s: 代理不存在", parsed.Phone))
+				errors = append(errors, fmt.Sprintf("账号 %s: 代理不存在", item.Phone))
 				continue
 			}
 			if !proxy.IsActive {
-				errors = append(errors, fmt.Sprintf("账号 %s: 代理未激活", parsed.Phone))
+				errors = append(errors, fmt.Sprintf("账号 %s: 代理未激活", item.Phone))
 				continue
 			}
 		}
 
 		if err := s.accountRepo.Create(account); err != nil {
-			errors = append(errors, fmt.Sprintf("账号 %s: 创建失败 - %v", parsed.Phone, err))
+			errors = append(errors, fmt.Sprintf("账号 %s: 创建失败 - %v", item.Phone, err))
 			continue
 		}
 
 		createdAccounts = append(createdAccounts, account)
-		s.logger.Info("Account created from parsed file",
+		s.logger.Info("Account created from upload",
 			zap.Uint64("user_id", userID),
 			zap.Uint64("account_id", account.ID),
-			zap.String("phone", account.Phone),
-			zap.String("source", parsed.Source))
+			zap.String("phone", account.Phone))
 	}
 
 	return createdAccounts, errors, nil

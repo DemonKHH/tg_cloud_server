@@ -138,6 +138,18 @@ type CreateAccountRequest struct {
 	ProxyID     *uint64 `json:"proxy_id"`
 }
 
+// BatchUploadAccountRequest 批量上传账号请求
+type BatchUploadAccountRequest struct {
+	Accounts []AccountUploadItem `json:"accounts" binding:"required,min=1"`
+	ProxyID  *uint64             `json:"proxy_id"`
+}
+
+// AccountUploadItem 单个账号上传项
+type AccountUploadItem struct {
+	Phone       string `json:"phone" binding:"required"`
+	SessionData string `json:"session_data" binding:"required"`
+}
+
 // UpdateAccountRequest 更新账号请求
 type UpdateAccountRequest struct {
 	Phone   string         `json:"phone"`

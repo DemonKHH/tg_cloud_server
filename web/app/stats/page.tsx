@@ -46,8 +46,8 @@ export default function StatsPage() {
         ) : (
           <>
             {/* Stats Overview */}
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-              <Card>
+            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+              <Card className="card-shadow hover:card-shadow-lg transition-all duration-300">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">总账号数</CardTitle>
                   <Users className="h-4 w-4 text-muted-foreground" />
@@ -60,7 +60,7 @@ export default function StatsPage() {
                 </CardContent>
               </Card>
 
-              <Card>
+              <Card className="card-shadow hover:card-shadow-lg transition-all duration-300">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">活跃任务</CardTitle>
                   <ListTodo className="h-4 w-4 text-muted-foreground" />
@@ -73,7 +73,7 @@ export default function StatsPage() {
                 </CardContent>
               </Card>
 
-              <Card>
+              <Card className="card-shadow hover:card-shadow-lg transition-all duration-300">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">代理数量</CardTitle>
                   <Globe className="h-4 w-4 text-muted-foreground" />
@@ -86,7 +86,7 @@ export default function StatsPage() {
                 </CardContent>
               </Card>
 
-              <Card>
+              <Card className="card-shadow hover:card-shadow-lg transition-all duration-300">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">健康率</CardTitle>
                   <Activity className="h-4 w-4 text-muted-foreground" />
@@ -105,8 +105,8 @@ export default function StatsPage() {
             </div>
 
             {/* Charts */}
-            <div className="grid gap-4 md:grid-cols-2">
-              <Card>
+            <div className="grid gap-6 md:grid-cols-2">
+              <Card className="card-shadow">
                 <CardHeader>
                   <CardTitle>账号状态分布</CardTitle>
                   <CardDescription>账号状态统计</CardDescription>
@@ -134,7 +134,7 @@ export default function StatsPage() {
                 </CardContent>
               </Card>
 
-              <Card>
+              <Card className="card-shadow">
                 <CardHeader>
                   <CardTitle>任务执行趋势</CardTitle>
                   <CardDescription>最近7天的任务执行情况</CardDescription>

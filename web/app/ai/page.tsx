@@ -64,8 +64,8 @@ export default function AIPage() {
           </p>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2">
-          <Card>
+        <div className="grid gap-6 md:grid-cols-2">
+          <Card className="card-shadow hover:card-shadow-lg transition-all duration-300">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <MessageSquare className="h-5 w-5" />
@@ -94,7 +94,7 @@ export default function AIPage() {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="card-shadow hover:card-shadow-lg transition-all duration-300">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Brain className="h-5 w-5" />
@@ -131,7 +131,7 @@ export default function AIPage() {
           </Card>
         </div>
 
-        <Card>
+        <Card className="card-shadow">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Bot className="h-5 w-5" />
@@ -140,19 +140,19 @@ export default function AIPage() {
           </CardHeader>
           <CardContent>
             <div className="grid gap-4 md:grid-cols-3">
-              <div className="p-4 border rounded-lg">
+              <div className="p-4 border rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors">
                 <div className="font-medium mb-1">群聊AI回复</div>
                 <div className="text-sm text-muted-foreground">
                   根据群聊历史生成智能回复
                 </div>
               </div>
-              <div className="p-4 border rounded-lg">
+              <div className="p-4 border rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors">
                 <div className="font-medium mb-1">私信内容生成</div>
                 <div className="text-sm text-muted-foreground">
                   生成个性化私信内容
                 </div>
               </div>
-              <div className="p-4 border rounded-lg">
+              <div className="p-4 border rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors">
                 <div className="font-medium mb-1">模板变体生成</div>
                 <div className="text-sm text-muted-foreground">
                   生成多个模板变体版本

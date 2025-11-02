@@ -88,7 +88,7 @@ export default function FilesPage() {
             </div>
           ) : (
             files.map((file) => (
-              <Card key={file.id} className="hover:shadow-md transition-shadow">
+              <Card key={file.id} className="card-shadow hover:card-shadow-lg transition-all duration-300">
                 <CardHeader className="p-4">
                   <div className="flex items-center gap-3">
                     {getFileIcon(file.file_type)}

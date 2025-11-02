@@ -14,6 +14,17 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { Plus, Search, Filter, MoreVertical, CheckCircle2, XCircle, AlertCircle, Upload, FileArchive } from "lucide-react"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { Badge } from "@/components/ui/badge"
+import { ModernTable } from "@/components/ui/modern-table"
+import { motion } from "framer-motion"
+import { cn } from "@/lib/utils"
 import { accountAPI, proxyAPI } from "@/lib/api"
 import { useState, useEffect, useRef } from "react"
 import {
@@ -317,119 +328,142 @@ export default function AccountsPage() {
           </CardHeader>
         </Card>
 
-        {/* Accounts Table */}
-        <Card>
-          <CardHeader>
-            <CardTitle>账号列表</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              <div className="text-center py-8 text-muted-foreground">加载中...</div>
-            ) : accounts.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">暂无账号</div>
-            ) : (
-              <div className="space-y-4">
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="border-b">
-                        <th className="text-left p-4 font-medium">手机号</th>
-                        <th className="text-left p-4 font-medium">状态</th>
-                        <th className="text-left p-4 font-medium">健康度</th>
-                        <th className="text-left p-4 font-medium">代理</th>
-                        <th className="text-left p-4 font-medium">最后使用</th>
-                        <th className="text-right p-4 font-medium">操作</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {accounts.map((account) => (
-                        <tr key={account.id} className="border-b hover:bg-muted/50">
-                          <td className="p-4">
-                            <div className="font-medium">{account.phone}</div>
-                            {account.note && (
-                              <div className="text-sm text-muted-foreground">{account.note}</div>
-                            )}
-                          </td>
-                          <td className="p-4">
-                            <div className="flex items-center gap-2">
-                              {getStatusIcon(account.status)}
-                              <span
-                                className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(
-                                  account.status
-                                )}`}
-                              >
-                                {account.status}
-                              </span>
-                            </div>
-                          </td>
-                          <td className="p-4">
-                            <div className="flex items-center gap-2">
-                              <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden max-w-24">
-                                <div
-                                  className="h-full bg-green-500"
-                                  style={{ width: `${(account.health_score || 0) * 100}%` }}
-                                />
-                              </div>
-                              <span className="text-sm font-medium">
-                                {((account.health_score || 0) * 100).toFixed(0)}%
-                              </span>
-                            </div>
-                          </td>
-                          <td className="p-4">
-                            <div className="text-sm">
-                              {account.proxy_id ? (
-                                <span className="text-muted-foreground">已绑定</span>
-                              ) : (
-                                <span className="text-muted-foreground">未绑定</span>
-                              )}
-                            </div>
-                          </td>
-                          <td className="p-4">
-                            <div className="text-sm text-muted-foreground">
-                              {account.last_used_at
-                                ? new Date(account.last_used_at).toLocaleDateString()
-                                : "从未使用"}
-                            </div>
-                          </td>
-                          <td className="p-4 text-right">
-                            <Button variant="ghost" size="icon">
-                              <MoreVertical className="h-4 w-4" />
-                            </Button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+        {/* Modern Accounts Table */}
+        <ModernTable
+          data={accounts}
+          columns={[
+            {
+              key: 'phone',
+              title: '账号信息',
+              width: '200px',
+              render: (value, record) => (
+                <div className="space-y-1">
+                  <div className="font-medium">{value}</div>
+                  {record.note && (
+                    <div className="text-sm text-muted-foreground">{record.note}</div>
+                  )}
                 </div>
+              )
+            },
+            {
+              key: 'status',
+              title: '状态',
+              width: '120px',
+              sortable: true,
+              render: (value) => (
+                <div className="flex items-center gap-2">
+                  {getStatusIcon(value)}
+                  <Badge
+                    variant={value === 'active' ? 'default' : value === 'error' ? 'destructive' : 'secondary'}
+                    className="text-xs"
+                  >
+                    {value === 'active' ? '正常' : value === 'error' ? '异常' : '警告'}
+                  </Badge>
+                </div>
+              )
+            },
+            {
+              key: 'health_score',
+              title: '健康度',
+              width: '150px',
+              sortable: true,
+              render: (value) => (
+                <div className="flex items-center gap-3">
+                  <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden max-w-16">
+                    <motion.div
+                      initial={{ width: 0 }}
+                      animate={{ width: `${(value || 0) * 100}%` }}
+                      transition={{ duration: 0.8, ease: "easeOut" }}
+                      className={cn(
+                        "h-full transition-colors",
+                        (value || 0) >= 0.8 ? 'bg-green-500' :
+                        (value || 0) >= 0.6 ? 'bg-yellow-500' : 'bg-red-500'
+                      )}
+                    />
+                  </div>
+                  <span className="text-sm font-medium min-w-12">
+                    {((value || 0) * 100).toFixed(0)}%
+                  </span>
+                </div>
+              )
+            },
+            {
+              key: 'proxy_id',
+              title: '代理',
+              width: '100px',
+              render: (value) => (
+                <Badge variant={value ? 'default' : 'secondary'} className="text-xs">
+                  {value ? '已绑定' : '未绑定'}
+                </Badge>
+              )
+            },
+            {
+              key: 'last_used_at',
+              title: '最后使用',
+              width: '120px',
+              sortable: true,
+              render: (value) => (
+                <div className="text-sm text-muted-foreground">
+                  {value ? new Date(value).toLocaleDateString() : '从未使用'}
+                </div>
+              )
+            },
+            {
+              key: 'actions',
+              title: '操作',
+              width: '80px',
+              render: () => (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon" className="h-8 w-8">
+                      <MoreVertical className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent className="glass-effect" align="end">
+                    <DropdownMenuItem>编辑账号</DropdownMenuItem>
+                    <DropdownMenuItem>检查健康</DropdownMenuItem>
+                    <DropdownMenuItem>绑定代理</DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem className="text-destructive">删除账号</DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )
+            }
+          ]}
+          loading={loading}
+          searchable
+          searchPlaceholder="搜索手机号或备注..."
+          filterable
+          emptyText="暂无账号数据"
+          className="card-shadow"
+        />
 
-                {/* Pagination */}
-                <div className="flex items-center justify-between pt-4">
-                  <div className="text-sm text-muted-foreground">
-                    共 {total} 个账号
-                  </div>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setPage((p) => Math.max(1, p - 1))}
-                      disabled={page === 1}
-                    >
-                      上一页
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setPage((p) => p + 1)}
-                      disabled={page * 20 >= total}
-                    >
-                      下一页
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        {/* Pagination */}
+        <div className="flex items-center justify-between">
+          <div className="text-sm text-muted-foreground">
+            共 {total} 个账号，当前第 {page} 页
+          </div>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page === 1}
+              className="btn-modern"
+            >
+              上一页
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPage((p) => p + 1)}
+              disabled={page * 20 >= total}
+              className="btn-modern"
+            >
+              下一页
+            </Button>
+          </div>
+        </div>
       </div>
     </MainLayout>
   )

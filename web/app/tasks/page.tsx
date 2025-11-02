@@ -38,15 +38,15 @@ export default function TasksPage() {
   const getStatusColor = (status: string) => {
     switch (status) {
       case "completed":
-        return "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300"
+        return "bg-green-50 text-green-700 border border-green-200 dark:bg-green-900 dark:text-green-300 dark:border-green-800"
       case "running":
-        return "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300"
+        return "bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-900 dark:text-blue-300 dark:border-blue-800"
       case "failed":
-        return "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300"
+        return "bg-red-50 text-red-700 border border-red-200 dark:bg-red-900 dark:text-red-300 dark:border-red-800"
       case "queued":
-        return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300"
+        return "bg-yellow-50 text-yellow-700 border border-yellow-200 dark:bg-yellow-900 dark:text-yellow-300 dark:border-yellow-800"
       default:
-        return "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300"
+        return "bg-gray-50 text-gray-700 border border-gray-200 dark:bg-gray-900 dark:text-gray-300 dark:border-gray-800"
     }
   }
 
@@ -76,20 +76,20 @@ export default function TasksPage() {
         {/* Tasks List */}
         <div className="grid gap-4">
           {loading ? (
-            <Card>
+            <Card className="card-shadow">
               <CardContent className="py-8 text-center text-muted-foreground">
                 加载中...
               </CardContent>
             </Card>
           ) : tasks.length === 0 ? (
-            <Card>
+            <Card className="card-shadow">
               <CardContent className="py-8 text-center text-muted-foreground">
                 暂无任务
               </CardContent>
             </Card>
           ) : (
             tasks.map((task) => (
-              <Card key={task.id} className="hover:shadow-md transition-shadow">
+              <Card key={task.id} className="card-shadow hover:card-shadow-lg transition-all duration-300">
                 <CardHeader>
                   <div className="flex items-start justify-between">
                     <div className="flex-1">

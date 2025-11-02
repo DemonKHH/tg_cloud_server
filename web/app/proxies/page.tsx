@@ -69,7 +69,7 @@ export default function ProxiesPage() {
             </div>
           ) : (
             proxies.map((proxy) => (
-              <Card key={proxy.id} className="hover:shadow-md transition-shadow">
+              <Card key={proxy.id} className="card-shadow hover:card-shadow-lg transition-all duration-300">
                 <CardHeader>
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
@@ -92,10 +92,10 @@ export default function ProxiesPage() {
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-muted-foreground">状态:</span>
                       <span
-                        className={`px-2 py-1 rounded-full text-xs font-medium ${
+                        className={`px-2 py-1 rounded-full text-xs font-medium border ${
                           proxy.status === "active"
-                            ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300"
-                            : "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300"
+                            ? "bg-green-50 text-green-700 border-green-200 dark:bg-green-900 dark:text-green-300 dark:border-green-800"
+                            : "bg-red-50 text-red-700 border-red-200 dark:bg-red-900 dark:text-red-300 dark:border-red-800"
                         }`}
                       >
                         {proxy.status}

@@ -2,7 +2,6 @@ package services
 
 import (
 	"archive/zip"
-	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -18,13 +17,15 @@ import (
 
 // AccountParser 账号文件解析服务
 type AccountParser struct {
-	logger *zap.Logger
+	logger           *zap.Logger
+	sessionConverter *SessionConverter
 }
 
 // NewAccountParser 创建账号解析服务
 func NewAccountParser() *AccountParser {
 	return &AccountParser{
-		logger: logger.Get().Named("account_parser"),
+		logger:           logger.Get().Named("account_parser"),
+		sessionConverter: NewSessionConverter(),
 	}
 }
 
@@ -207,59 +208,68 @@ func (p *AccountParser) parseSingleFile(filePath string) ([]*ParsedAccount, erro
 	return []*ParsedAccount{account}, nil
 }
 
-// parseSessionFile 解析.session文件（gotd/td格式）
+// parseSessionFile 解析.session文件（Pyrogram格式）
 func (p *AccountParser) parseSessionFile(filePath string) (*ParsedAccount, error) {
 	p.logger.Debug("解析session文件", zap.String("path", filePath))
 
-	data, err := os.ReadFile(filePath)
-	if err != nil {
-		return nil, fmt.Errorf("读取文件失败: %v", err)
-	}
-
-	if len(data) == 0 {
-		return nil, fmt.Errorf("文件为空")
-	}
-
-	// gotd/td的session数据通常是二进制，我们直接转换为base64字符串存储
-	// 或者如果是JSON格式，则尝试解析
-	sessionString := ""
-
-	// 尝试解析为JSON格式（某些工具导出的session可能是JSON）
-	var jsonData map[string]interface{}
-	if err := json.Unmarshal(data, &jsonData); err == nil {
-		// 如果是JSON格式，提取session字段
-		if sessionStr, ok := jsonData["session"].(string); ok {
-			sessionString = sessionStr
-		} else if sessionBytes, ok := jsonData["session"].([]byte); ok {
-			sessionString = base64.StdEncoding.EncodeToString(sessionBytes)
-		} else {
-			// 整个JSON作为session数据
-			jsonBytes, _ := json.Marshal(jsonData)
-			sessionString = base64.StdEncoding.EncodeToString(jsonBytes)
-		}
-	} else {
-		// 二进制数据，转换为base64
-		sessionString = base64.StdEncoding.EncodeToString(data)
-	}
-
-	// 尝试从文件名或文件内容中提取手机号
+	// 尝试从文件名中提取手机号
 	phone := p.extractPhoneFromPath(filePath)
 	if phone == "" {
-		// 尝试从session数据中提取手机号
-		if jsonData != nil {
-			if p, ok := jsonData["phone"].(string); ok {
-				phone = p
-			}
+		phone = "unknown"
+	}
+
+	// 使用SessionConverter转换.session文件
+	sessionData, err := p.sessionConverter.LoadPyrogramSession(filePath, phone)
+	if err != nil {
+		p.logger.Warn("使用Pyrogram格式解析失败，尝试其他格式", zap.String("path", filePath), zap.Error(err))
+
+		// 如果转换失败，可能是gotd格式的session文件，尝试直接读取
+		data, readErr := os.ReadFile(filePath)
+		if readErr != nil {
+			return nil, fmt.Errorf("读取文件失败: %v (原始错误: %w)", readErr, err)
 		}
+
+		if len(data) == 0 {
+			return nil, fmt.Errorf("文件为空")
+		}
+
+		// 尝试解析为JSON格式（某些工具导出的session可能是JSON）
+		var jsonData map[string]interface{}
+		var sessionString string
+		if jsonErr := json.Unmarshal(data, &jsonData); jsonErr == nil {
+			// 如果是JSON格式，提取session字段
+			if sessionStr, ok := jsonData["session"].(string); ok {
+				sessionString = sessionStr
+			} else if sessionBytes, ok := jsonData["session"].([]byte); ok {
+				sessionString = base64.StdEncoding.EncodeToString(sessionBytes)
+			} else {
+				// 整个JSON作为session数据
+				jsonBytes, _ := json.Marshal(jsonData)
+				sessionString = base64.StdEncoding.EncodeToString(jsonBytes)
+			}
+
+			// 尝试从JSON中提取手机号
+			if phone == "unknown" && jsonData != nil {
+				if p, ok := jsonData["phone"].(string); ok {
+					phone = p
+				}
+			}
+		} else {
+			// 二进制数据，转换为base64（gotd格式）
+			sessionString = base64.StdEncoding.EncodeToString(data)
+		}
+
+		return &ParsedAccount{
+			Phone:       phone,
+			SessionData: sessionString,
+			Source:      filepath.Base(filePath),
+		}, nil
 	}
 
-	if phone == "" {
-		phone = "unknown" // 如果无法提取，使用占位符
-	}
-
+	// 成功转换，使用转换后的数据
 	return &ParsedAccount{
-		Phone:       phone,
-		SessionData: sessionString,
+		Phone:       sessionData.Phone,
+		SessionData: sessionData.EncodedData,
 		Source:      filepath.Base(filePath),
 	}, nil
 }
@@ -268,87 +278,23 @@ func (p *AccountParser) parseSessionFile(filePath string) (*ParsedAccount, error
 func (p *AccountParser) parseTDataFolder(tdataPath string) (*ParsedAccount, error) {
 	p.logger.Debug("解析tdata文件夹", zap.String("path", tdataPath))
 
-	// Telegram Desktop的tdata结构通常是：
-	// tdata/
-	//   - key_data (可选)
-	//   - D877F783D5D3EF8C/ (账户ID目录，16位十六进制)
-	//     - key_datas
-	//     - auth
-
-	var allFiles []string
-
-	// 收集tdata目录下的所有文件（用于转换为session）
-	err := filepath.Walk(tdataPath, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return nil
-		}
-		if !info.IsDir() {
-			allFiles = append(allFiles, path)
-		}
-		return nil
-	})
-
-	if err != nil {
-		return nil, fmt.Errorf("遍历tdata目录失败: %v", err)
-	}
-
-	if len(allFiles) == 0 {
-		return nil, fmt.Errorf("tdata目录为空")
-	}
-
-	// 将整个tdata文件夹打包为session数据
-	// 创建一个内存buffer来存储所有文件的数据
-	var sessionData bytes.Buffer
-
-	// 读取关键文件：key_data, key_datas, auth等
-	keyFiles := []string{"key_data", "key_datas", "auth"}
-	for _, keyFile := range keyFiles {
-		filePath := filepath.Join(tdataPath, keyFile)
-		if data, err := os.ReadFile(filePath); err == nil {
-			sessionData.Write(data)
-		}
-
-		// 也在子目录中查找
-		entries, _ := os.ReadDir(tdataPath)
-		for _, entry := range entries {
-			if entry.IsDir() && len(entry.Name()) == 16 {
-				subFilePath := filepath.Join(tdataPath, entry.Name(), keyFile)
-				if data, err := os.ReadFile(subFilePath); err == nil {
-					sessionData.Write(data)
-				}
-			}
-		}
-	}
-
-	// 如果关键文件都没有，读取所有文件（最多前几个文件，避免太大）
-	if sessionData.Len() == 0 && len(allFiles) > 0 {
-		maxFiles := 10
-		if len(allFiles) < maxFiles {
-			maxFiles = len(allFiles)
-		}
-		for i := 0; i < maxFiles; i++ {
-			if data, err := os.ReadFile(allFiles[i]); err == nil && len(data) < 1024*1024 { // 限制单个文件1MB
-				sessionData.Write(data)
-			}
-		}
-	}
-
-	if sessionData.Len() == 0 {
-		return nil, fmt.Errorf("tdata目录中未找到有效的session数据")
-	}
-
-	// 将tdata转换为base64字符串
-	sessionString := base64.StdEncoding.EncodeToString(sessionData.Bytes())
-
-	// 尝试从路径或文件中提取手机号
+	// 尝试从路径中提取手机号
 	phone := p.extractPhoneFromPath(tdataPath)
 	if phone == "" {
 		phone = "unknown"
 	}
 
+	// 使用SessionConverter转换tdata文件夹
+	sessionData, err := p.sessionConverter.LoadTDataSession(tdataPath, phone)
+	if err != nil {
+		p.logger.Warn("使用TData转换器解析失败", zap.String("path", tdataPath), zap.Error(err))
+		return nil, fmt.Errorf("解析tdata文件夹失败: %w", err)
+	}
+
+	// 成功转换，使用转换后的数据
 	return &ParsedAccount{
-		Phone:       phone,
-		SessionData: sessionString,
+		Phone:       sessionData.Phone,
+		SessionData: sessionData.EncodedData,
 		Source:      "tdata",
 	}, nil
 }

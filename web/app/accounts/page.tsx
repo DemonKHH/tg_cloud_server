@@ -14,8 +14,16 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { Plus, Search, Filter, MoreVertical, CheckCircle2, XCircle, AlertCircle, Upload, FileArchive } from "lucide-react"
-import { accountAPI } from "@/lib/api"
+import { accountAPI, proxyAPI } from "@/lib/api"
 import { useState, useEffect, useRef } from "react"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { Label } from "@/components/ui/label"
 
 export default function AccountsPage() {
   const [accounts, setAccounts] = useState<any[]>([])
@@ -25,11 +33,41 @@ export default function AccountsPage() {
   const [search, setSearch] = useState("")
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [selectedProxy, setSelectedProxy] = useState<string>("")
+  const [proxies, setProxies] = useState<any[]>([])
+  const [loadingProxies, setLoadingProxies] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     loadAccounts()
   }, [page])
+
+  useEffect(() => {
+    if (uploadDialogOpen) {
+      loadProxies()
+    }
+  }, [uploadDialogOpen])
+
+  const loadProxies = async () => {
+    try {
+      setLoadingProxies(true)
+      // 获取所有代理，前端过滤活跃的
+      const response = await proxyAPI.list({ page: 1, limit: 100 })
+      if (response.data) {
+        const data = response.data as any
+        // 过滤出活跃状态的代理
+        const activeProxies = (data.items || []).filter(
+          (proxy: any) => proxy.status === 'active' || proxy.is_active === true
+        )
+        setProxies(activeProxies)
+      }
+    } catch (error) {
+      console.error("加载代理失败:", error)
+      // 不显示错误提示，因为代理是可选的
+    } finally {
+      setLoadingProxies(false)
+    }
+  }
 
   const loadAccounts = async () => {
     try {
@@ -95,7 +133,10 @@ export default function AccountsPage() {
 
     try {
       setUploading(true)
-      const response = await accountAPI.uploadFiles(file)
+      
+      // 如果选择了代理，传递代理ID
+      const proxyId = selectedProxy ? parseInt(selectedProxy) : undefined
+      const response = await accountAPI.uploadFiles(file, proxyId)
       
       if (response.data) {
         const data = response.data as any
@@ -105,24 +146,38 @@ export default function AccountsPage() {
 
         if (created > 0) {
           toast.success(`成功创建 ${created} 个账号${failed > 0 ? `，失败 ${failed} 个` : ''}`)
-          setUploadDialogOpen(false)
-          loadAccounts() // 重新加载账号列表
           
-          // 如果有错误信息，显示详细信息
+          // 如果有错误信息，显示详细信息（最多显示前3个）
           if (failed > 0 && data.errors && data.errors.length > 0) {
+            const errorMsg = data.errors.slice(0, 3).join('; ')
+            if (data.errors.length > 3) {
+              toast.warning(`${errorMsg}... (共 ${data.errors.length} 个错误)`)
+            } else {
+              toast.warning(`部分账号创建失败: ${errorMsg}`)
+            }
             console.warn("创建账号时的错误：", data.errors)
           }
+          
+          setUploadDialogOpen(false)
+          setSelectedProxy("") // 重置代理选择
+          loadAccounts() // 重新加载账号列表
         } else {
-          toast.error(`未能创建任何账号。${data.errors?.length > 0 ? '错误：' + data.errors.join(', ') : ''}`)
+          // 所有账号都创建失败
+          const errorMsg = data.errors?.length > 0 
+            ? data.errors.slice(0, 3).join('; ')
+            : '未知错误'
+          toast.error(`未能创建任何账号。${errorMsg}${data.errors?.length > 3 ? '...' : ''}`)
         }
       } else {
         toast.success("文件上传成功")
         setUploadDialogOpen(false)
+        setSelectedProxy("") // 重置代理选择
         loadAccounts()
       }
     } catch (error: any) {
       console.error("上传账号文件失败:", error)
-      toast.error(error.message || "上传账号文件失败")
+      const errorMsg = error.message || "上传账号文件失败"
+      toast.error(errorMsg)
     } finally {
       setUploading(false)
       // 清空文件输入
@@ -151,23 +206,25 @@ export default function AccountsPage() {
                   上传账号文件
                 </Button>
               </DialogTrigger>
-              <DialogContent>
+              <DialogContent className="sm:max-w-[500px]">
                 <DialogHeader>
                   <DialogTitle>上传账号文件</DialogTitle>
                   <DialogDescription>
-                    支持上传 .zip、.session 文件或 tdata 文件夹。系统将自动解析并创建账号。
+                    支持上传 .zip、.session 文件或 tdata 文件夹。系统将自动解析 Session/TData 格式并转换为 SessionString。
                   </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4 py-4">
+                  {/* 文件上传区域 */}
                   <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-8 text-center">
                     <FileArchive className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-                    <p className="text-sm text-muted-foreground mb-2">
+                    <p className="text-sm text-muted-foreground mb-2 font-medium">
                       支持的文件格式：
                     </p>
-                    <ul className="text-xs text-muted-foreground space-y-1 mb-4">
+                    <ul className="text-xs text-muted-foreground space-y-1 mb-4 text-left max-w-xs mx-auto">
                       <li>• .zip 压缩包（可包含多个账号文件）</li>
-                      <li>• .session 文件（gotd/td格式）</li>
-                      <li>• tdata 文件夹（Telegram Desktop格式）</li>
+                      <li>• .session 文件（Pyrogram 格式）</li>
+                      <li>• tdata 文件夹（Telegram Desktop 格式）</li>
+                      <li>• gotd/td 格式 session 文件</li>
                     </ul>
                     <Input
                       ref={fileInputRef}
@@ -187,9 +244,46 @@ export default function AccountsPage() {
                     </Button>
                     {uploading && (
                       <p className="text-sm text-muted-foreground mt-2">
-                        正在解析文件，请稍候...
+                        正在解析文件并转换格式，请稍候...
                       </p>
                     )}
+                  </div>
+
+                  {/* 代理选择（可选） */}
+                  <div className="space-y-2">
+                    <Label htmlFor="proxy-select">选择代理（可选）</Label>
+                    <Select
+                      value={selectedProxy}
+                      onValueChange={setSelectedProxy}
+                      disabled={uploading || loadingProxies}
+                    >
+                      <SelectTrigger id="proxy-select">
+                        <SelectValue placeholder={loadingProxies ? "加载中..." : "不绑定代理"} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="">不绑定代理</SelectItem>
+                        {proxies.map((proxy) => (
+                          <SelectItem key={proxy.id} value={String(proxy.id)}>
+                            {proxy.host}:{proxy.port} {proxy.username && `(${proxy.username})`}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {proxies.length === 0 && !loadingProxies && (
+                      <p className="text-xs text-muted-foreground">
+                        暂无可用代理，可以在代理管理中添加
+                      </p>
+                    )}
+                  </div>
+
+                  {/* 提示信息 */}
+                  <div className="bg-muted/50 rounded-lg p-3 text-xs text-muted-foreground">
+                    <p className="font-medium mb-1">提示：</p>
+                    <ul className="space-y-1 list-disc list-inside">
+                      <li>系统会自动识别文件格式并转换为 SessionString</li>
+                      <li>如果文件包含手机号信息，会自动提取</li>
+                      <li>单个文件最大支持 100MB</li>
+                    </ul>
                   </div>
                 </div>
               </DialogContent>

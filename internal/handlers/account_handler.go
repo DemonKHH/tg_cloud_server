@@ -2,6 +2,10 @@ package handlers
 
 import (
 	"fmt"
+	"io"
+	"mime/multipart"
+	"os"
+	"path/filepath"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
@@ -16,6 +20,7 @@ import (
 // AccountHandler 账号管理处理器
 type AccountHandler struct {
 	accountService *services.AccountService
+	accountParser  *services.AccountParser
 	logger         *zap.Logger
 }
 
@@ -23,6 +28,7 @@ type AccountHandler struct {
 func NewAccountHandler(accountService *services.AccountService) *AccountHandler {
 	return &AccountHandler{
 		accountService: accountService,
+		accountParser:  services.NewAccountParser(),
 		logger:         logger.Get().Named("account_handler"),
 	}
 }
@@ -468,12 +474,14 @@ func (h *AccountHandler) getIntParam(c *gin.Context, param string, defaultValue 
 
 // UploadAccountFiles 批量上传账号信息
 // @Summary 批量上传账号信息
-// @Description 批量上传Telegram账号信息（直接接收phone和sessionString），创建账号
+// @Description 批量上传Telegram账号信息，支持文件上传（zip、.session、tdata）或直接上传JSON数据
 // @Tags 账号管理
-// @Accept json
+// @Accept multipart/form-data,application/json
 // @Produce json
 // @Security ApiKeyAuth
-// @Param request body models.BatchUploadAccountRequest true "批量账号信息"
+// @Param file formData file false "账号文件（zip、.session或tdata文件夹）"
+// @Param request body models.BatchUploadAccountRequest false "批量账号信息（JSON格式，与file二选一）"
+// @Param proxy_id formData string false "代理ID"
 // @Success 200 {object} map[string]interface{} "上传结果"
 // @Failure 400 {object} map[string]string "请求错误"
 // @Failure 401 {object} map[string]string "未授权"
@@ -485,7 +493,24 @@ func (h *AccountHandler) UploadAccountFiles(c *gin.Context) {
 		return
 	}
 
-	// 解析请求体
+	// 获取代理ID（可选）
+	var proxyID *uint64
+	if proxyIDStr := c.PostForm("proxy_id"); proxyIDStr != "" {
+		if id, err := strconv.ParseUint(proxyIDStr, 10, 64); err == nil {
+			proxyID = &id
+		}
+	}
+
+	// 检查是否是文件上传
+	file, header, err := c.Request.FormFile("file")
+	if err == nil {
+		// 文件上传模式
+		defer file.Close()
+		h.handleFileUpload(c, userID, file, header, proxyID)
+		return
+	}
+
+	// JSON 上传模式（向后兼容）
 	var req models.BatchUploadAccountRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		h.logger.Warn("解析请求失败", zap.Error(err))
@@ -496,6 +521,11 @@ func (h *AccountHandler) UploadAccountFiles(c *gin.Context) {
 	if len(req.Accounts) == 0 {
 		response.InvalidParam(c, "账号列表不能为空")
 		return
+	}
+
+	// 使用请求中的proxy_id，如果没有则使用form中的
+	if req.ProxyID == nil {
+		req.ProxyID = proxyID
 	}
 
 	// 批量创建账号
@@ -528,4 +558,115 @@ func (h *AccountHandler) UploadAccountFiles(c *gin.Context) {
 		zap.Int("failed", len(errors)))
 
 	response.SuccessWithMessage(c, fmt.Sprintf("成功创建 %d 个账号，失败 %d 个", len(createdAccounts), len(errors)), result)
+}
+
+// handleFileUpload 处理文件上传
+func (h *AccountHandler) handleFileUpload(c *gin.Context, userID uint64, file multipart.File, header *multipart.FileHeader, proxyID *uint64) {
+	// 验证文件大小（100MB限制）
+	if header.Size > 100*1024*1024 {
+		response.InvalidParam(c, "文件大小超过100MB限制")
+		return
+	}
+
+	// 创建临时文件
+	tempDir, err := os.MkdirTemp("", "account_upload_*")
+	if err != nil {
+		h.logger.Error("创建临时目录失败", zap.Error(err))
+		response.InternalError(c, "创建临时目录失败")
+		return
+	}
+	defer os.RemoveAll(tempDir)
+
+	// 保存上传的文件
+	fileName := header.Filename
+	tempFilePath := filepath.Join(tempDir, fileName)
+
+	dst, err := os.Create(tempFilePath)
+	if err != nil {
+		h.logger.Error("创建临时文件失败", zap.Error(err))
+		response.InternalError(c, "创建临时文件失败")
+		return
+	}
+
+	_, err = io.Copy(dst, file)
+	dst.Close()
+	if err != nil {
+		h.logger.Error("保存文件失败", zap.Error(err))
+		response.InternalError(c, "保存文件失败")
+		return
+	}
+
+	// 解析账号文件
+	parsedAccounts, err := h.accountParser.ParseAccountFiles(tempFilePath)
+	if err != nil {
+		h.logger.Error("解析账号文件失败", zap.Error(err))
+		response.InvalidParam(c, "解析账号文件失败: "+err.Error())
+		return
+	}
+
+	if len(parsedAccounts) == 0 {
+		response.InvalidParam(c, "未能从文件中解析出账号信息")
+		return
+	}
+
+	// 转换为上传数据格式
+	var uploadItems []models.AccountUploadItem
+	var parseErrors []string
+
+	for _, account := range parsedAccounts {
+		if account.Error != "" {
+			parseErrors = append(parseErrors, fmt.Sprintf("账号 %s: %s", account.Phone, account.Error))
+			continue
+		}
+
+		if account.Phone == "" || account.SessionData == "" {
+			parseErrors = append(parseErrors, fmt.Sprintf("账号数据不完整: Phone=%s", account.Phone))
+			continue
+		}
+
+		uploadItems = append(uploadItems, models.AccountUploadItem{
+			Phone:       account.Phone,
+			SessionData: account.SessionData,
+		})
+	}
+
+	if len(uploadItems) == 0 {
+		response.InvalidParam(c, "未能解析出有效的账号信息")
+		return
+	}
+
+	// 批量创建账号
+	createdAccounts, createErrors, err := h.accountService.CreateAccountsFromUploadData(userID, uploadItems, proxyID)
+	if err != nil {
+		h.logger.Error("批量创建账号失败", zap.Error(err))
+		response.InternalError(c, "创建账号失败: "+err.Error())
+		return
+	}
+
+	// 合并解析错误和创建错误
+	allErrors := append(parseErrors, createErrors...)
+
+	result := gin.H{
+		"total":    len(parsedAccounts),
+		"created":  len(createdAccounts),
+		"failed":   len(allErrors),
+		"accounts": createdAccounts,
+	}
+
+	if len(allErrors) > 0 {
+		result["errors"] = allErrors
+		h.logger.Warn("部分账号创建失败",
+			zap.Int("total", len(parsedAccounts)),
+			zap.Int("created", len(createdAccounts)),
+			zap.Int("failed", len(allErrors)))
+	}
+
+	h.logger.Info("账号文件上传完成",
+		zap.Uint64("user_id", userID),
+		zap.String("file", fileName),
+		zap.Int("total", len(parsedAccounts)),
+		zap.Int("created", len(createdAccounts)),
+		zap.Int("failed", len(allErrors)))
+
+	response.SuccessWithMessage(c, fmt.Sprintf("成功创建 %d 个账号，失败 %d 个", len(createdAccounts), len(allErrors)), result)
 }

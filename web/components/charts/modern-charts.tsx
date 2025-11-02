@@ -1,6 +1,7 @@
 "use client"
 
 import { memo, useMemo } from "react"
+import { useTheme } from "next-themes"
 import { 
   LineChart, 
   Line, 
@@ -21,13 +22,43 @@ import {
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { motion } from "framer-motion"
 
-const COLORS = [
-  'oklch(var(--chart-1))',
-  'oklch(var(--chart-2))',
-  'oklch(var(--chart-3))',
-  'oklch(var(--chart-4))',
-  'oklch(var(--chart-5))',
-]
+// 日间模式颜色
+const LIGHT_COLORS = {
+  primary: 'oklch(0.486 0.165 244.531)',
+  foreground: 'oklch(0.15 0 0)',
+  card: 'oklch(1 0 0)',
+  cardForeground: 'oklch(0.15 0 0)',
+  popover: 'oklch(1 0 0)',
+  popoverForeground: 'oklch(0.15 0 0)',
+  border: 'oklch(0.85 0 0)',
+  mutedForeground: 'oklch(0.5 0 0)',
+  chart: [
+    'oklch(0.486 0.165 244.531)',
+    'oklch(0.647 0.176 21.651)',
+    'oklch(0.557 0.147 163.837)',
+    'oklch(0.749 0.134 85.887)',
+    'oklch(0.647 0.165 328.363)',
+  ],
+}
+
+// 夜间模式颜色
+const DARK_COLORS = {
+  primary: 'oklch(0.628 0.185 244.531)',
+  foreground: 'oklch(0.95 0 0)',
+  card: 'oklch(0.12 0.008 240.146)',
+  cardForeground: 'oklch(0.95 0 0)',
+  popover: 'oklch(0.12 0.008 240.146)',
+  popoverForeground: 'oklch(0.95 0 0)',
+  border: 'oklch(0.3 0.015 240.146)',
+  mutedForeground: 'oklch(0.7 0 0)',
+  chart: [
+    'oklch(0.628 0.185 244.531)',
+    'oklch(0.747 0.196 21.651)',
+    'oklch(0.667 0.167 163.837)',
+    'oklch(0.829 0.154 85.887)',
+    'oklch(0.767 0.185 328.363)',
+  ],
+}
 
 interface ChartProps {
   data: any[]
@@ -38,44 +69,63 @@ interface ChartProps {
 }
 
 export const ModernLineChart = memo(function ModernLineChart({ data, title, description, height = 300, className }: ChartProps) {
+  const { theme, resolvedTheme } = useTheme()
+  const isDark = resolvedTheme === 'dark' || theme === 'dark'
+  const colors = isDark ? DARK_COLORS : LIGHT_COLORS
+
   const chartComponent = useMemo(() => (
     <ResponsiveContainer width="100%" height={height} debounce={100}>
       <LineChart data={data}>
         <defs>
           <linearGradient id="colorGradient" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="5%" stopColor="oklch(var(--primary))" stopOpacity={0.8}/>
-            <stop offset="95%" stopColor="oklch(var(--primary))" stopOpacity={0.1}/>
+            <stop offset="5%" stopColor={colors.primary} stopOpacity={0.8}/>
+            <stop offset="95%" stopColor={colors.primary} stopOpacity={0.1}/>
           </linearGradient>
         </defs>
-        <CartesianGrid strokeDasharray="3 3" stroke="oklch(var(--border))" />
+        <CartesianGrid 
+          strokeDasharray="3 3" 
+          stroke={colors.border} 
+          opacity={0.4}
+        />
         <XAxis 
           dataKey="name" 
-          stroke="oklch(var(--muted-foreground))"
+          stroke={colors.foreground}
+          tick={{ fill: colors.foreground }}
           fontSize={12}
         />
         <YAxis 
-          stroke="oklch(var(--muted-foreground))"
+          stroke={colors.foreground}
+          tick={{ fill: colors.foreground }}
           fontSize={12}
         />
         <Tooltip
           contentStyle={{
-            backgroundColor: 'oklch(var(--card))',
-            border: '1px solid oklch(var(--border))',
+            backgroundColor: colors.popover,
+            color: colors.popoverForeground,
+            border: `1px solid ${colors.border}`,
             borderRadius: '8px',
+            padding: '8px 12px',
             boxShadow: '0 4px 12px oklch(0 0 0 / 0.15)',
           }}
+          itemStyle={{
+            color: colors.popoverForeground,
+          }}
+          labelStyle={{
+            color: colors.popoverForeground,
+          }}
+          cursor={{ stroke: colors.border, strokeWidth: 1 }}
         />
         <Line
           type="monotone"
           dataKey="value"
-          stroke="oklch(var(--primary))"
+          stroke={colors.primary}
           strokeWidth={2}
-          dot={{ fill: 'oklch(var(--primary))', strokeWidth: 2, r: 4 }}
-          activeDot={{ r: 6, stroke: 'oklch(var(--primary))', strokeWidth: 2 }}
+          dot={{ fill: colors.primary, strokeWidth: 2, r: 4 }}
+          activeDot={{ r: 6, stroke: colors.primary, strokeWidth: 2 }}
         />
       </LineChart>
     </ResponsiveContainer>
-  ), [data, height])
+  ), [data, height, colors])
 
   return (
     <div className={className}>
@@ -95,43 +145,62 @@ export const ModernLineChart = memo(function ModernLineChart({ data, title, desc
 })
 
 export const ModernAreaChart = memo(function ModernAreaChart({ data, title, description, height = 300, className }: ChartProps) {
+  const { theme, resolvedTheme } = useTheme()
+  const isDark = resolvedTheme === 'dark' || theme === 'dark'
+  const colors = isDark ? DARK_COLORS : LIGHT_COLORS
+
   const chartComponent = useMemo(() => (
     <ResponsiveContainer width="100%" height={height} debounce={100}>
       <AreaChart data={data}>
         <defs>
           <linearGradient id="colorUv" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="5%" stopColor="oklch(var(--primary))" stopOpacity={0.6}/>
-            <stop offset="95%" stopColor="oklch(var(--primary))" stopOpacity={0.1}/>
+            <stop offset="5%" stopColor={colors.primary} stopOpacity={0.6}/>
+            <stop offset="95%" stopColor={colors.primary} stopOpacity={0.1}/>
           </linearGradient>
         </defs>
         <XAxis 
           dataKey="name" 
-          stroke="oklch(var(--muted-foreground))"
+          stroke={colors.foreground}
+          tick={{ fill: colors.foreground }}
           fontSize={12}
         />
         <YAxis 
-          stroke="oklch(var(--muted-foreground))"
+          stroke={colors.foreground}
+          tick={{ fill: colors.foreground }}
           fontSize={12}
         />
-        <CartesianGrid strokeDasharray="3 3" stroke="oklch(var(--border))" />
+        <CartesianGrid 
+          strokeDasharray="3 3" 
+          stroke={colors.border} 
+          opacity={0.4}
+        />
         <Tooltip
           contentStyle={{
-            backgroundColor: 'oklch(var(--card))',
-            border: '1px solid oklch(var(--border))',
+            backgroundColor: colors.popover,
+            color: colors.popoverForeground,
+            border: `1px solid ${colors.border}`,
             borderRadius: '8px',
+            padding: '8px 12px',
             boxShadow: '0 4px 12px oklch(0 0 0 / 0.15)',
           }}
+          itemStyle={{
+            color: colors.popoverForeground,
+          }}
+          labelStyle={{
+            color: colors.popoverForeground,
+          }}
+          cursor={{ stroke: colors.border, strokeWidth: 1 }}
         />
         <Area
           type="monotone"
           dataKey="value"
-          stroke="oklch(var(--primary))"
+          stroke={colors.primary}
           fillOpacity={1}
           fill="url(#colorUv)"
         />
       </AreaChart>
     </ResponsiveContainer>
-  ), [data, height])
+  ), [data, height, colors])
 
   return (
     <div className={className}>
@@ -151,35 +220,54 @@ export const ModernAreaChart = memo(function ModernAreaChart({ data, title, desc
 })
 
 export const ModernBarChart = memo(function ModernBarChart({ data, title, description, height = 300, className }: ChartProps) {
+  const { theme, resolvedTheme } = useTheme()
+  const isDark = resolvedTheme === 'dark' || theme === 'dark'
+  const colors = isDark ? DARK_COLORS : LIGHT_COLORS
+
   const chartComponent = useMemo(() => (
     <ResponsiveContainer width="100%" height={height} debounce={100}>
       <BarChart data={data}>
-        <CartesianGrid strokeDasharray="3 3" stroke="oklch(var(--border))" />
+        <CartesianGrid 
+          strokeDasharray="3 3" 
+          stroke={colors.border} 
+          opacity={0.4}
+        />
         <XAxis 
           dataKey="name" 
-          stroke="oklch(var(--muted-foreground))"
+          stroke={colors.foreground}
+          tick={{ fill: colors.foreground }}
           fontSize={12}
         />
         <YAxis 
-          stroke="oklch(var(--muted-foreground))"
+          stroke={colors.foreground}
+          tick={{ fill: colors.foreground }}
           fontSize={12}
         />
         <Tooltip
           contentStyle={{
-            backgroundColor: 'oklch(var(--card))',
-            border: '1px solid oklch(var(--border))',
+            backgroundColor: colors.popover,
+            color: colors.popoverForeground,
+            border: `1px solid ${colors.border}`,
             borderRadius: '8px',
+            padding: '8px 12px',
             boxShadow: '0 4px 12px oklch(0 0 0 / 0.15)',
           }}
+          itemStyle={{
+            color: colors.popoverForeground,
+          }}
+          labelStyle={{
+            color: colors.popoverForeground,
+          }}
+          cursor={{ stroke: colors.border, strokeWidth: 1 }}
         />
         <Bar 
           dataKey="value" 
-          fill="oklch(var(--primary))"
+          fill={colors.primary}
           radius={[4, 4, 0, 0]}
         />
       </BarChart>
     </ResponsiveContainer>
-  ), [data, height]);
+  ), [data, height, colors]);
 
   return (
     <div className={className}>
@@ -199,6 +287,10 @@ export const ModernBarChart = memo(function ModernBarChart({ data, title, descri
 })
 
 export const ModernPieChart = memo(function ModernPieChart({ data, title, description, height = 300, className }: ChartProps) {
+  const { theme, resolvedTheme } = useTheme()
+  const isDark = resolvedTheme === 'dark' || theme === 'dark'
+  const colors = isDark ? DARK_COLORS : LIGHT_COLORS
+
   const chartComponent = useMemo(() => (
     <ResponsiveContainer width="100%" height={height} debounce={100}>
       <PieChart>
@@ -214,22 +306,35 @@ export const ModernPieChart = memo(function ModernPieChart({ data, title, descri
           {data.map((entry, index) => (
             <Cell 
               key={`cell-${index}`} 
-              fill={COLORS[index % COLORS.length]} 
+              fill={colors.chart[index % colors.chart.length]} 
             />
           ))}
         </Pie>
         <Tooltip
           contentStyle={{
-            backgroundColor: 'oklch(var(--card))',
-            border: '1px solid oklch(var(--border))',
+            backgroundColor: colors.popover,
+            color: colors.popoverForeground,
+            border: `1px solid ${colors.border}`,
             borderRadius: '8px',
+            padding: '8px 12px',
             boxShadow: '0 4px 12px oklch(0 0 0 / 0.15)',
           }}
+          itemStyle={{
+            color: colors.popoverForeground,
+          }}
+          labelStyle={{
+            color: colors.popoverForeground,
+          }}
+          cursor={{ stroke: colors.border, strokeWidth: 1 }}
         />
-        <Legend />
+        <Legend 
+          wrapperStyle={{
+            color: colors.cardForeground,
+          }}
+        />
       </PieChart>
     </ResponsiveContainer>
-  ), [data, height]);
+  ), [data, height, colors]);
 
   return (
     <div className={className}>

@@ -83,7 +83,7 @@ export default function HomePage() {
               <h1 className="text-4xl font-bold tracking-tight sm:text-5xl md:text-6xl lg:text-7xl leading-tight">
                 <span className="gradient-text block">智能化</span>
                 <span className="text-foreground block">TG账号批量管理系统</span>
-              </h1>
+          </h1>
             </motion.div>
 
             {/* 描述文字 */}
@@ -111,7 +111,7 @@ export default function HomePage() {
               >
                 <Play className="mr-2 h-5 w-5" />
                 立即体验
-              </Button>
+            </Button>
               <Button 
                 size="lg" 
                 variant="outline" 
@@ -119,7 +119,7 @@ export default function HomePage() {
               >
                 观看演示
                 <ArrowRight className="ml-2 h-5 w-5" />
-              </Button>
+            </Button>
             </motion.div>
 
             {/* 统计数据 */}
@@ -233,8 +233,8 @@ export default function HomePage() {
                   </CardTitle>
                   <CardDescription className="text-base leading-relaxed">
                     {feature.description}
-                  </CardDescription>
-                </CardHeader>
+              </CardDescription>
+            </CardHeader>
                 <CardContent>
                   <div className="space-y-2">
                     {feature.features.map((item) => (
@@ -245,7 +245,7 @@ export default function HomePage() {
                     ))}
                   </div>
                 </CardContent>
-              </Card>
+          </Card>
             </motion.div>
             ))}
           </div>
@@ -310,9 +310,9 @@ export default function HomePage() {
           </div>
 
           <div className="mt-12 pt-8 border-t border-border/50 flex flex-col md:flex-row justify-between items-center gap-4 max-w-6xl mx-auto">
-            <p className="text-sm text-muted-foreground">
-              © 2024 TG Cloud. All rights reserved. 
-            </p>
+          <p className="text-sm text-muted-foreground">
+            © 2024 TG Cloud. All rights reserved.
+          </p>
             <div className="flex gap-4 text-sm text-muted-foreground">
               <span className="hover:text-primary transition-colors cursor-pointer">隐私政策</span>
               <span className="hover:text-primary transition-colors cursor-pointer">服务条款</span>

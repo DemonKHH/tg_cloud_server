@@ -46,29 +46,29 @@
 :root {
   --radius: 0.625rem;
 
-  /* Light theme - 完全纯白色主题 */
+  /* Light theme - 优化的白色主题 */
   --background: oklch(1 0 0); /* 纯白色背景 */
-  --foreground: oklch(0.1 0 0); /* 纯灰色文字 */
+  --foreground: oklch(0.15 0 0); /* 深灰色文字，确保对比度 */
   --card: oklch(1 0 0); /* 纯白色卡片 */
-  --card-foreground: oklch(0.1 0 0); /* 纯灰色文字 */
+  --card-foreground: oklch(0.15 0 0); /* 深灰色文字 */
   --popover: oklch(1 0 0); /* 纯白色弹窗 */
-  --popover-foreground: oklch(0.1 0 0); /* 纯灰色文字 */
-
+  --popover-foreground: oklch(0.15 0 0); /* 深灰色文字 */
+  
   /* 品牌主色 - 保持蓝色作为强调色 */
   --primary: oklch(0.486 0.165 244.531); /* 现代蓝色 */
   --primary-foreground: oklch(1 0 0); /* 纯白色文字 */
-
-  --secondary: oklch(0.98 0 0); /* 纯浅灰白色 */
-  --secondary-foreground: oklch(0.1 0 0); /* 纯灰色文字 */
-  --muted: oklch(0.97 0 0); /* 纯极浅灰色 */
-  --muted-foreground: oklch(0.45 0 0); /* 纯中灰色 */
-  --accent: oklch(0.98 0 0); /* 纯浅白色强调 */
-  --accent-foreground: oklch(0.1 0 0); /* 纯灰色文字 */
+  
+  --secondary: oklch(0.96 0 0); /* 浅灰色背景，有足够对比度 */
+  --secondary-foreground: oklch(0.15 0 0); /* 深灰色文字 */
+  --muted: oklch(0.94 0 0); /* 更明显的浅灰色 */
+  --muted-foreground: oklch(0.5 0 0); /* 中等灰色文字 */
+  --accent: oklch(0.96 0 0); /* 浅灰色强调 */
+  --accent-foreground: oklch(0.15 0 0); /* 深灰色文字 */
   --destructive: oklch(0.647 0.176 21.651); /* 保持红色 */
   --destructive-foreground: oklch(1 0 0); /* 纯白色文字 */
-
-  --border: oklch(0.9 0 0); /* 纯浅灰色边框 */
-  --input: oklch(0.96 0 0); /* 纯浅色输入框 */
+  
+  --border: oklch(0.85 0 0); /* 更明显的边框灰色 */
+  --input: oklch(0.98 0 0); /* 输入框浅灰背景 */
   --ring: oklch(0.486 0.165 244.531);
 
   /* 现代化图表颜色 */
@@ -78,14 +78,14 @@
   --chart-4: oklch(0.749 0.134 85.887);  /* 黄绿色 */
   --chart-5: oklch(0.647 0.165 328.363); /* 紫红色 */
 
-  /* 现代化侧边栏 - 完全纯白色主题 */
+  /* 现代化侧边栏 - 优化的白色主题 */
   --sidebar: oklch(1 0 0); /* 纯白色侧边栏 */
-  --sidebar-foreground: oklch(0.1 0 0); /* 纯灰色文字 */
+  --sidebar-foreground: oklch(0.15 0 0); /* 深灰色文字，确保对比度 */
   --sidebar-primary: oklch(0.486 0.165 244.531); /* 蓝色保持 */
   --sidebar-primary-foreground: oklch(1 0 0); /* 纯白色文字 */
-  --sidebar-accent: oklch(0.97 0 0); /* 纯浅灰色强调 */
-  --sidebar-accent-foreground: oklch(0.1 0 0); /* 纯灰色文字 */
-  --sidebar-border: oklch(0.9 0 0); /* 纯浅灰色边框 */
+  --sidebar-accent: oklch(0.95 0 0); /* 更明显的浅灰色强调 */
+  --sidebar-accent-foreground: oklch(0.15 0 0); /* 深灰色文字 */
+  --sidebar-border: oklch(0.85 0 0); /* 更明显的边框灰色 */
   --sidebar-ring: oklch(0.486 0.165 244.531); /* 蓝色保持 */
 
   /* 成功、警告色彩 */
@@ -96,29 +96,29 @@
 }
 
 .dark {
-  /* Dark theme - 现代化暗色系 */
+  /* Dark theme - 优化的暗色系 */
   --background: oklch(0.08 0.005 240.146); /* 深色背景 */
-  --foreground: oklch(0.95 0.005 106.412);
+  --foreground: oklch(0.95 0 0); /* 纯白色文字，确保对比度 */
   --card: oklch(0.12 0.008 240.146);
-  --card-foreground: oklch(0.95 0.005 106.412);
+  --card-foreground: oklch(0.95 0 0); /* 纯白色文字 */
   --popover: oklch(0.12 0.008 240.146);
-  --popover-foreground: oklch(0.95 0.005 106.412);
-
+  --popover-foreground: oklch(0.95 0 0); /* 纯白色文字 */
+  
   /* 暗色主题品牌色 */
   --primary: oklch(0.628 0.185 244.531); /* 更亮的蓝色 */
   --primary-foreground: oklch(0.08 0.005 240.146);
-
+  
   --secondary: oklch(0.18 0.012 240.146);
-  --secondary-foreground: oklch(0.9 0.005 106.412);
+  --secondary-foreground: oklch(0.9 0 0); /* 纯浅色文字 */
   --muted: oklch(0.18 0.012 240.146);
-  --muted-foreground: oklch(0.65 0.012 240.146);
+  --muted-foreground: oklch(0.7 0 0); /* 更明显的灰色文字 */
   --accent: oklch(0.22 0.015 240.146);
-  --accent-foreground: oklch(0.9 0.005 106.412);
+  --accent-foreground: oklch(0.9 0 0); /* 纯浅色文字 */
   --destructive: oklch(0.747 0.196 21.651); /* 暗色红色 */
   --destructive-foreground: oklch(0.08 0.005 240.146);
-
-  --border: oklch(0.25 0.015 240.146);
-  --input: oklch(0.25 0.015 240.146);
+  
+  --border: oklch(0.3 0.015 240.146); /* 更明显的边框 */
+  --input: oklch(0.2 0.015 240.146); /* 更明显的输入框背景 */
   --ring: oklch(0.628 0.185 244.531);
 
   /* 暗色图表颜色 */
@@ -128,14 +128,14 @@
   --chart-4: oklch(0.829 0.154 85.887);  /* 黄绿色 */
   --chart-5: oklch(0.767 0.185 328.363); /* 紫红色 */
 
-  /* 暗色侧边栏 */
+  /* 暗色侧边栏 - 优化对比度 */
   --sidebar: oklch(0.1 0.006 240.146);
-  --sidebar-foreground: oklch(0.9 0.005 106.412);
+  --sidebar-foreground: oklch(0.95 0 0); /* 纯白色文字 */
   --sidebar-primary: oklch(0.628 0.185 244.531);
   --sidebar-primary-foreground: oklch(0.08 0.005 240.146);
   --sidebar-accent: oklch(0.22 0.015 240.146);
-  --sidebar-accent-foreground: oklch(0.9 0.005 106.412);
-  --sidebar-border: oklch(0.25 0.015 240.146);
+  --sidebar-accent-foreground: oklch(0.9 0 0); /* 纯浅色文字 */
+  --sidebar-border: oklch(0.3 0.015 240.146); /* 更明显的边框 */
   --sidebar-ring: oklch(0.628 0.185 244.531);
 
   /* 暗色成功、警告 */
@@ -195,16 +195,16 @@
       0 4px 6px -4px oklch(0 0 0 / 0.3);
   }
 
-  /* 现代化玻璃效果 - 纯白色主题 */
+  /* 现代化玻璃效果 - 优化主题适配 */
   .glass-effect {
     background: oklch(1 0 0 / 0.9);
     backdrop-filter: blur(12px);
-    border: 1px solid oklch(0.88 0 0 / 0.2);
+    border: 1px solid oklch(0.85 0 0 / 0.3);
   }
-
+  
   .dark .glass-effect {
-    background: oklch(0.08 0.005 240.146 / 0.8);
-    border: 1px solid oklch(0.25 0.015 240.146 / 0.2);
+    background: oklch(0.08 0.005 240.146 / 0.85);
+    border: 1px solid oklch(0.3 0.015 240.146 / 0.3);
   }
 
   /* 现代化按钮动效 */
@@ -265,14 +265,15 @@
     @apply grid-cols-1 md:grid-cols-2;
   }
 
-  /* 渐变文字效果 */
+  /* 渐变文字效果 - 直接使用主色确保在所有主题下都可见 */
   .gradient-text {
-    background: linear-gradient(135deg, 
-      oklch(var(--primary)), 
-      oklch(var(--primary) / 0.8)
-    );
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
+    /* 直接使用主色，确保文字始终可见 */
+    color: oklch(0.486 0.165 244.531);
+    font-weight: 700;
+  }
+  
+  /* 暗色模式下使用更亮的蓝色 */
+  .dark .gradient-text {
+    color: oklch(0.628 0.185 244.531);
   }
 }

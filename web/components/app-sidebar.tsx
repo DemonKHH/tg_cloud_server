@@ -58,7 +58,7 @@ export function AppSidebar() {
              >
                <Zap className="h-4 w-4 text-primary-foreground" />
              </motion.div>
-             <h1 className="text-xl font-bold text-sidebar-foreground gradient-text group-data-[collapsible=icon]:hidden">
+             <h1 className="text-xl font-bold gradient-text group-data-[collapsible=icon]:hidden">
                TG Cloud
              </h1>
            </div>

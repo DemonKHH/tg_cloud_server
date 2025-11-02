@@ -36,7 +36,7 @@ export function Header() {
           <Input
             type="search"
             placeholder="搜索账号、任务、代理..."
-            className="pl-9 input-modern bg-background/50"
+            className="pl-9 input-modern bg-input"
           />
         </div>
       </div>

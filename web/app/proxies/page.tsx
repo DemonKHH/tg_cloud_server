@@ -9,6 +9,7 @@ import { proxyAPI } from "@/lib/api"
 import { useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { ModernTable } from "@/components/ui/modern-table"
+import { cn } from "@/lib/utils"
 import {
   Dialog,
   DialogContent,
@@ -24,6 +25,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -31,7 +38,6 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
-import { cn } from "@/lib/utils"
 import { usePagination } from "@/hooks/use-pagination"
 import { PageHeader } from "@/components/common/page-header"
 import { FilterBar } from "@/components/common/filter-bar"
@@ -371,36 +377,70 @@ export default function ProxiesPage() {
             {
               key: 'actions',
               title: '操作',
-              width: '120px',
+              width: '140px',
               render: (_, record) => (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon" className="h-8 w-8">
-                      <MoreVertical className="h-4 w-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent className="glass-effect" align="end">
-                    <DropdownMenuItem 
-                      onClick={() => handleTestProxy(record)}
-                      disabled={testingProxy === record.id}
-                    >
-                      <TestTube className="h-4 w-4 mr-2" />
-                      {testingProxy === record.id ? "测试中..." : "测试代理"}
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => handleEditProxy(record)}>
-                      <Pencil className="h-4 w-4 mr-2" />
-                      编辑代理
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem 
-                      onClick={() => handleDeleteProxy(record)}
-                      className="text-destructive"
-                    >
-                      <Trash2 className="h-4 w-4 mr-2" />
-                      删除代理
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                <TooltipProvider>
+                  <div className="flex items-center gap-1">
+                    {/* 测试代理 */}
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className={cn(
+                            "h-8 w-8",
+                            testingProxy === record.id
+                              ? "opacity-50 cursor-not-allowed text-muted-foreground"
+                              : "hover:bg-orange-50 text-orange-600 hover:text-orange-700"
+                          )}
+                          disabled={testingProxy === record.id}
+                          onClick={() => handleTestProxy(record)}
+                        >
+                          <TestTube className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="top">
+                        <p className="text-xs">
+                          {testingProxy === record.id ? "测试中..." : "测试代理连接"}
+                        </p>
+                      </TooltipContent>
+                    </Tooltip>
+
+                    {/* 编辑代理 */}
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 hover:bg-blue-50 text-blue-600 hover:text-blue-700"
+                          onClick={() => handleEditProxy(record)}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="top">
+                        <p className="text-xs">编辑代理配置</p>
+                      </TooltipContent>
+                    </Tooltip>
+
+                    {/* 删除代理 */}
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 hover:bg-red-50 text-red-600 hover:text-red-700"
+                          onClick={() => handleDeleteProxy(record)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="top">
+                        <p className="text-xs">删除代理 (不可恢复)</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
+                </TooltipProvider>
               )
             }
           ]}

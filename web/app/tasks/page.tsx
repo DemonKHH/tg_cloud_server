@@ -25,6 +25,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -288,6 +294,81 @@ export default function TasksPage() {
       const errorMessage = error?.response?.data?.msg || error.message || "停止任务失败"
       toast.error(errorMessage)
     }
+  }
+
+  // 检查操作是否可用
+  const isActionEnabled = (action: string, status: string) => {
+    switch (action) {
+      case 'start':
+        return status === 'pending'
+      case 'pause':
+        return status === 'running'
+      case 'resume':
+        return status === 'paused'
+      case 'stop':
+        return ['running', 'paused', 'queued'].includes(status)
+      case 'cancel':
+        return ['pending', 'queued'].includes(status)
+      case 'retry':
+        return ['failed', 'cancelled'].includes(status)
+      default:
+        return false
+    }
+  }
+
+  // 获取操作按钮的提示信息
+  const getActionTooltip = (action: string, status: string) => {
+    const statusText = getStatusText(status)
+    const enabled = isActionEnabled(action, status)
+    
+    switch (action) {
+      case 'start':
+        return enabled ? '启动任务' : `启动任务 - 只有待执行的任务才能启动（当前: ${statusText}）`
+      case 'pause':
+        return enabled ? '暂停任务' : `暂停任务 - 只有运行中的任务才能暂停（当前: ${statusText}）`
+      case 'resume':
+        return enabled ? '恢复任务' : `恢复任务 - 只有已暂停的任务才能恢复（当前: ${statusText}）`
+      case 'stop':
+        return enabled ? '停止任务' : `停止任务 - 只有运行中、暂停或排队的任务才能停止（当前: ${statusText}）`
+      case 'cancel':
+        return enabled ? '取消任务' : `取消任务 - 只有待执行或排队的任务才能取消（当前: ${statusText}）`
+      case 'retry':
+        return enabled ? '重试任务' : `重试任务 - 只有失败或已取消的任务才能重试（当前: ${statusText}）`
+      case 'logs':
+        return '查看任务日志'
+      default:
+        return '操作不可用'
+    }
+  }
+
+  // 渲染操作按钮
+  const renderActionButton = (action: string, record: any, icon: React.ReactNode, handler: () => void, colorClass?: string) => {
+    const enabled = isActionEnabled(action, record.status)
+    const tooltip = getActionTooltip(action, record.status)
+    
+    return (
+      <Tooltip key={action}>
+        <TooltipTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon"
+            className={cn(
+              "h-8 w-8",
+              enabled 
+                ? colorClass || "hover:bg-primary/10 text-primary" 
+                : "opacity-40 cursor-not-allowed text-muted-foreground"
+            )}
+            disabled={!enabled}
+            onClick={enabled ? handler : undefined}
+          >
+            {icon}
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="top">
+          <p className="text-xs">{tooltip}</p>
+        </TooltipContent>
+      </Tooltip>
+    )
   }
 
   // 查看日志
@@ -647,60 +728,82 @@ export default function TasksPage() {
             {
               key: 'actions',
               title: '操作',
-              width: '120px',
+              width: '240px',
               render: (_, record) => (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon" className="h-8 w-8">
-                      <MoreVertical className="h-4 w-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent className="glass-effect" align="end">
-                    <DropdownMenuItem onClick={() => handleViewLogs(record)}>
-                      <FileText className="h-4 w-4 mr-2" />
-                      查看日志
-                    </DropdownMenuItem>
-                    
-                    {/* 任务控制操作 */}
-                    {record.status === 'pending' && (
-                      <DropdownMenuItem onClick={() => handleStartTask(record)}>
-                        <Play className="h-4 w-4 mr-2" />
-                        启动任务
-                      </DropdownMenuItem>
+                <TooltipProvider>
+                  <div className="flex items-center gap-1">
+                    {/* 查看日志 - 始终可用 */}
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 hover:bg-blue-50 text-blue-600 hover:text-blue-700"
+                          onClick={() => handleViewLogs(record)}
+                        >
+                          <FileText className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="top">
+                        <p className="text-xs">查看任务日志</p>
+                      </TooltipContent>
+                    </Tooltip>
+
+                    {/* 启动任务 */}
+                    {renderActionButton(
+                      'start', 
+                      record, 
+                      <Play className="h-4 w-4" />, 
+                      () => handleStartTask(record),
+                      "hover:bg-green-50 text-green-600 hover:text-green-700"
                     )}
-                    {record.status === 'running' && (
-                      <DropdownMenuItem onClick={() => handlePauseTask(record)}>
-                        <Pause className="h-4 w-4 mr-2" />
-                        暂停任务
-                      </DropdownMenuItem>
+
+                    {/* 暂停任务 */}
+                    {renderActionButton(
+                      'pause', 
+                      record, 
+                      <Pause className="h-4 w-4" />, 
+                      () => handlePauseTask(record),
+                      "hover:bg-orange-50 text-orange-600 hover:text-orange-700"
                     )}
-                    {record.status === 'paused' && (
-                      <DropdownMenuItem onClick={() => handleResumeTask(record)}>
-                        <Play className="h-4 w-4 mr-2" />
-                        恢复任务
-                      </DropdownMenuItem>
+
+                    {/* 恢复任务 */}
+                    {renderActionButton(
+                      'resume', 
+                      record, 
+                      <PlayCircle className="h-4 w-4" />, 
+                      () => handleResumeTask(record),
+                      "hover:bg-emerald-50 text-emerald-600 hover:text-emerald-700"
                     )}
-                    {(record.status === 'running' || record.status === 'paused' || record.status === 'queued') && (
-                      <DropdownMenuItem onClick={() => handleStopTask(record)}>
-                        <Square className="h-4 w-4 mr-2" />
-                        停止任务
-                      </DropdownMenuItem>
+
+                    {/* 停止任务 */}
+                    {renderActionButton(
+                      'stop', 
+                      record, 
+                      <Square className="h-4 w-4" />, 
+                      () => handleStopTask(record),
+                      "hover:bg-red-50 text-red-600 hover:text-red-700"
                     )}
-                    
-                    {(record.status === 'pending' || record.status === 'queued') && (
-                      <DropdownMenuItem onClick={() => handleCancelTask(record)}>
-                        <X className="h-4 w-4 mr-2" />
-                        取消任务
-                      </DropdownMenuItem>
+
+                    {/* 取消任务 */}
+                    {renderActionButton(
+                      'cancel', 
+                      record, 
+                      <X className="h-4 w-4" />, 
+                      () => handleCancelTask(record),
+                      "hover:bg-gray-50 text-gray-600 hover:text-gray-700"
                     )}
-                    {(record.status === 'failed' || record.status === 'cancelled') && (
-                      <DropdownMenuItem onClick={() => handleRetryTask(record)}>
-                        <RefreshCw className="h-4 w-4 mr-2" />
-                        重试任务
-                      </DropdownMenuItem>
+
+                    {/* 重试任务 */}
+                    {renderActionButton(
+                      'retry', 
+                      record, 
+                      <RefreshCw className="h-4 w-4" />, 
+                      () => handleRetryTask(record),
+                      "hover:bg-purple-50 text-purple-600 hover:text-purple-700"
                     )}
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                  </div>
+                </TooltipProvider>
               )
             }
           ]}

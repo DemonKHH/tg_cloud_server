@@ -9,6 +9,7 @@ import { fileAPI } from "@/lib/api"
 import { useState, useRef } from "react"
 import { Badge } from "@/components/ui/badge"
 import { ModernTable } from "@/components/ui/modern-table"
+import { cn } from "@/lib/utils"
 import {
   Dialog,
   DialogContent,
@@ -17,12 +18,11 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import {
   Select,
   SelectContent,
@@ -292,39 +292,81 @@ export default function FilesPage() {
             {
               key: 'actions',
               title: '操作',
-              width: '120px',
+              width: '180px',
               render: (_, record) => (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon" className="h-8 w-8">
-                      <MoreVertical className="h-4 w-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent className="glass-effect" align="end">
-                    <DropdownMenuItem onClick={() => handleDownloadFile(record)}>
-                      <Download className="h-4 w-4 mr-2" />
-                      下载文件
-                    </DropdownMenuItem>
+                <TooltipProvider>
+                  <div className="flex items-center gap-1">
+                    {/* 下载文件 */}
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 hover:bg-green-50 text-green-600 hover:text-green-700"
+                          onClick={() => handleDownloadFile(record)}
+                        >
+                          <Download className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="top">
+                        <p className="text-xs">下载文件</p>
+                      </TooltipContent>
+                    </Tooltip>
+
+                    {/* 预览文件 (仅图片) */}
                     {record.file_type?.startsWith("image/") && (
-                      <DropdownMenuItem onClick={() => handlePreviewFile(record)}>
-                        <Eye className="h-4 w-4 mr-2" />
-                        预览文件
-                      </DropdownMenuItem>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 hover:bg-blue-50 text-blue-600 hover:text-blue-700"
+                            onClick={() => handlePreviewFile(record)}
+                          >
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="top">
+                          <p className="text-xs">预览图片</p>
+                        </TooltipContent>
+                      </Tooltip>
                     )}
-                    <DropdownMenuItem onClick={() => handleGetFileURL(record)}>
-                      <Link2 className="h-4 w-4 mr-2" />
-                      复制URL
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem 
-                      onClick={() => handleDeleteFile(record)}
-                      className="text-destructive"
-                    >
-                      <Trash2 className="h-4 w-4 mr-2" />
-                      删除文件
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+
+                    {/* 复制URL */}
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 hover:bg-purple-50 text-purple-600 hover:text-purple-700"
+                          onClick={() => handleGetFileURL(record)}
+                        >
+                          <Link2 className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="top">
+                        <p className="text-xs">复制文件URL</p>
+                      </TooltipContent>
+                    </Tooltip>
+
+                    {/* 删除文件 */}
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 hover:bg-red-50 text-red-600 hover:text-red-700"
+                          onClick={() => handleDeleteFile(record)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="top">
+                        <p className="text-xs">删除文件 (不可恢复)</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
+                </TooltipProvider>
               )
             }
           ]}

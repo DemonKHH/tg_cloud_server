@@ -20,6 +20,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import { Badge } from "@/components/ui/badge"
 import { ModernTable } from "@/components/ui/modern-table"
 import { cn } from "@/lib/utils"
@@ -557,40 +563,87 @@ export default function AccountsPage() {
             {
               key: 'actions',
               title: '操作',
-              width: '100px',
+              width: '180px',
               render: (_, record) => (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon" className="h-8 w-8">
-                      <MoreVertical className="h-4 w-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent className="glass-effect" align="end">
-                    <DropdownMenuItem onClick={() => handleEditAccount(record)}>
-                      <Pencil className="h-4 w-4 mr-2" />
-                      编辑账号
-                    </DropdownMenuItem>
-                    <DropdownMenuItem 
-                      onClick={() => handleCheckHealth(record)}
-                      disabled={healthChecking === record.id}
-                    >
-                      <Activity className="h-4 w-4 mr-2" />
-                      {healthChecking === record.id ? "检查中..." : "检查健康"}
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => handleBindProxy(record)}>
-                      <Link2 className="h-4 w-4 mr-2" />
-                      绑定代理
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem 
-                      onClick={() => handleDeleteAccount(record)}
-                      className="text-destructive"
-                    >
-                      <Trash2 className="h-4 w-4 mr-2" />
-                      删除账号
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                <TooltipProvider>
+                  <div className="flex items-center gap-1">
+                    {/* 编辑账号 */}
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 hover:bg-blue-50 text-blue-600 hover:text-blue-700"
+                          onClick={() => handleEditAccount(record)}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="top">
+                        <p className="text-xs">编辑账号信息</p>
+                      </TooltipContent>
+                    </Tooltip>
+
+                    {/* 检查健康 */}
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className={cn(
+                            "h-8 w-8",
+                            healthChecking === record.id
+                              ? "opacity-50 cursor-not-allowed text-muted-foreground"
+                              : "hover:bg-green-50 text-green-600 hover:text-green-700"
+                          )}
+                          disabled={healthChecking === record.id}
+                          onClick={() => handleCheckHealth(record)}
+                        >
+                          <Activity className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="top">
+                        <p className="text-xs">
+                          {healthChecking === record.id ? "检查中..." : "检查账号健康"}
+                        </p>
+                      </TooltipContent>
+                    </Tooltip>
+
+                    {/* 绑定代理 */}
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 hover:bg-purple-50 text-purple-600 hover:text-purple-700"
+                          onClick={() => handleBindProxy(record)}
+                        >
+                          <Link2 className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="top">
+                        <p className="text-xs">绑定代理服务器</p>
+                      </TooltipContent>
+                    </Tooltip>
+
+                    {/* 删除账号 */}
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 hover:bg-red-50 text-red-600 hover:text-red-700"
+                          onClick={() => handleDeleteAccount(record)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="top">
+                        <p className="text-xs">删除账号 (不可恢复)</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
+                </TooltipProvider>
               )
             }
           ]}

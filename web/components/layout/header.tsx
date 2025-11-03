@@ -15,9 +15,16 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 import { useTheme } from "next-themes"
 import { motion } from "framer-motion"
+import { useUser } from "@/contexts/user-context"
 
 export function Header() {
   const { theme, setTheme } = useTheme()
+  const { user, loading, logout } = useUser()
+
+  const getInitials = (name: string) => {
+    if (!name) return "U"
+    return name.substring(0, 2).toUpperCase()
+  }
 
   return (
     <motion.header 
@@ -69,7 +76,7 @@ export function Header() {
             <Button variant="ghost" className="relative h-10 w-10 rounded-full btn-modern">
               <Avatar className="h-10 w-10">
                 <AvatarFallback className="bg-primary text-primary-foreground">
-                  U
+                  {loading ? "U" : getInitials(user?.username || "")}
                 </AvatarFallback>
               </Avatar>
             </Button>
@@ -77,9 +84,11 @@ export function Header() {
           <DropdownMenuContent className="w-56 glass-effect" align="end" forceMount>
             <DropdownMenuLabel className="font-normal">
               <div className="flex flex-col space-y-1">
-                <p className="text-sm font-medium leading-none">用户名</p>
+                <p className="text-sm font-medium leading-none">
+                  {loading ? "加载中..." : user?.username || "用户名"}
+                </p>
                 <p className="text-xs leading-none text-muted-foreground">
-                  user@example.com
+                  {loading ? "" : user?.email || ""}
                 </p>
               </div>
             </DropdownMenuLabel>
@@ -93,7 +102,7 @@ export function Header() {
               <span>设置</span>
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem>
+            <DropdownMenuItem onClick={logout}>
               退出登录
             </DropdownMenuItem>
           </DropdownMenuContent>

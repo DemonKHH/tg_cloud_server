@@ -117,49 +117,6 @@ export function AppSidebar() {
             </SidebarGroupContent>
           </SidebarGroup>
         </SidebarContent>
-
-        {/* Footer */}
-        <SidebarFooter>
-          <motion.div 
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 }}
-            className="border-t border-sidebar-border p-4"
-          >
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <div className="flex items-center gap-3 p-2 rounded-lg hover:bg-sidebar-accent transition-colors cursor-pointer">
-                  <motion.div 
-                    whileHover={{ scale: 1.05 }}
-                    className="flex h-10 w-10 items-center justify-center rounded-full bg-linear-to-br from-primary to-primary/80 text-primary-foreground shadow-lg relative"
-                  >
-                    U
-                    {/* Online status indicator */}
-                    <div className="absolute -bottom-0.5 -right-0.5 h-3 w-3 bg-green-500 border-2 border-sidebar rounded-full"></div>
-                  </motion.div>
-                  <div className="flex-1 min-w-0 group-data-[collapsible=icon]:hidden">
-                    <p className="text-sm font-medium text-sidebar-foreground truncate">
-                      用户名
-                    </p>
-                    <p className="text-xs text-muted-foreground truncate flex items-center gap-1">
-                      <span className="status-indicator bg-green-500" />
-                      在线
-                    </p>
-                  </div>
-                </div>
-              </TooltipTrigger>
-              <TooltipContent side="right" className="glass-effect">
-                <div>
-                  <p className="font-medium">用户名</p>
-                  <p className="text-xs text-muted-foreground flex items-center gap-1">
-                    <span className="status-indicator bg-green-500" />
-                    在线
-                  </p>
-                </div>
-              </TooltipContent>
-            </Tooltip>
-          </motion.div>
-        </SidebarFooter>
       </Sidebar>
     </TooltipProvider>
   )

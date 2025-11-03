@@ -50,7 +50,23 @@ export default function TasksPage() {
     account_id: "",
     task_type: "",
     priority: "5",
-    config: "{}",
+    // 私信配置
+    private_targets: "",
+    private_message: "",
+    private_delay: "",
+    // 群发配置
+    broadcast_message: "",
+    broadcast_groups: "",
+    broadcast_channels: "",
+    broadcast_delay: "",
+    // 验证码配置
+    verify_timeout: "30",
+    verify_source: "",
+    verify_pattern: "",
+    // AI炒群配置
+    group_chat_group_id: "",
+    group_chat_duration: "",
+    group_chat_ai_config: "{}",
   })
   const [accounts, setAccounts] = useState<any[]>([])
   const [loadingAccounts, setLoadingAccounts] = useState(false)
@@ -242,9 +258,106 @@ export default function TasksPage() {
       account_id: "",
       task_type: "",
       priority: "5",
-      config: "{}",
+      private_targets: "",
+      private_message: "",
+      private_delay: "",
+      broadcast_message: "",
+      broadcast_groups: "",
+      broadcast_channels: "",
+      broadcast_delay: "",
+      verify_timeout: "30",
+      verify_source: "",
+      verify_pattern: "",
+      group_chat_group_id: "",
+      group_chat_duration: "",
+      group_chat_ai_config: "{}",
     })
     setCreateDialogOpen(true)
+  }
+
+  // 构建任务配置
+  const buildTaskConfig = () => {
+    const config: any = {}
+    
+    switch (createForm.task_type) {
+      case "private_message":
+        if (!createForm.private_targets || !createForm.private_message) {
+          toast.error("请填写目标用户和消息内容")
+          return null
+        }
+        config.targets = createForm.private_targets.split(",").map(t => t.trim()).filter(t => t)
+        config.message = createForm.private_message
+        if (createForm.private_delay) {
+          config.delay_between = parseInt(createForm.private_delay)
+        }
+        break
+        
+      case "broadcast":
+        if (!createForm.broadcast_message) {
+          toast.error("请填写消息内容")
+          return null
+        }
+        if (!createForm.broadcast_groups && !createForm.broadcast_channels) {
+          toast.error("请至少填写一个群组或频道ID")
+          return null
+        }
+        config.message = createForm.broadcast_message
+        if (createForm.broadcast_groups) {
+          config.groups = createForm.broadcast_groups.split(",").map(g => parseInt(g.trim())).filter(g => !isNaN(g))
+        }
+        if (createForm.broadcast_channels) {
+          config.channels = createForm.broadcast_channels.split(",").map(c => parseInt(c.trim())).filter(c => !isNaN(c))
+        }
+        if (createForm.broadcast_delay) {
+          config.delay_between = parseInt(createForm.broadcast_delay)
+        }
+        break
+        
+      case "verify_code":
+        if (createForm.verify_timeout) {
+          config.timeout = parseInt(createForm.verify_timeout)
+        }
+        if (createForm.verify_source) {
+          config.source = createForm.verify_source
+        }
+        if (createForm.verify_pattern) {
+          config.pattern = createForm.verify_pattern
+        }
+        break
+        
+      case "group_chat":
+        if (!createForm.group_chat_group_id) {
+          toast.error("请填写群组ID")
+          return null
+        }
+        config.group_id = parseInt(createForm.group_chat_group_id)
+        if (isNaN(config.group_id)) {
+          toast.error("群组ID必须是数字")
+          return null
+        }
+        if (createForm.group_chat_duration) {
+          config.duration = parseInt(createForm.group_chat_duration)
+        }
+        if (createForm.group_chat_ai_config && createForm.group_chat_ai_config.trim() !== "" && createForm.group_chat_ai_config !== "{}") {
+          try {
+            config.ai_config = JSON.parse(createForm.group_chat_ai_config)
+          } catch (e) {
+            toast.error("AI配置JSON格式错误")
+            return null
+          }
+        }
+        break
+        
+      case "check":
+        // 账号检查任务可能不需要额外配置
+        break
+        
+      default:
+        // 对于未知类型，可以保持空配置
+        break
+    }
+    
+    return config
   }
 
   const handleSaveCreateTask = async () => {
@@ -254,12 +367,9 @@ export default function TasksPage() {
     }
 
     try {
-      let config = {}
-      try {
-        config = JSON.parse(createForm.config)
-      } catch (e) {
-        toast.error("配置JSON格式错误")
-        return
+      const config = buildTaskConfig()
+      if (config === null) {
+        return // buildTaskConfig 已经显示了错误消息
       }
 
       await taskAPI.create({
@@ -539,17 +649,177 @@ export default function TasksPage() {
                   placeholder="5"
                 />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="create-config">任务配置 (JSON)</Label>
-                <Textarea
-                  id="create-config"
-                  value={createForm.config}
-                  onChange={(e) => setCreateForm({ ...createForm, config: e.target.value })}
-                  placeholder='{"key": "value"}'
-                  rows={6}
-                  className="font-mono text-xs"
-                />
-              </div>
+              {/* 根据任务类型显示不同的配置表单 */}
+              {createForm.task_type === "private_message" && (
+                <>
+                  <div className="space-y-2">
+                    <Label htmlFor="private-targets">目标用户（逗号分隔）*</Label>
+                    <Input
+                      id="private-targets"
+                      value={createForm.private_targets}
+                      onChange={(e) => setCreateForm({ ...createForm, private_targets: e.target.value })}
+                      placeholder="username1, username2, +1234567890"
+                      required
+                    />
+                    <p className="text-xs text-muted-foreground">多个用户名或手机号，用逗号分隔</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="private-message">消息内容 *</Label>
+                    <Textarea
+                      id="private-message"
+                      value={createForm.private_message}
+                      onChange={(e) => setCreateForm({ ...createForm, private_message: e.target.value })}
+                      placeholder="输入要发送的消息内容..."
+                      rows={4}
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="private-delay">发送间隔（秒，可选）</Label>
+                    <Input
+                      id="private-delay"
+                      type="number"
+                      min="0"
+                      value={createForm.private_delay}
+                      onChange={(e) => setCreateForm({ ...createForm, private_delay: e.target.value })}
+                      placeholder="0"
+                    />
+                  </div>
+                </>
+              )}
+
+              {createForm.task_type === "broadcast" && (
+                <>
+                  <div className="space-y-2">
+                    <Label htmlFor="broadcast-message">消息内容 *</Label>
+                    <Textarea
+                      id="broadcast-message"
+                      value={createForm.broadcast_message}
+                      onChange={(e) => setCreateForm({ ...createForm, broadcast_message: e.target.value })}
+                      placeholder="输入要群发的消息内容..."
+                      rows={4}
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="broadcast-groups">群组ID（逗号分隔，可选）</Label>
+                    <Input
+                      id="broadcast-groups"
+                      value={createForm.broadcast_groups}
+                      onChange={(e) => setCreateForm({ ...createForm, broadcast_groups: e.target.value })}
+                      placeholder="123456789, 987654321"
+                    />
+                    <p className="text-xs text-muted-foreground">多个群组ID，用逗号分隔</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="broadcast-channels">频道ID（逗号分隔，可选）</Label>
+                    <Input
+                      id="broadcast-channels"
+                      value={createForm.broadcast_channels}
+                      onChange={(e) => setCreateForm({ ...createForm, broadcast_channels: e.target.value })}
+                      placeholder="123456789, 987654321"
+                    />
+                    <p className="text-xs text-muted-foreground">多个频道ID，用逗号分隔</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="broadcast-delay">发送间隔（秒，可选）</Label>
+                    <Input
+                      id="broadcast-delay"
+                      type="number"
+                      min="0"
+                      value={createForm.broadcast_delay}
+                      onChange={(e) => setCreateForm({ ...createForm, broadcast_delay: e.target.value })}
+                      placeholder="0"
+                    />
+                  </div>
+                </>
+              )}
+
+              {createForm.task_type === "verify_code" && (
+                <>
+                  <div className="space-y-2">
+                    <Label htmlFor="verify-timeout">超时时间（秒）</Label>
+                    <Input
+                      id="verify-timeout"
+                      type="number"
+                      min="1"
+                      value={createForm.verify_timeout}
+                      onChange={(e) => setCreateForm({ ...createForm, verify_timeout: e.target.value })}
+                      placeholder="30"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="verify-source">来源过滤（可选）</Label>
+                    <Input
+                      id="verify-source"
+                      value={createForm.verify_source}
+                      onChange={(e) => setCreateForm({ ...createForm, verify_source: e.target.value })}
+                      placeholder="Telegram"
+                    />
+                    <p className="text-xs text-muted-foreground">过滤特定来源的验证码</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="verify-pattern">匹配模式（可选）</Label>
+                    <Input
+                      id="verify-pattern"
+                      value={createForm.verify_pattern}
+                      onChange={(e) => setCreateForm({ ...createForm, verify_pattern: e.target.value })}
+                      placeholder="\\d{6}"
+                    />
+                    <p className="text-xs text-muted-foreground">正则表达式，用于匹配验证码格式</p>
+                  </div>
+                </>
+              )}
+
+              {createForm.task_type === "group_chat" && (
+                <>
+                  <div className="space-y-2">
+                    <Label htmlFor="group-chat-group-id">群组ID *</Label>
+                    <Input
+                      id="group-chat-group-id"
+                      type="number"
+                      value={createForm.group_chat_group_id}
+                      onChange={(e) => setCreateForm({ ...createForm, group_chat_group_id: e.target.value })}
+                      placeholder="123456789"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="group-chat-duration">持续时间（分钟，可选）</Label>
+                    <Input
+                      id="group-chat-duration"
+                      type="number"
+                      min="1"
+                      value={createForm.group_chat_duration}
+                      onChange={(e) => setCreateForm({ ...createForm, group_chat_duration: e.target.value })}
+                      placeholder="60"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="group-chat-ai-config">AI配置（JSON，可选）</Label>
+                    <Textarea
+                      id="group-chat-ai-config"
+                      value={createForm.group_chat_ai_config}
+                      onChange={(e) => setCreateForm({ ...createForm, group_chat_ai_config: e.target.value })}
+                      placeholder='{"persona": "casual", "max_length": 200}'
+                      rows={4}
+                      className="font-mono text-xs"
+                    />
+                  </div>
+                </>
+              )}
+
+              {createForm.task_type === "check" && (
+                <div className="text-sm text-muted-foreground py-2">
+                  账号检查任务无需额外配置，将自动检查账号状态和健康度。
+                </div>
+              )}
+
+              {!createForm.task_type && (
+                <div className="text-sm text-muted-foreground py-2">
+                  请先选择任务类型以显示配置表单
+                </div>
+              )}
             </div>
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => setCreateDialogOpen(false)}>

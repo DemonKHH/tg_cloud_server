@@ -181,6 +181,10 @@ export const taskAPI = {
   update: (id: string, data: any) => apiClient.post(`/tasks/${id}/update`, data),
   cancel: (id: string) => apiClient.post(`/tasks/${id}/cancel`),
   retry: (id: string) => apiClient.post(`/tasks/${id}/retry`),
+  control: (id: string, action: 'start' | 'pause' | 'stop' | 'resume') =>
+    apiClient.post(`/tasks/${id}/control`, { action }),
+  batchControl: (ids: string[], action: 'start' | 'pause' | 'stop' | 'resume' | 'cancel') =>
+    apiClient.post('/tasks/batch/control', { task_ids: ids, action }),
   getLogs: (id: string) => apiClient.get(`/tasks/${id}/logs`),
   getStats: () => apiClient.get('/tasks/stats'),
   batchCancel: (ids: string[]) => apiClient.post('/tasks/batch/cancel', { task_ids: ids }),

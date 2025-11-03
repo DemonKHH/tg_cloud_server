@@ -17,10 +17,16 @@ var (
 	ErrTaskNotFound = errors.New("task not found")
 )
 
+// TaskSchedulerInterface 任务调度器接口
+type TaskSchedulerInterface interface {
+	SubmitTask(task *models.Task) error
+}
+
 // TaskService 任务管理服务
 type TaskService struct {
 	taskRepo    repository.TaskRepository
 	accountRepo repository.AccountRepository
+	scheduler   TaskSchedulerInterface
 	logger      *zap.Logger
 }
 
@@ -29,8 +35,53 @@ func NewTaskService(taskRepo repository.TaskRepository, accountRepo repository.A
 	return &TaskService{
 		taskRepo:    taskRepo,
 		accountRepo: accountRepo,
+		scheduler:   nil, // 稍后通过 SetTaskScheduler 设置
 		logger:      logger.Get().Named("task_service"),
 	}
+}
+
+// SetTaskScheduler 设置任务调度器
+func (s *TaskService) SetTaskScheduler(scheduler TaskSchedulerInterface) {
+	s.scheduler = scheduler
+	s.logger.Info("Task scheduler has been set")
+
+	// 启动时加载所有待处理任务
+	go s.loadPendingTasks()
+}
+
+// loadPendingTasks 加载并提交所有待处理的任务
+func (s *TaskService) loadPendingTasks() {
+	s.logger.Info("Loading pending tasks...")
+
+	// 查找所有pending状态的任务
+	pendingTasks, err := s.taskRepo.GetTasksByStatus(models.TaskStatusPending)
+	if err != nil {
+		s.logger.Error("Failed to load pending tasks", zap.Error(err))
+		return
+	}
+
+	submitted := 0
+	failed := 0
+
+	for _, task := range pendingTasks {
+		if err := s.scheduler.SubmitTask(task); err != nil {
+			failed++
+			logger.LogTask(zapcore.ErrorLevel, "Failed to submit pending task to scheduler",
+				zap.Uint64("task_id", task.ID),
+				zap.String("task_type", string(task.TaskType)),
+				zap.Error(err))
+		} else {
+			submitted++
+			logger.LogTask(zapcore.InfoLevel, "Pending task submitted to scheduler",
+				zap.Uint64("task_id", task.ID),
+				zap.String("task_type", string(task.TaskType)))
+		}
+	}
+
+	s.logger.Info("Finished loading pending tasks",
+		zap.Int("total", len(pendingTasks)),
+		zap.Int("submitted", submitted),
+		zap.Int("failed", failed))
 }
 
 // TaskFilter 任务过滤器
@@ -96,6 +147,32 @@ func (s *TaskService) CreateTask(userID uint64, req *models.CreateTaskRequest) (
 		zap.Uint64("account_id", task.AccountID),
 		zap.Int("priority", task.Priority),
 		zap.Time("created_at", task.CreatedAt))
+
+	// 根据auto_start参数决定是否自动提交任务执行
+	if req.AutoStart && s.scheduler != nil {
+		if err := s.scheduler.SubmitTask(task); err != nil {
+			logger.LogTask(zapcore.ErrorLevel, "Failed to submit task to scheduler",
+				zap.Uint64("task_id", task.ID),
+				zap.String("task_type", string(task.TaskType)),
+				zap.Error(err))
+			// 注意：这里不返回错误，因为任务已经创建成功，只是提交调度失败
+			s.logger.Error("Failed to submit task to scheduler, task will remain pending",
+				zap.Uint64("task_id", task.ID),
+				zap.Error(err))
+		} else {
+			logger.LogTask(zapcore.InfoLevel, "Task auto-submitted to scheduler",
+				zap.Uint64("task_id", task.ID),
+				zap.String("task_type", string(task.TaskType)))
+		}
+	} else if req.AutoStart && s.scheduler == nil {
+		logger.LogTask(zapcore.WarnLevel, "Auto-start requested but no scheduler available",
+			zap.Uint64("task_id", task.ID),
+			zap.String("task_type", string(task.TaskType)))
+	} else {
+		logger.LogTask(zapcore.InfoLevel, "Task created without auto-start",
+			zap.Uint64("task_id", task.ID),
+			zap.String("task_type", string(task.TaskType)))
+	}
 
 	return task, nil
 }
@@ -266,6 +343,160 @@ func (s *TaskService) RetryTask(userID, taskID uint64) (*models.Task, error) {
 		zap.String("new_status", string(task.Status)))
 
 	return task, nil
+}
+
+// StartTask 启动任务
+func (s *TaskService) StartTask(userID, taskID uint64) error {
+	task, err := s.taskRepo.GetByUserIDAndID(userID, taskID)
+	if err != nil {
+		return ErrTaskNotFound
+	}
+
+	// 检查任务状态是否可以启动
+	if task.Status != models.TaskStatusPending && task.Status != models.TaskStatusPaused {
+		return fmt.Errorf("task status %s cannot be started", task.Status)
+	}
+
+	// 提交给调度器
+	if s.scheduler == nil {
+		return fmt.Errorf("task scheduler not available")
+	}
+
+	if err := s.scheduler.SubmitTask(task); err != nil {
+		logger.LogTask(zapcore.ErrorLevel, "Failed to start task",
+			zap.Uint64("task_id", taskID),
+			zap.String("task_type", string(task.TaskType)),
+			zap.Error(err))
+		return fmt.Errorf("failed to start task: %w", err)
+	}
+
+	logger.LogTask(zapcore.InfoLevel, "Task started manually",
+		zap.Uint64("user_id", userID),
+		zap.Uint64("task_id", taskID),
+		zap.String("task_type", string(task.TaskType)))
+
+	return nil
+}
+
+// PauseTask 暂停任务
+func (s *TaskService) PauseTask(userID, taskID uint64) error {
+	task, err := s.taskRepo.GetByUserIDAndID(userID, taskID)
+	if err != nil {
+		return ErrTaskNotFound
+	}
+
+	// 检查任务状态
+	if task.Status != models.TaskStatusQueued && task.Status != models.TaskStatusRunning {
+		return fmt.Errorf("task status %s cannot be paused", task.Status)
+	}
+
+	// 如果任务正在运行，只能等待其完成，但标记为paused状态
+	task.Status = models.TaskStatusPaused
+	if err := s.taskRepo.Update(task); err != nil {
+		logger.LogTask(zapcore.ErrorLevel, "Failed to pause task",
+			zap.Uint64("task_id", taskID),
+			zap.Error(err))
+		return fmt.Errorf("failed to pause task: %w", err)
+	}
+
+	logger.LogTask(zapcore.InfoLevel, "Task paused",
+		zap.Uint64("user_id", userID),
+		zap.Uint64("task_id", taskID),
+		zap.String("task_type", string(task.TaskType)))
+
+	return nil
+}
+
+// StopTask 停止任务（取消）
+func (s *TaskService) StopTask(userID, taskID uint64) error {
+	// 停止任务实际上就是取消任务
+	return s.CancelTask(userID, taskID)
+}
+
+// ResumeTask 恢复任务
+func (s *TaskService) ResumeTask(userID, taskID uint64) error {
+	task, err := s.taskRepo.GetByUserIDAndID(userID, taskID)
+	if err != nil {
+		return ErrTaskNotFound
+	}
+
+	// 检查任务状态
+	if task.Status != models.TaskStatusPaused {
+		return fmt.Errorf("task status %s cannot be resumed", task.Status)
+	}
+
+	// 重新提交给调度器
+	if s.scheduler == nil {
+		return fmt.Errorf("task scheduler not available")
+	}
+
+	// 将状态改回pending
+	task.Status = models.TaskStatusPending
+	if err := s.taskRepo.Update(task); err != nil {
+		return fmt.Errorf("failed to update task status: %w", err)
+	}
+
+	if err := s.scheduler.SubmitTask(task); err != nil {
+		logger.LogTask(zapcore.ErrorLevel, "Failed to resume task",
+			zap.Uint64("task_id", taskID),
+			zap.String("task_type", string(task.TaskType)),
+			zap.Error(err))
+		return fmt.Errorf("failed to resume task: %w", err)
+	}
+
+	logger.LogTask(zapcore.InfoLevel, "Task resumed",
+		zap.Uint64("user_id", userID),
+		zap.Uint64("task_id", taskID),
+		zap.String("task_type", string(task.TaskType)))
+
+	return nil
+}
+
+// BatchControlTasks 批量控制任务
+func (s *TaskService) BatchControlTasks(userID uint64, req *models.BatchTaskControlRequest) (int, error) {
+	successCount := 0
+	var errors []string
+
+	for _, taskID := range req.TaskIDs {
+		var err error
+
+		switch req.Action {
+		case "start":
+			err = s.StartTask(userID, taskID)
+		case "pause":
+			err = s.PauseTask(userID, taskID)
+		case "stop":
+			err = s.StopTask(userID, taskID)
+		case "resume":
+			err = s.ResumeTask(userID, taskID)
+		case "cancel":
+			err = s.CancelTask(userID, taskID)
+		default:
+			err = fmt.Errorf("unsupported action: %s", req.Action)
+		}
+
+		if err != nil {
+			errors = append(errors, fmt.Sprintf("Task %d: %s", taskID, err.Error()))
+			logger.LogTask(zapcore.ErrorLevel, "Batch task control failed",
+				zap.Uint64("task_id", taskID),
+				zap.String("action", req.Action),
+				zap.Error(err))
+		} else {
+			successCount++
+			logger.LogTask(zapcore.InfoLevel, "Batch task control succeeded",
+				zap.Uint64("task_id", taskID),
+				zap.String("action", req.Action))
+		}
+	}
+
+	if len(errors) > 0 {
+		s.logger.Warn("Some tasks in batch control failed",
+			zap.Int("success_count", successCount),
+			zap.Int("failed_count", len(errors)),
+			zap.Strings("errors", errors))
+	}
+
+	return successCount, nil
 }
 
 // BatchCancelTasks 批量取消任务

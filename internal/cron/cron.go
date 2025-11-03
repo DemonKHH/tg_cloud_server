@@ -16,9 +16,13 @@ import (
 	"tg_cloud_server/internal/common/config"
 	"tg_cloud_server/internal/common/logger"
 	"tg_cloud_server/internal/common/metrics"
+	"tg_cloud_server/internal/models"
 	"tg_cloud_server/internal/repository"
 	"tg_cloud_server/internal/services"
 )
+
+// 引入 ConnectionStatus 类型
+type ConnectionStatus = models.ConnectionStatus
 
 // CronService 定时任务服务
 type CronService struct {
@@ -36,7 +40,7 @@ type CronService struct {
 
 	// 连接池接口（可选，用于连接检查）
 	connectionPool interface {
-		GetConnectionStatus(accountID string) interface{ String() string }
+		GetConnectionStatus(accountID string) ConnectionStatus
 		GetStats() map[string]interface{}
 	}
 }
@@ -64,7 +68,7 @@ func NewCronService(
 
 // SetConnectionPool 设置连接池（可选）
 func (s *CronService) SetConnectionPool(pool interface {
-	GetConnectionStatus(accountID string) interface{ String() string }
+	GetConnectionStatus(accountID string) ConnectionStatus
 	GetStats() map[string]interface{}
 }) {
 	s.connectionPool = pool
@@ -286,7 +290,7 @@ func (s *CronService) cleanupExpiredLogs(ctx context.Context) {
 	logManager := logger.NewLogManager(&logConfig)
 	if err := logManager.CleanupOldLogs(); err != nil {
 		s.logger.Error("Failed to cleanup logs using log manager", zap.Error(err))
-		
+
 		// 回退到原有清理逻辑
 		s.fallbackLogCleanup(logConfig)
 	} else {

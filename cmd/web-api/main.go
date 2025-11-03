@@ -26,7 +26,9 @@ import (
 	"tg_cloud_server/internal/handlers"
 	"tg_cloud_server/internal/repository"
 	"tg_cloud_server/internal/routes"
+	"tg_cloud_server/internal/scheduler"
 	"tg_cloud_server/internal/services"
+	"tg_cloud_server/internal/telegram"
 )
 
 func main() {
@@ -99,11 +101,31 @@ func main() {
 	proxyRepo := repository.NewProxyRepository(db)
 	fileRepo := repository.NewFileRepository(db)
 
+	// 初始化Telegram连接池
+	connectionPool := telegram.NewConnectionPool(
+		cfg.Telegram.APIID,
+		cfg.Telegram.APIHash,
+		cfg.Telegram.ConnectionPool.IdleTimeout,
+		accountRepo,
+	)
+	logger.Info("Connection pool initialized",
+		zap.Int("api_id", cfg.Telegram.APIID),
+		zap.Duration("idle_timeout", cfg.Telegram.ConnectionPool.IdleTimeout))
+
+	// 初始化任务调度器
+	taskScheduler := scheduler.NewTaskScheduler(connectionPool, accountRepo, taskRepo)
+	logger.Info("Task scheduler initialized and started")
+
 	// 初始化服务层
 	authService := services.NewAuthService(userRepo, cfg)
 	accountService := services.NewAccountService(accountRepo, proxyRepo)
 	proxyService := services.NewProxyService(proxyRepo)
 	taskService := services.NewTaskService(taskRepo, accountRepo)
+	
+	// 将任务调度器设置到任务服务中
+	taskService.SetTaskScheduler(taskScheduler)
+	logger.Info("Task service connected to task scheduler")
+	
 	fileService := services.NewFileService(fileRepo, map[string]interface{}{
 		"upload_path":   "./uploads",
 		"base_url":      "http://localhost:8080",
@@ -117,6 +139,7 @@ func main() {
 
 	// 初始化定时任务服务
 	cronService := cron.NewCronService(taskService, accountService, userRepo, taskRepo, accountRepo)
+	cronService.SetConnectionPool(connectionPool)
 
 	// 初始化处理器
 	authHandler := handlers.NewAuthHandler(authService)
@@ -230,6 +253,10 @@ func main() {
 
 	// 停止定时任务服务
 	cronService.Stop()
+
+	// 停止任务调度器
+	taskScheduler.Stop()
+	logger.Info("Task scheduler stopped")
 
 	// 优雅关闭服务器
 	if err := server.Shutdown(ctx); err != nil {

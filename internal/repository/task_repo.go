@@ -22,6 +22,7 @@ type TaskRepository interface {
 	// 任务查询
 	GetTaskSummaries(conditions map[string]interface{}, offset, limit int) ([]*models.TaskSummary, int64, error)
 	GetPendingTasks(limit int) ([]*models.Task, error)
+	GetTasksByStatus(status models.TaskStatus) ([]*models.Task, error)
 	GetTasksByAccountID(accountID uint64, statuses []string) ([]*models.Task, error)
 
 	// 任务日志
@@ -164,6 +165,18 @@ func (r *taskRepository) GetPendingTasks(limit int) ([]*models.Task, error) {
 		models.TaskStatusPending, time.Now()).
 		Order("priority DESC, created_at ASC").
 		Limit(limit).
+		Find(&tasks).Error
+	if tasks == nil {
+		tasks = []*models.Task{}
+	}
+	return tasks, err
+}
+
+// GetTasksByStatus 根据状态获取所有任务
+func (r *taskRepository) GetTasksByStatus(status models.TaskStatus) ([]*models.Task, error) {
+	var tasks []*models.Task
+	err := r.db.Where("status = ?", status).
+		Order("priority DESC, created_at ASC").
 		Find(&tasks).Error
 	if tasks == nil {
 		tasks = []*models.Task{}

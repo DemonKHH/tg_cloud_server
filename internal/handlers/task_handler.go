@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
@@ -367,4 +368,111 @@ func (h *TaskHandler) CleanupTasks(c *gin.Context) {
 	response.SuccessWithMessage(c, "任务清理成功", gin.H{
 		"deleted_count": count,
 	})
+}
+
+// ControlTask 控制任务执行
+func (h *TaskHandler) ControlTask(c *gin.Context) {
+	userID, err := utils.GetUserID(c)
+	if err != nil {
+		response.Unauthorized(c, err.Error())
+		return
+	}
+
+	taskIDStr := c.Param("id")
+	taskID, err := strconv.ParseUint(taskIDStr, 10, 64)
+	if err != nil {
+		response.InvalidParam(c, "Invalid task ID")
+		return
+	}
+	
+	var req models.TaskControlRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.InvalidParam(c, err.Error())
+		return
+	}
+
+	var controlErr error
+	switch req.Action {
+	case "start":
+		controlErr = h.taskService.StartTask(userID, taskID)
+	case "pause":
+		controlErr = h.taskService.PauseTask(userID, taskID)
+	case "stop":
+		controlErr = h.taskService.StopTask(userID, taskID)
+	case "resume":
+		controlErr = h.taskService.ResumeTask(userID, taskID)
+	default:
+		response.InvalidParam(c, "Unsupported action")
+		return
+	}
+
+	if controlErr != nil {
+		if controlErr == services.ErrTaskNotFound {
+			response.NotFound(c, "Task not found")
+			return
+		}
+		h.logger.Error("Failed to control task",
+			zap.Uint64("user_id", userID),
+			zap.Uint64("task_id", taskID),
+			zap.String("action", req.Action),
+			zap.Error(controlErr))
+		response.InternalError(c, controlErr.Error())
+		return
+	}
+
+	response.SuccessWithMessage(c, fmt.Sprintf("任务%s成功", getActionName(req.Action)), gin.H{
+		"task_id": taskID,
+		"action":  req.Action,
+	})
+}
+
+// BatchControlTasks 批量控制任务
+func (h *TaskHandler) BatchControlTasks(c *gin.Context) {
+	userID, err := utils.GetUserID(c)
+	if err != nil {
+		response.Unauthorized(c, err.Error())
+		return
+	}
+	
+	var req models.BatchTaskControlRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.InvalidParam(c, err.Error())
+		return
+	}
+
+	successCount, err := h.taskService.BatchControlTasks(userID, &req)
+	if err != nil {
+		h.logger.Error("Failed to batch control tasks",
+			zap.Uint64("user_id", userID),
+			zap.String("action", req.Action),
+			zap.Int("task_count", len(req.TaskIDs)),
+			zap.Error(err))
+		response.InternalError(c, err.Error())
+		return
+	}
+
+	response.SuccessWithMessage(c, fmt.Sprintf("批量%s完成", getActionName(req.Action)), gin.H{
+		"total_tasks":   len(req.TaskIDs),
+		"success_count": successCount,
+		"failed_count":  len(req.TaskIDs) - successCount,
+		"action":        req.Action,
+	})
+}
+
+// getActionName 获取操作的中文名称
+func getActionName(action string) string {
+	switch action {
+	case "start":
+		return "启动"
+	case "pause":
+		return "暂停"
+	case "stop":
+		return "停止"
+	case "resume":
+		return "恢复"
+	case "cancel":
+		return "取消"
+	default:
+		return "控制"
+	}
 }

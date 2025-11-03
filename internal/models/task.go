@@ -26,6 +26,7 @@ const (
 	TaskStatusPending   TaskStatus = "pending"   // 待执行
 	TaskStatusQueued    TaskStatus = "queued"    // 已排队
 	TaskStatusRunning   TaskStatus = "running"   // 执行中
+	TaskStatusPaused    TaskStatus = "paused"    // 已暂停
 	TaskStatusCompleted TaskStatus = "completed" // 已完成
 	TaskStatusFailed    TaskStatus = "failed"    // 失败
 	TaskStatusCancelled TaskStatus = "cancelled" // 已取消
@@ -186,6 +187,7 @@ type CreateTaskRequest struct {
 	Config     TaskConfig `json:"task_config"`
 	Priority   int        `json:"priority,omitempty"`
 	ScheduleAt *time.Time `json:"schedule_at,omitempty"`
+	AutoStart  bool       `json:"auto_start"` // 是否自动开始执行，默认false
 }
 
 // TaskSummary 任务摘要信息
@@ -256,4 +258,15 @@ type BatchCancelRequest struct {
 // CleanupRequest 清理请求
 type CleanupRequest struct {
 	OlderThanDays int `json:"older_than_days" binding:"required,min=1"`
+}
+
+// TaskControlRequest 任务控制请求
+type TaskControlRequest struct {
+	Action string `json:"action" binding:"required,oneof=start pause stop resume"`
+}
+
+// BatchTaskControlRequest 批量任务控制请求
+type BatchTaskControlRequest struct {
+	TaskIDs []uint64 `json:"task_ids" binding:"required"`
+	Action  string   `json:"action" binding:"required,oneof=start pause stop resume cancel"`
 }

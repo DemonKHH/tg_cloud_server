@@ -4,7 +4,7 @@ import { toast } from "sonner"
 import { MainLayout } from "@/components/layout/main-layout"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Plus, X, RefreshCw, CheckCircle2, Clock, PlayCircle, AlertCircle, Ban, FileText, MoreVertical } from "lucide-react"
+import { Plus, X, RefreshCw, CheckCircle2, Clock, PlayCircle, AlertCircle, Ban, FileText, MoreVertical, Pause, Play, Square } from "lucide-react"
 import { taskAPI, accountAPI } from "@/lib/api"
 import { useState, useEffect } from "react"
 import { Badge } from "@/components/ui/badge"
@@ -33,6 +33,7 @@ import {
 } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { Switch } from "@/components/ui/switch"
 import { cn } from "@/lib/utils"
 import { usePagination } from "@/hooks/use-pagination"
 import { PageHeader } from "@/components/common/page-header"
@@ -63,6 +64,7 @@ export default function TasksPage() {
     account_id: "",
     task_type: "",
     priority: "5",
+    auto_start: false, // 是否自动开始执行
     // 账号检查配置
     check_timeout: "2m",
     // 私信配置
@@ -163,6 +165,8 @@ export default function TasksPage() {
         return <Clock className="h-4 w-4 text-yellow-500" />
       case "queued":
         return <Clock className="h-4 w-4 text-blue-500" />
+      case "paused":
+        return <Pause className="h-4 w-4 text-orange-500" />
       case "cancelled":
         return <Ban className="h-4 w-4 text-gray-500" />
       default:
@@ -182,6 +186,8 @@ export default function TasksPage() {
         return "bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-900 dark:text-blue-300 dark:border-blue-800"
       case "pending":
         return "bg-yellow-50 text-yellow-700 border border-yellow-200 dark:bg-yellow-900 dark:text-yellow-300 dark:border-yellow-800"
+      case "paused":
+        return "bg-orange-50 text-orange-700 border border-orange-200 dark:bg-orange-900 dark:text-orange-300 dark:border-orange-800"
       case "cancelled":
         return "bg-gray-50 text-gray-700 border border-gray-200 dark:bg-gray-900 dark:text-gray-300 dark:border-gray-800"
       default:
@@ -194,6 +200,7 @@ export default function TasksPage() {
       pending: "待执行",
       queued: "已排队",
       running: "执行中",
+      paused: "已暂停",
       completed: "已完成",
       failed: "失败",
       cancelled: "已取消",
@@ -231,6 +238,58 @@ export default function TasksPage() {
     }
   }
 
+  // 启动任务
+  const handleStartTask = async (task: any) => {
+    try {
+      await taskAPI.control(String(task.id), 'start')
+      toast.success("任务已启动")
+      refresh()
+    } catch (error: any) {
+      console.error('启动任务失败:', error)
+      const errorMessage = error?.response?.data?.msg || error.message || "启动任务失败"
+      toast.error(errorMessage)
+    }
+  }
+
+  // 暂停任务
+  const handlePauseTask = async (task: any) => {
+    try {
+      await taskAPI.control(String(task.id), 'pause')
+      toast.success("任务已暂停")
+      refresh()
+    } catch (error: any) {
+      console.error('暂停任务失败:', error)
+      const errorMessage = error?.response?.data?.msg || error.message || "暂停任务失败"
+      toast.error(errorMessage)
+    }
+  }
+
+  // 恢复任务
+  const handleResumeTask = async (task: any) => {
+    try {
+      await taskAPI.control(String(task.id), 'resume')
+      toast.success("任务已恢复")
+      refresh()
+    } catch (error: any) {
+      console.error('恢复任务失败:', error)
+      const errorMessage = error?.response?.data?.msg || error.message || "恢复任务失败"
+      toast.error(errorMessage)
+    }
+  }
+
+  // 停止任务
+  const handleStopTask = async (task: any) => {
+    try {
+      await taskAPI.control(String(task.id), 'stop')
+      toast.success("任务已停止")
+      refresh()
+    } catch (error: any) {
+      console.error('停止任务失败:', error)
+      const errorMessage = error?.response?.data?.msg || error.message || "停止任务失败"
+      toast.error(errorMessage)
+    }
+  }
+
   // 查看日志
   const handleViewLogs = async (task: any) => {
     setViewingTask(task)
@@ -244,6 +303,7 @@ export default function TasksPage() {
       account_id: "",
       task_type: "",
       priority: "5",
+      auto_start: false,
       check_timeout: "2m",
       private_targets: "",
       private_message: "",
@@ -438,6 +498,7 @@ export default function TasksPage() {
         account_id: parseInt(createForm.account_id),
         task_type: createForm.task_type,
         priority: parseInt(createForm.priority) || 5,
+        auto_start: createForm.auto_start,
         task_config: config,
       }
 
@@ -493,6 +554,7 @@ export default function TasksPage() {
                 <SelectItem value="pending">待执行</SelectItem>
                 <SelectItem value="queued">已排队</SelectItem>
                 <SelectItem value="running">执行中</SelectItem>
+                <SelectItem value="paused">已暂停</SelectItem>
                 <SelectItem value="completed">已完成</SelectItem>
                 <SelectItem value="failed">失败</SelectItem>
                 <SelectItem value="cancelled">已取消</SelectItem>
@@ -598,6 +660,33 @@ export default function TasksPage() {
                       <FileText className="h-4 w-4 mr-2" />
                       查看日志
                     </DropdownMenuItem>
+                    
+                    {/* 任务控制操作 */}
+                    {record.status === 'pending' && (
+                      <DropdownMenuItem onClick={() => handleStartTask(record)}>
+                        <Play className="h-4 w-4 mr-2" />
+                        启动任务
+                      </DropdownMenuItem>
+                    )}
+                    {record.status === 'running' && (
+                      <DropdownMenuItem onClick={() => handlePauseTask(record)}>
+                        <Pause className="h-4 w-4 mr-2" />
+                        暂停任务
+                      </DropdownMenuItem>
+                    )}
+                    {record.status === 'paused' && (
+                      <DropdownMenuItem onClick={() => handleResumeTask(record)}>
+                        <Play className="h-4 w-4 mr-2" />
+                        恢复任务
+                      </DropdownMenuItem>
+                    )}
+                    {(record.status === 'running' || record.status === 'paused' || record.status === 'queued') && (
+                      <DropdownMenuItem onClick={() => handleStopTask(record)}>
+                        <Square className="h-4 w-4 mr-2" />
+                        停止任务
+                      </DropdownMenuItem>
+                    )}
+                    
                     {(record.status === 'pending' || record.status === 'queued') && (
                       <DropdownMenuItem onClick={() => handleCancelTask(record)}>
                         <X className="h-4 w-4 mr-2" />
@@ -704,6 +793,19 @@ export default function TasksPage() {
                   value={createForm.priority}
                   onChange={(e) => setCreateForm({ ...createForm, priority: e.target.value })}
                   placeholder="5"
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label htmlFor="auto-start">自动执行</Label>
+                  <p className="text-sm text-muted-foreground">
+                    创建任务后立即开始执行
+                  </p>
+                </div>
+                <Switch
+                  id="auto-start"
+                  checked={createForm.auto_start}
+                  onCheckedChange={(checked) => setCreateForm({ ...createForm, auto_start: checked })}
                 />
               </div>
               {/* 根据任务类型显示不同的配置表单 */}

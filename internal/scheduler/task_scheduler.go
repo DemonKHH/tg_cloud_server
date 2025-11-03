@@ -63,6 +63,43 @@ func NewTaskScheduler(
 	return ts
 }
 
+// Stop 停止任务调度器
+func (ts *TaskScheduler) Stop() {
+	ts.logger.Info("Stopping task scheduler...")
+	
+	// 取消上下文，停止调度循环
+	ts.cancel()
+	
+	// 等待正在执行的任务完成（最多等待10秒）
+	deadline := time.Now().Add(10 * time.Second)
+	
+	for time.Now().Before(deadline) {
+		ts.mu.RLock()
+		hasRunningTasks := false
+		
+		for _, queue := range ts.accountQueues {
+			queue.mu.Lock()
+			if queue.processing {
+				hasRunningTasks = true
+			}
+			queue.mu.Unlock()
+			
+			if hasRunningTasks {
+				break
+			}
+		}
+		ts.mu.RUnlock()
+		
+		if !hasRunningTasks {
+			break
+		}
+		
+		time.Sleep(100 * time.Millisecond)
+	}
+	
+	ts.logger.Info("Task scheduler stopped")
+}
+
 // SubmitTask 提交任务到指定账号队列
 func (ts *TaskScheduler) SubmitTask(task *models.Task) error {
 	if task == nil {

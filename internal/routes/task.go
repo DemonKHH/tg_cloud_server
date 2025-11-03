@@ -22,11 +22,13 @@ func SetupTaskRoutes(router *gin.Engine, taskHandler *handlers.TaskHandler, auth
 		taskGroup.POST("/:id/cancel", taskHandler.CancelTask) // 取消任务
 
 		// 任务操作
-		taskGroup.POST("/:id/retry", taskHandler.RetryTask) // 重试任务
-		taskGroup.GET("/:id/logs", taskHandler.GetTaskLogs) // 获取任务日志
+		taskGroup.POST("/:id/retry", taskHandler.RetryTask)     // 重试任务
+		taskGroup.POST("/:id/control", taskHandler.ControlTask) // 控制任务执行（启动、暂停、停止、恢复）
+		taskGroup.GET("/:id/logs", taskHandler.GetTaskLogs)     // 获取任务日志
 
 		// 批量操作（需要高级用户权限）
-		taskGroup.POST("/batch/cancel", middleware.RequirePermission("advanced_features"), taskHandler.BatchCancel) // 批量取消任务
+		taskGroup.POST("/batch/cancel", middleware.RequirePermission("advanced_features"), taskHandler.BatchCancel)         // 批量取消任务
+		taskGroup.POST("/batch/control", middleware.RequirePermission("advanced_features"), taskHandler.BatchControlTasks) // 批量控制任务
 
 		// 统计与监控
 		taskGroup.GET("/stats", taskHandler.GetTaskStats)                                 // 获取任务统计

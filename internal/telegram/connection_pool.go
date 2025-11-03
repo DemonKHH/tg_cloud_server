@@ -9,41 +9,26 @@ import (
 
 	"github.com/gotd/td/telegram"
 	"github.com/gotd/td/telegram/dcs"
-	"github.com/gotd/td/tg"
 	"go.uber.org/zap"
 
 	"tg_cloud_server/internal/common/logger"
+	"tg_cloud_server/internal/models"
 	"tg_cloud_server/internal/repository"
 )
 
-// ConnectionStatus 连接状态枚举
-type ConnectionStatus int
+// 使用 models 包中定义的 ConnectionStatus
+type ConnectionStatus = models.ConnectionStatus
 
 const (
-	StatusDisconnected ConnectionStatus = iota
-	StatusConnecting
-	StatusConnected
-	StatusReconnecting
-	StatusError
+	StatusDisconnected    = models.StatusDisconnected
+	StatusConnecting      = models.StatusConnecting
+	StatusConnected       = models.StatusConnected
+	StatusReconnecting    = models.StatusReconnecting
+	StatusConnectionError = models.StatusConnectionError
 )
 
-// String 返回状态字符串
-func (s ConnectionStatus) String() string {
-	switch s {
-	case StatusDisconnected:
-		return "disconnected"
-	case StatusConnecting:
-		return "connecting"
-	case StatusConnected:
-		return "connected"
-	case StatusReconnecting:
-		return "reconnecting"
-	case StatusError:
-		return "error"
-	default:
-		return "unknown"
-	}
-}
+// 添加别名以保持向下兼容
+const StatusError = StatusConnectionError
 
 // ManagedConnection 托管连接封装
 type ManagedConnection struct {
@@ -444,10 +429,4 @@ func (cp *ConnectionPool) Close() {
 
 	cp.connections = make(map[string]*ManagedConnection)
 	cp.configs = make(map[string]*ClientConfig)
-}
-
-// TaskInterface 任务接口
-type TaskInterface interface {
-	Execute(ctx context.Context, api *tg.Client) error
-	GetType() string
 }

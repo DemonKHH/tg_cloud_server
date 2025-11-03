@@ -55,13 +55,20 @@ func (s *TaskService) CreateTask(userID uint64, req *models.CreateTaskRequest) (
 		return nil, fmt.Errorf("account is not available, status: %s", account.Status)
 	}
 
+	// 确保 Config 不为 nil，如果是 nil 则初始化为空 map
+	config := req.Config
+	if config == nil {
+		config = make(models.TaskConfig)
+	}
+
 	task := &models.Task{
 		UserID:    userID,
 		AccountID: req.AccountID,
 		TaskType:  req.TaskType,
 		Status:    models.TaskStatusPending,
 		Priority:  req.Priority,
-		Config:    req.Config,
+		Config:    config,
+		Result:    make(models.TaskResult), // 确保 Result 也不为 nil
 	}
 
 	if req.ScheduleAt != nil {

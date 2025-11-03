@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"fmt"
 	"time"
 
 	"gorm.io/gorm"
@@ -91,25 +92,69 @@ func (r *taskRepository) GetTaskSummaries(conditions map[string]interface{}, off
 	var total int64
 
 	query := r.db.Model(&models.Task{}).
-		Select("id, user_id, account_id, task_type, status, priority, created_at, scheduled_at, started_at, completed_at").
+		Select(`tasks.id, tasks.task_type, tasks.status, tasks.account_id, 
+		        tg_accounts.phone as account_phone, tasks.priority, 
+		        tasks.created_at, tasks.started_at, tasks.completed_at`).
+		Joins("LEFT JOIN tg_accounts ON tasks.account_id = tg_accounts.id").
 		Where(conditions)
 
 	// 获取总数
-	if err := query.Count(&total).Error; err != nil {
+	countQuery := r.db.Model(&models.Task{}).Where(conditions)
+	if err := countQuery.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
 
-	// 获取数据
+	// 获取数据并计算持续时间
+	type TaskWithDuration struct {
+		models.TaskSummary
+		StartedAtRaw   *time.Time `gorm:"column:started_at"`
+		CompletedAtRaw *time.Time `gorm:"column:completed_at"`
+	}
+
+	var rawTasks []TaskWithDuration
 	err := query.Offset(offset).Limit(limit).
-		Order("created_at DESC").
-		Find(&tasks).Error
+		Order("tasks.created_at DESC").
+		Scan(&rawTasks).Error
+
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// 转换并计算持续时间
+	for _, rawTask := range rawTasks {
+		task := rawTask.TaskSummary
+		task.StartedAt = rawTask.StartedAtRaw
+		task.CompletedAt = rawTask.CompletedAtRaw
+
+		// 计算持续时间
+		if task.StartedAt != nil && task.CompletedAt != nil {
+			duration := task.CompletedAt.Sub(*task.StartedAt)
+			task.Duration = formatDuration(duration)
+		} else if task.StartedAt != nil {
+			duration := time.Since(*task.StartedAt)
+			task.Duration = formatDuration(duration) + " (运行中)"
+		}
+
+		tasks = append(tasks, &task)
+	}
 
 	// 确保返回空数组而不是 nil
 	if tasks == nil {
 		tasks = []*models.TaskSummary{}
 	}
 
-	return tasks, total, err
+	return tasks, total, nil
+}
+
+// formatDuration 格式化持续时间
+func formatDuration(duration time.Duration) string {
+	if duration < time.Minute {
+		return fmt.Sprintf("%.1f秒", duration.Seconds())
+	} else if duration < time.Hour {
+		return fmt.Sprintf("%.1f分钟", duration.Minutes())
+	} else {
+		return fmt.Sprintf("%.1f小时", duration.Hours())
+	}
 }
 
 // GetPendingTasks 获取待处理任务

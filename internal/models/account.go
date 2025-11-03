@@ -30,6 +30,24 @@ const (
 	StatusConnectionError                         // 连接错误
 )
 
+// String 返回连接状态字符串
+func (s ConnectionStatus) String() string {
+	switch s {
+	case StatusDisconnected:
+		return "disconnected"
+	case StatusConnecting:
+		return "connecting"
+	case StatusConnected:
+		return "connected"
+	case StatusReconnecting:
+		return "reconnecting"
+	case StatusConnectionError:
+		return "error"
+	default:
+		return "unknown"
+	}
+}
+
 // TGAccount TG账号模型
 type TGAccount struct {
 	ID          uint64        `json:"id" gorm:"primaryKey;autoIncrement"`

@@ -10,6 +10,12 @@ import (
 	"github.com/gotd/td/tg"
 )
 
+// TaskInterface 任务执行器接口
+type TaskInterface interface {
+	Execute(ctx context.Context, api *tg.Client) error
+	GetType() string
+}
+
 // AccountCheckTask 账号检查任务
 type AccountCheckTask struct {
 	task *models.Task
@@ -122,16 +128,21 @@ func NewPrivateMessageTask(task *models.Task) *PrivateMessageTask {
 func (t *PrivateMessageTask) Execute(ctx context.Context, api *tg.Client) error {
 	config := t.task.Config
 
+	// 验证配置完整性
+	if config == nil {
+		return fmt.Errorf("task config is nil")
+	}
+
 	// 获取目标用户列表
 	targets, ok := config["targets"].([]interface{})
-	if !ok {
-		return fmt.Errorf("invalid targets configuration")
+	if !ok || len(targets) == 0 {
+		return fmt.Errorf("invalid or empty targets configuration")
 	}
 
 	// 获取消息内容
 	message, ok := config["message"].(string)
-	if !ok {
-		return fmt.Errorf("invalid message configuration")
+	if !ok || message == "" {
+		return fmt.Errorf("invalid or empty message configuration")
 	}
 
 	// 获取发送间隔 (防止频繁发送被限制)
@@ -245,16 +256,21 @@ func NewBroadcastTask(task *models.Task) *BroadcastTask {
 func (t *BroadcastTask) Execute(ctx context.Context, api *tg.Client) error {
 	config := t.task.Config
 
+	// 验证配置完整性
+	if config == nil {
+		return fmt.Errorf("task config is nil")
+	}
+
 	// 获取目标群组列表 (支持群组ID或群组用户名)
 	groups, ok := config["groups"].([]interface{})
-	if !ok {
-		return fmt.Errorf("invalid groups configuration")
+	if !ok || len(groups) == 0 {
+		return fmt.Errorf("invalid or empty groups configuration")
 	}
 
 	// 获取消息内容
 	message, ok := config["message"].(string)
-	if !ok {
-		return fmt.Errorf("invalid message configuration")
+	if !ok || message == "" {
+		return fmt.Errorf("invalid or empty message configuration")
 	}
 
 	// 获取发送间隔 (防止被限制)
@@ -373,6 +389,11 @@ func NewVerifyCodeTask(task *models.Task) *VerifyCodeTask {
 func (t *VerifyCodeTask) Execute(ctx context.Context, api *tg.Client) error {
 	config := t.task.Config
 
+	// 验证配置完整性
+	if config == nil {
+		return fmt.Errorf("task config is nil")
+	}
+
 	// 获取监听的发送者列表 (可以是官方验证服务、特定用户等)
 	senders := []string{"777000", "Telegram"} // 默认Telegram官方
 	if configSenders, exists := config["senders"]; exists {
@@ -389,9 +410,16 @@ func (t *VerifyCodeTask) Execute(ctx context.Context, api *tg.Client) error {
 	// 获取超时时间
 	timeoutSec := 300 // 默认5分钟超时
 	if timeout, exists := config["timeout_seconds"]; exists {
-		if timeoutFloat, ok := timeout.(float64); ok {
+		if timeoutFloat, ok := timeout.(float64); ok && timeoutFloat > 0 {
 			timeoutSec = int(timeoutFloat)
 		}
+	}
+
+	// 限制超时时间范围
+	if timeoutSec < 30 {
+		timeoutSec = 30 // 最少30秒
+	} else if timeoutSec > 600 {
+		timeoutSec = 600 // 最多10分钟
 	}
 
 	startTime := time.Now()
@@ -584,11 +612,16 @@ func NewGroupChatTask(task *models.Task) *GroupChatTask {
 func (t *GroupChatTask) Execute(ctx context.Context, api *tg.Client) error {
 	config := t.task.Config
 
+	// 验证配置完整性
+	if config == nil {
+		return fmt.Errorf("task config is nil")
+	}
+
 	// 获取目标群组（支持ID和用户名）
 	var inputPeer tg.InputPeerClass
-	if groupID, ok := config["group_id"].(float64); ok {
+	if groupID, ok := config["group_id"].(float64); ok && groupID > 0 {
 		inputPeer = &tg.InputPeerChat{ChatID: int64(groupID)}
-	} else if groupName, ok := config["group_name"].(string); ok {
+	} else if groupName, ok := config["group_name"].(string); ok && groupName != "" {
 		// 解析群组用户名
 		resolved, err := api.ContactsResolveUsername(ctx, &tg.ContactsResolveUsernameRequest{
 			Username: groupName,

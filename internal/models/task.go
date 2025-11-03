@@ -1,6 +1,7 @@
 package models
 
 import (
+	"database/sql/driver"
 	"encoding/json"
 	"time"
 
@@ -79,9 +80,9 @@ func (tc *TaskConfig) Scan(value interface{}) error {
 }
 
 // Value 实现 driver.Valuer 接口
-func (tc TaskConfig) Value() (interface{}, error) {
-	if tc == nil {
-		return nil, nil
+func (tc TaskConfig) Value() (driver.Value, error) {
+	if tc == nil || len(tc) == 0 {
+		return []byte("{}"), nil
 	}
 	return json.Marshal(tc)
 }
@@ -102,9 +103,9 @@ func (tr *TaskResult) Scan(value interface{}) error {
 }
 
 // Value 实现 driver.Valuer 接口
-func (tr TaskResult) Value() (interface{}, error) {
-	if tr == nil {
-		return nil, nil
+func (tr TaskResult) Value() (driver.Value, error) {
+	if tr == nil || len(tr) == 0 {
+		return []byte("{}"), nil
 	}
 	return json.Marshal(tr)
 }
@@ -146,6 +147,14 @@ func (t *Task) BeforeCreate(tx *gorm.DB) error {
 	t.Status = TaskStatusPending
 	if t.Priority == 0 {
 		t.Priority = 5
+	}
+	// 确保 Config 不为 nil，如果是 nil 则初始化为空 map
+	if t.Config == nil {
+		t.Config = make(TaskConfig)
+	}
+	// 确保 Result 不为 nil，如果是 nil 则初始化为空 map
+	if t.Result == nil {
+		t.Result = make(TaskResult)
 	}
 	return nil
 }

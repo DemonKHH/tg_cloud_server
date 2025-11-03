@@ -64,6 +64,10 @@ func NewTaskScheduler(
 
 // SubmitTask 提交任务到指定账号队列
 func (ts *TaskScheduler) SubmitTask(task *models.Task) error {
+	if task == nil {
+		return fmt.Errorf("task cannot be nil")
+	}
+
 	accountID := fmt.Sprintf("%d", task.AccountID)
 
 	// 验证账号可用性
@@ -74,28 +78,29 @@ func (ts *TaskScheduler) SubmitTask(task *models.Task) error {
 		return fmt.Errorf("account validation failed: %w", err)
 	}
 
+	// 更新数据库中的任务状态（在添加到队列之前）
+	if err := ts.taskRepo.UpdateStatus(task.ID, models.TaskStatusQueued); err != nil {
+		ts.logger.Error("Failed to update task status to queued",
+			zap.Uint64("task_id", task.ID),
+			zap.Error(err))
+		return fmt.Errorf("failed to update task status: %w", err)
+	}
+
 	// 获取或创建队列
 	queue := ts.getOrCreateQueue(accountID)
 
-	// 添加任务到队列
+	// 添加任务到队列（原子操作）
 	queue.mu.Lock()
-	defer queue.mu.Unlock()
-
 	task.Status = models.TaskStatusQueued
 	queue.tasks = append(queue.tasks, task)
-
-	// 更新数据库中的任务状态
-	if err := ts.taskRepo.UpdateStatus(task.ID, models.TaskStatusQueued); err != nil {
-		ts.logger.Error("Failed to update task status",
-			zap.Uint64("task_id", task.ID),
-			zap.Error(err))
-	}
+	queueSize := len(queue.tasks)
+	queue.mu.Unlock()
 
 	ts.logger.Info("Task submitted to queue",
 		zap.Uint64("task_id", task.ID),
 		zap.String("account_id", accountID),
 		zap.String("task_type", string(task.TaskType)),
-		zap.Int("queue_size", len(queue.tasks)))
+		zap.Int("queue_size", queueSize))
 
 	return nil
 }
@@ -257,15 +262,16 @@ func (ts *TaskScheduler) processQueues() {
 // processQueue 处理单个队列
 func (ts *TaskScheduler) processQueue(queue *TaskQueue) {
 	queue.mu.Lock()
-	defer queue.mu.Unlock()
 
 	// 如果正在处理或队列为空，跳过
 	if queue.processing || len(queue.tasks) == 0 {
+		queue.mu.Unlock()
 		return
 	}
 
 	// 检查账号是否忙碌
 	if ts.connectionPool.IsAccountBusy(queue.accountID) {
+		queue.mu.Unlock()
 		return
 	}
 
@@ -274,12 +280,25 @@ func (ts *TaskScheduler) processQueue(queue *TaskQueue) {
 	queue.tasks = queue.tasks[1:]
 	queue.processing = true
 
+	// 解锁后再启动异步任务，避免长时间持锁
+	queue.mu.Unlock()
+
 	// 异步执行任务
 	go func() {
 		defer func() {
+			// 安全地重置处理状态
 			queue.mu.Lock()
 			queue.processing = false
 			queue.mu.Unlock()
+
+			// 处理panic
+			if r := recover(); r != nil {
+				ts.logger.Error("Task execution panicked",
+					zap.Uint64("task_id", task.ID),
+					zap.Any("panic", r))
+				// 标记任务为失败
+				ts.completeTaskWithError(task, fmt.Errorf("task execution panicked: %v", r))
+			}
 		}()
 
 		ts.executeTask(task)
@@ -391,9 +410,8 @@ func (ts *TaskScheduler) performRiskControlCheck(task *models.Task, accountID st
 
 	// 4. 检查连接状态
 	connStatus := ts.connectionPool.GetConnectionStatus(accountID)
-	statusStr := connStatus.String()
-	if statusStr != "connected" {
-		return fmt.Errorf("account connection not ready, status: %s", statusStr)
+	if connStatus != telegram.StatusConnected {
+		return fmt.Errorf("account connection not ready, status: %s", connStatus.String())
 	}
 
 	// 5. 检查账号是否需要冷却（如果最近有失败的任务）
@@ -503,14 +521,18 @@ func (ts *TaskScheduler) getAccountInfo(accountID string) (*models.TGAccount, er
 // getQueueSize 获取队列大小
 func (ts *TaskScheduler) getQueueSize(accountID string) int {
 	ts.mu.RLock()
-	defer ts.mu.RUnlock()
+	queue, exists := ts.accountQueues[accountID]
+	ts.mu.RUnlock()
 
-	if queue, exists := ts.accountQueues[accountID]; exists {
-		queue.mu.Lock()
-		defer queue.mu.Unlock()
-		return len(queue.tasks)
+	if !exists {
+		return 0
 	}
-	return 0
+
+	queue.mu.Lock()
+	size := len(queue.tasks)
+	queue.mu.Unlock()
+
+	return size
 }
 
 // generateRecommendations 生成建议和警告
@@ -527,7 +549,7 @@ func (ts *TaskScheduler) generateRecommendations(account *models.TGAccount, avai
 		availability.Warnings = append(availability.Warnings, "任务队列较长，执行可能延迟")
 	}
 
-	if availability.ConnectionStatus != models.ConnectionStatus(telegram.StatusConnected) {
+	if availability.ConnectionStatus != models.StatusConnected {
 		availability.Warnings = append(availability.Warnings, "连接状态异常")
 	}
 }

@@ -63,6 +63,8 @@ export default function TasksPage() {
     account_id: "",
     task_type: "",
     priority: "5",
+    // 账号检查配置
+    check_timeout: "2m",
     // 私信配置
     private_targets: "",
     private_message: "",
@@ -102,10 +104,16 @@ export default function TasksPage() {
       const response = await accountAPI.list({ page: 1, limit: 100 })
       if (response.data) {
         const data = response.data as any
-        setAccounts(data.items || [])
+        // 兼容不同的数据结构
+        setAccounts(data.items || data.data || [])
+      } else {
+        setAccounts([])
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("加载账号失败:", error)
+      const errorMessage = error?.response?.data?.msg || error.message || "加载账号失败"
+      toast.error(errorMessage)
+      setAccounts([])
     } finally {
       setLoadingAccounts(false)
     }
@@ -116,11 +124,17 @@ export default function TasksPage() {
       setLoadingLogs(true)
       const response = await taskAPI.getLogs(taskId)
       if (response.data) {
-        setLogs(response.data as any[] || [])
+        // 确保logs是数组格式
+        const logsData = Array.isArray(response.data) ? response.data : []
+        setLogs(logsData)
+      } else {
+        setLogs([])
       }
-    } catch (error) {
-      toast.error("加载日志失败")
+    } catch (error: any) {
       console.error("加载日志失败:", error)
+      const errorMessage = error?.response?.data?.msg || error.message || "加载日志失败"
+      toast.error(errorMessage)
+      setLogs([])
     } finally {
       setLoadingLogs(false)
     }
@@ -198,7 +212,9 @@ export default function TasksPage() {
       toast.success("任务已取消")
       refresh()
     } catch (error: any) {
-      toast.error(error.message || "取消任务失败")
+      console.error('取消任务失败:', error)
+      const errorMessage = error?.response?.data?.msg || error.message || "取消任务失败"
+      toast.error(errorMessage)
     }
   }
 
@@ -209,7 +225,9 @@ export default function TasksPage() {
       toast.success("任务已重新执行")
       refresh()
     } catch (error: any) {
-      toast.error(error.message || "重试任务失败")
+      console.error('重试任务失败:', error)
+      const errorMessage = error?.response?.data?.msg || error.message || "重试任务失败"
+      toast.error(errorMessage)
     }
   }
 
@@ -226,6 +244,7 @@ export default function TasksPage() {
       account_id: "",
       task_type: "",
       priority: "5",
+      check_timeout: "2m",
       private_targets: "",
       private_message: "",
       private_delay: "",
@@ -243,20 +262,60 @@ export default function TasksPage() {
     setCreateDialogOpen(true)
   }
 
+  // 当任务类型改变时，清空其他任务类型的配置
+  const handleTaskTypeChange = (value: string) => {
+    setCreateForm({
+      ...createForm,
+      task_type: value,
+      // 清空所有配置字段
+      check_timeout: "2m",
+      private_targets: "",
+      private_message: "",
+      private_delay: "",
+      broadcast_message: "",
+      broadcast_groups: "",
+      broadcast_channels: "",
+      broadcast_delay: "",
+      verify_timeout: "30",
+      verify_source: "",
+      verify_pattern: "",
+      group_chat_group_id: "",
+      group_chat_duration: "",
+      group_chat_ai_config: "{}",
+    })
+  }
+
   // 构建任务配置
   const buildTaskConfig = () => {
     const config: any = {}
     
     switch (createForm.task_type) {
+      case "check":
+        // 账号检查配置 - 暂时不需要特殊配置，使用默认配置即可
+        if (createForm.check_timeout && createForm.check_timeout !== "2m") {
+          // 如果用户设置了非默认的超时时间，则添加到配置中
+          config.timeout = createForm.check_timeout
+        }
+        break
+        
       case "private_message":
         if (!createForm.private_targets || !createForm.private_message) {
           toast.error("请填写目标用户和消息内容")
           return null
         }
-        config.targets = createForm.private_targets.split(",").map(t => t.trim()).filter(t => t)
+        // 处理目标用户列表
+        const targets = createForm.private_targets.split(",").map(t => t.trim()).filter(t => t)
+        if (targets.length === 0) {
+          toast.error("请至少填写一个目标用户")
+          return null
+        }
+        config.targets = targets
         config.message = createForm.private_message
         if (createForm.private_delay) {
-          config.delay_between = parseInt(createForm.private_delay)
+          const delay = parseInt(createForm.private_delay)
+          if (!isNaN(delay) && delay > 0) {
+            config.interval_seconds = delay
+          }
         }
         break
         
@@ -270,26 +329,57 @@ export default function TasksPage() {
           return null
         }
         config.message = createForm.broadcast_message
+        
+        // 合并群组和频道ID到一个groups数组中
+        const allGroups: any[] = []
         if (createForm.broadcast_groups) {
-          config.groups = createForm.broadcast_groups.split(",").map(g => parseInt(g.trim())).filter(g => !isNaN(g))
+          const groups = createForm.broadcast_groups.split(",")
+            .map(g => {
+              const num = parseInt(g.trim())
+              return !isNaN(num) && num > 0 ? num : null
+            })
+            .filter(g => g !== null)
+          allGroups.push(...groups)
         }
         if (createForm.broadcast_channels) {
-          config.channels = createForm.broadcast_channels.split(",").map(c => parseInt(c.trim())).filter(c => !isNaN(c))
+          const channels = createForm.broadcast_channels.split(",")
+            .map(c => {
+              const num = parseInt(c.trim())
+              return !isNaN(num) && num > 0 ? num : null
+            })
+            .filter(c => c !== null)
+          allGroups.push(...channels)
         }
+        
+        if (allGroups.length === 0) {
+          toast.error("请至少填写一个有效的群组或频道ID")
+          return null
+        }
+        
+        config.groups = allGroups
         if (createForm.broadcast_delay) {
-          config.delay_between = parseInt(createForm.broadcast_delay)
+          const delay = parseInt(createForm.broadcast_delay)
+          if (!isNaN(delay) && delay > 0) {
+            config.interval_seconds = delay
+          }
         }
         break
         
       case "verify_code":
+        // 验证码配置（所有字段都是可选的）
         if (createForm.verify_timeout) {
-          config.timeout = parseInt(createForm.verify_timeout)
+          const timeout = parseInt(createForm.verify_timeout)
+          if (!isNaN(timeout) && timeout > 0) {
+            config.timeout_seconds = timeout
+          }
         }
-        if (createForm.verify_source) {
-          config.source = createForm.verify_source
+        if (createForm.verify_source && createForm.verify_source.trim()) {
+          // 后端期望的是senders数组
+          config.senders = [createForm.verify_source.trim()]
         }
-        if (createForm.verify_pattern) {
-          config.pattern = createForm.verify_pattern
+        // 注意：后端暂时没有pattern字段支持，这个功能需要后端实现
+        if (createForm.verify_pattern && createForm.verify_pattern.trim()) {
+          config.pattern = createForm.verify_pattern.trim()
         }
         break
         
@@ -298,31 +388,35 @@ export default function TasksPage() {
           toast.error("请填写群组ID")
           return null
         }
-        config.group_id = parseInt(createForm.group_chat_group_id)
-        if (isNaN(config.group_id)) {
-          toast.error("群组ID必须是数字")
+        const groupId = parseInt(createForm.group_chat_group_id)
+        if (isNaN(groupId) || groupId <= 0) {
+          toast.error("群组ID必须是大于0的数字")
           return null
         }
+        config.group_id = groupId
         if (createForm.group_chat_duration) {
-          config.duration = parseInt(createForm.group_chat_duration)
+          const duration = parseInt(createForm.group_chat_duration)
+          if (!isNaN(duration) && duration > 0) {
+            // 将分钟转换为秒，因为后端期望的是秒
+            config.monitor_duration_seconds = duration * 60
+          }
         }
         if (createForm.group_chat_ai_config && createForm.group_chat_ai_config.trim() !== "" && createForm.group_chat_ai_config !== "{}") {
           try {
-            config.ai_config = JSON.parse(createForm.group_chat_ai_config)
+            const aiConfig = JSON.parse(createForm.group_chat_ai_config)
+            if (typeof aiConfig === 'object' && aiConfig !== null) {
+              config.ai_config = aiConfig
+            }
           } catch (e) {
-            toast.error("AI配置JSON格式错误")
+            toast.error("AI配置JSON格式错误，请检查语法")
             return null
           }
         }
         break
         
-      case "check":
-        // 账号检查任务可能不需要额外配置
-        break
-        
       default:
-        // 对于未知类型，可以保持空配置
-        break
+        toast.error("请选择有效的任务类型")
+        return null
     }
     
     return config
@@ -340,17 +434,23 @@ export default function TasksPage() {
         return // buildTaskConfig 已经显示了错误消息
       }
 
-      await taskAPI.create({
+      const requestData = {
         account_id: parseInt(createForm.account_id),
         task_type: createForm.task_type,
-        priority: parseInt(createForm.priority),
+        priority: parseInt(createForm.priority) || 5,
         task_config: config,
-      })
+      }
+
+      console.log('创建任务请求数据:', requestData) // 调试日志
+
+      await taskAPI.create(requestData)
       toast.success("任务创建成功")
       setCreateDialogOpen(false)
       refresh()
     } catch (error: any) {
-      toast.error(error.message || "创建任务失败")
+      console.error('创建任务失败:', error) // 调试日志
+      const errorMessage = error?.response?.data?.msg || error.message || "创建任务失败"
+      toast.error(errorMessage)
     }
   }
 
@@ -447,7 +547,7 @@ export default function TasksPage() {
               width: '120px',
               render: (value, record) => (
                 <div className="text-sm">
-                  {record.account?.phone || `ID: ${value}`}
+                  {record.account_phone || record.account?.phone || `ID: ${value}`}
                 </div>
               )
             },
@@ -580,7 +680,7 @@ export default function TasksPage() {
                 <Label htmlFor="create-task-type">任务类型 *</Label>
                 <Select
                   value={createForm.task_type}
-                  onValueChange={(value) => setCreateForm({ ...createForm, task_type: value })}
+                  onValueChange={handleTaskTypeChange}
                 >
                   <SelectTrigger id="create-task-type">
                     <SelectValue placeholder="选择任务类型" />
@@ -618,7 +718,9 @@ export default function TasksPage() {
                       placeholder="username1, username2, +1234567890"
                       required
                     />
-                    <p className="text-xs text-muted-foreground">多个用户名或手机号，用逗号分隔</p>
+                    <p className="text-xs text-muted-foreground">
+                      支持用户名(@username)或手机号(+1234567890)，多个用逗号分隔
+                    </p>
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="private-message">消息内容 *</Label>
@@ -666,7 +768,9 @@ export default function TasksPage() {
                       onChange={(e) => setCreateForm({ ...createForm, broadcast_groups: e.target.value })}
                       placeholder="123456789, 987654321"
                     />
-                    <p className="text-xs text-muted-foreground">多个群组ID，用逗号分隔</p>
+                    <p className="text-xs text-muted-foreground">
+                      群组的数字ID，多个用逗号分隔，例如：-1001234567890
+                    </p>
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="broadcast-channels">频道ID（逗号分隔，可选）</Label>
@@ -676,7 +780,9 @@ export default function TasksPage() {
                       onChange={(e) => setCreateForm({ ...createForm, broadcast_channels: e.target.value })}
                       placeholder="123456789, 987654321"
                     />
-                    <p className="text-xs text-muted-foreground">多个频道ID，用逗号分隔</p>
+                    <p className="text-xs text-muted-foreground">
+                      频道的数字ID，多个用逗号分隔，例如：-1001234567890
+                    </p>
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="broadcast-delay">发送间隔（秒，可选）</Label>
@@ -758,7 +864,7 @@ export default function TasksPage() {
                       id="group-chat-ai-config"
                       value={createForm.group_chat_ai_config}
                       onChange={(e) => setCreateForm({ ...createForm, group_chat_ai_config: e.target.value })}
-                      placeholder='{"persona": "casual", "max_length": 200}'
+                      placeholder='{"personality": "friendly", "response_rate": 0.3, "keywords": ["hello", "question"]}'
                       rows={4}
                       className="font-mono text-xs"
                     />
@@ -767,9 +873,21 @@ export default function TasksPage() {
               )}
 
               {createForm.task_type === "check" && (
-                <div className="text-sm text-muted-foreground py-2">
-                  账号检查任务无需额外配置，将自动检查账号状态和健康度。
-                </div>
+                <>
+                  <div className="space-y-2">
+                    <Label htmlFor="check-timeout">超时时间（可选）</Label>
+                    <Input
+                      id="check-timeout"
+                      value={createForm.check_timeout}
+                      onChange={(e) => setCreateForm({ ...createForm, check_timeout: e.target.value })}
+                      placeholder="2m"
+                    />
+                    <p className="text-xs text-muted-foreground">例如：30s, 2m, 5m</p>
+                  </div>
+                  <div className="bg-muted/50 rounded-lg p-3 text-xs text-muted-foreground">
+                    <p>账号检查任务将自动检查账号的状态和健康度。</p>
+                  </div>
+                </>
               )}
 
               {!createForm.task_type && (

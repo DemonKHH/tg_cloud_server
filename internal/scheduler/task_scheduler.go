@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 
 	"tg_cloud_server/internal/common/logger"
 	"tg_cloud_server/internal/models"
@@ -96,11 +97,14 @@ func (ts *TaskScheduler) SubmitTask(task *models.Task) error {
 	queueSize := len(queue.tasks)
 	queue.mu.Unlock()
 
-	ts.logger.Info("Task submitted to queue",
+	// 使用专门的任务日志记录器
+	logger.LogTask(zapcore.InfoLevel, "Task submitted to queue",
 		zap.Uint64("task_id", task.ID),
 		zap.String("account_id", accountID),
 		zap.String("task_type", string(task.TaskType)),
-		zap.Int("queue_size", queueSize))
+		zap.Int("priority", task.Priority),
+		zap.Int("queue_size", queueSize),
+		zap.Time("submitted_at", time.Now()))
 
 	return nil
 }
@@ -293,8 +297,9 @@ func (ts *TaskScheduler) processQueue(queue *TaskQueue) {
 
 			// 处理panic
 			if r := recover(); r != nil {
-				ts.logger.Error("Task execution panicked",
+				logger.LogTask(zapcore.ErrorLevel, "Task execution panicked",
 					zap.Uint64("task_id", task.ID),
+					zap.String("task_type", string(task.TaskType)),
 					zap.Any("panic", r))
 				// 标记任务为失败
 				ts.completeTaskWithError(task, fmt.Errorf("task execution panicked: %v", r))
@@ -309,15 +314,17 @@ func (ts *TaskScheduler) processQueue(queue *TaskQueue) {
 func (ts *TaskScheduler) executeTask(task *models.Task) {
 	accountID := fmt.Sprintf("%d", task.AccountID)
 
-	ts.logger.Info("Starting task execution",
-		zap.Uint64("task_id", task.ID),
-		zap.String("account_id", accountID),
-		zap.String("task_type", string(task.TaskType)))
-
 	// 更新任务状态为运行中
 	task.Status = models.TaskStatusRunning
 	startTime := time.Now()
 	task.StartedAt = &startTime
+
+	logger.LogTask(zapcore.InfoLevel, "Starting task execution",
+		zap.Uint64("task_id", task.ID),
+		zap.String("account_id", accountID),
+		zap.String("task_type", string(task.TaskType)),
+		zap.Int("priority", task.Priority),
+		zap.Time("started_at", startTime))
 
 	if err := ts.taskRepo.UpdateTask(task.ID, map[string]interface{}{
 		"status":     models.TaskStatusRunning,
@@ -353,13 +360,21 @@ func (ts *TaskScheduler) executeTask(task *models.Task) {
 
 	// 完成任务
 	if err != nil {
-		ts.logger.Error("Task execution failed",
+		duration := time.Since(startTime)
+		logger.LogTask(zapcore.ErrorLevel, "Task execution failed",
 			zap.Uint64("task_id", task.ID),
+			zap.String("account_id", accountID),
+			zap.String("task_type", string(task.TaskType)),
+			zap.Duration("duration", duration),
 			zap.Error(err))
 		ts.completeTaskWithError(task, err)
 	} else {
-		ts.logger.Info("Task execution completed successfully",
-			zap.Uint64("task_id", task.ID))
+		duration := time.Since(startTime)
+		logger.LogTask(zapcore.InfoLevel, "Task execution completed successfully",
+			zap.Uint64("task_id", task.ID),
+			zap.String("account_id", accountID),
+			zap.String("task_type", string(task.TaskType)),
+			zap.Duration("duration", duration))
 		ts.completeTaskWithSuccess(task)
 	}
 }

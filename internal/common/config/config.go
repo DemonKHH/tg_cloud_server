@@ -115,13 +115,25 @@ type RiskControlConfig struct {
 
 // LoggingConfig 日志配置
 type LoggingConfig struct {
-	Level      string `mapstructure:"level"`
-	Format     string `mapstructure:"format"`
-	Output     string `mapstructure:"output"`
-	Filename   string `mapstructure:"filename"`
-	MaxSize    int    `mapstructure:"max_size"`
-	MaxBackups int    `mapstructure:"max_backups"`
-	MaxAge     int    `mapstructure:"max_age"`
+	Level      string           `mapstructure:"level"`
+	Format     string           `mapstructure:"format"`
+	Output     string           `mapstructure:"output"`
+	Filename   string           `mapstructure:"filename"`
+	MaxSize    int              `mapstructure:"max_size"`
+	MaxBackups int              `mapstructure:"max_backups"`
+	MaxAge     int              `mapstructure:"max_age"`
+	Compress   bool             `mapstructure:"compress"`
+	Files      LogFileConfig    `mapstructure:"files"`
+}
+
+// LogFileConfig 日志文件配置
+type LogFileConfig struct {
+	ErrorLog string `mapstructure:"error_log"`
+	WarnLog  string `mapstructure:"warn_log"`  
+	InfoLog  string `mapstructure:"info_log"`
+	DebugLog string `mapstructure:"debug_log"`
+	TaskLog  string `mapstructure:"task_log"`
+	APILog   string `mapstructure:"api_log"`
 }
 
 // JWTConfig JWT配置
@@ -218,10 +230,20 @@ func setDefaults() {
 	// 日志默认配置
 	viper.SetDefault("logging.level", "info")
 	viper.SetDefault("logging.format", "json")
-	viper.SetDefault("logging.output", "stdout")
+	viper.SetDefault("logging.output", "file")
+	viper.SetDefault("logging.filename", "logs/app.log")
 	viper.SetDefault("logging.max_size", 100)
-	viper.SetDefault("logging.max_backups", 3)
-	viper.SetDefault("logging.max_age", 28)
+	viper.SetDefault("logging.max_backups", 7)
+	viper.SetDefault("logging.max_age", 30)
+	viper.SetDefault("logging.compress", true)
+	
+	// 分级日志文件配置
+	viper.SetDefault("logging.files.error_log", "logs/error.log")
+	viper.SetDefault("logging.files.warn_log", "logs/warn.log")
+	viper.SetDefault("logging.files.info_log", "logs/info.log")
+	viper.SetDefault("logging.files.debug_log", "logs/debug.log")
+	viper.SetDefault("logging.files.task_log", "logs/task.log")
+	viper.SetDefault("logging.files.api_log", "logs/api.log")
 
 	// JWT默认配置
 	viper.SetDefault("jwt.expiration_time", "24h")

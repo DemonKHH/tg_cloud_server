@@ -282,6 +282,20 @@ func (s *CronService) cleanupExpiredLogs(ctx context.Context) {
 		return
 	}
 
+	// 使用新的日志管理器进行清理
+	logManager := logger.NewLogManager(&logConfig)
+	if err := logManager.CleanupOldLogs(); err != nil {
+		s.logger.Error("Failed to cleanup logs using log manager", zap.Error(err))
+		
+		// 回退到原有清理逻辑
+		s.fallbackLogCleanup(logConfig)
+	} else {
+		s.logger.Info("Log cleanup completed using log manager")
+	}
+}
+
+// fallbackLogCleanup 备用日志清理逻辑
+func (s *CronService) fallbackLogCleanup(logConfig config.LoggingConfig) {
 	// 获取日志目录
 	logDir := filepath.Dir(logConfig.Filename)
 	logBaseName := filepath.Base(logConfig.Filename)
@@ -293,7 +307,7 @@ func (s *CronService) cleanupExpiredLogs(ctx context.Context) {
 	}
 	cutoffTime := time.Now().AddDate(0, 0, -retentionDays)
 
-	s.logger.Info("Starting log cleanup",
+	s.logger.Info("Starting fallback log cleanup",
 		zap.String("log_dir", logDir),
 		zap.Int("retention_days", retentionDays))
 
@@ -348,7 +362,7 @@ func (s *CronService) cleanupExpiredLogs(ctx context.Context) {
 	})
 
 	if err != nil {
-		s.logger.Error("Error during log cleanup",
+		s.logger.Error("Error during fallback log cleanup",
 			zap.String("log_dir", logDir),
 			zap.Error(err))
 		return
@@ -362,7 +376,7 @@ func (s *CronService) cleanupExpiredLogs(ctx context.Context) {
 		}
 	}
 
-	s.logger.Info("Log cleanup completed",
+	s.logger.Info("Fallback log cleanup completed",
 		zap.Int("deleted_files", deletedCount),
 		zap.Int64("freed_space_mb", totalSize/(1024*1024)),
 		zap.String("log_dir", logDir))

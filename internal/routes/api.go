@@ -28,6 +28,14 @@ func RegisterAPIRoutes(
 
 	// API路由组（需要认证）
 	api := router.Group("/api/v1")
+	
+	// 添加日志中间件
+	api.Use(middleware.APILoggerMiddleware())
+	api.Use(middleware.TaskLoggerMiddleware())
+	
+	// 如果需要详细日志（包含请求响应体），可以启用这个中间件
+	// api.Use(middleware.DetailedAPILoggerMiddleware())
+	
 	api.Use(middleware.JWTAuthMiddleware(authService))
 
 	// 用户资料管理

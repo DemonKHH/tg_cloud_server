@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 
 	"tg_cloud_server/internal/common/logger"
 	"tg_cloud_server/internal/models"
@@ -76,18 +77,25 @@ func (s *TaskService) CreateTask(userID uint64, req *models.CreateTaskRequest) (
 	}
 
 	if err := s.taskRepo.Create(task); err != nil {
-		s.logger.Error("Failed to create task",
+		// 记录错误日志到任务日志和错误日志
+		logger.LogTask(zapcore.ErrorLevel, "Failed to create task",
 			zap.Uint64("user_id", userID),
 			zap.Uint64("account_id", req.AccountID),
 			zap.String("task_type", string(req.TaskType)),
+			zap.Int("priority", req.Priority),
+			zap.Any("config", req.Config),
 			zap.Error(err))
 		return nil, fmt.Errorf("failed to create task: %w", err)
 	}
 
-	s.logger.Info("Task created successfully",
+	// 记录成功创建任务的日志
+	logger.LogTask(zapcore.InfoLevel, "Task created successfully",
 		zap.Uint64("user_id", userID),
 		zap.Uint64("task_id", task.ID),
-		zap.String("task_type", string(task.TaskType)))
+		zap.String("task_type", string(task.TaskType)),
+		zap.Uint64("account_id", task.AccountID),
+		zap.Int("priority", task.Priority),
+		zap.Time("created_at", task.CreatedAt))
 
 	return task, nil
 }
@@ -174,16 +182,21 @@ func (s *TaskService) CancelTask(userID, taskID uint64) error {
 	task.CompletedAt = &completedTime
 
 	if err := s.taskRepo.Update(task); err != nil {
-		s.logger.Error("Failed to cancel task",
+		logger.LogTask(zapcore.ErrorLevel, "Failed to cancel task",
 			zap.Uint64("user_id", userID),
 			zap.Uint64("task_id", taskID),
+			zap.String("task_type", string(task.TaskType)),
+			zap.String("original_status", string(task.Status)),
 			zap.Error(err))
 		return fmt.Errorf("failed to cancel task: %w", err)
 	}
 
-	s.logger.Info("Task cancelled successfully",
+	logger.LogTask(zapcore.InfoLevel, "Task cancelled successfully",
 		zap.Uint64("user_id", userID),
-		zap.Uint64("task_id", taskID))
+		zap.Uint64("task_id", taskID),
+		zap.String("task_type", string(task.TaskType)),
+		zap.Uint64("account_id", task.AccountID),
+		zap.Time("cancelled_at", *task.CompletedAt))
 
 	return nil
 }
@@ -236,16 +249,21 @@ func (s *TaskService) RetryTask(userID, taskID uint64) (*models.Task, error) {
 	task.Result = nil
 
 	if err := s.taskRepo.Update(task); err != nil {
-		s.logger.Error("Failed to retry task",
+		logger.LogTask(zapcore.ErrorLevel, "Failed to retry task",
 			zap.Uint64("user_id", userID),
 			zap.Uint64("task_id", taskID),
+			zap.String("task_type", string(task.TaskType)),
+			zap.String("original_status", string(task.Status)),
 			zap.Error(err))
 		return nil, fmt.Errorf("failed to retry task: %w", err)
 	}
 
-	s.logger.Info("Task retry scheduled",
+	logger.LogTask(zapcore.InfoLevel, "Task retry scheduled",
 		zap.Uint64("user_id", userID),
-		zap.Uint64("task_id", taskID))
+		zap.Uint64("task_id", taskID),
+		zap.String("task_type", string(task.TaskType)),
+		zap.Uint64("account_id", task.AccountID),
+		zap.String("new_status", string(task.Status)))
 
 	return task, nil
 }

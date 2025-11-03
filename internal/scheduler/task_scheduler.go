@@ -66,37 +66,37 @@ func NewTaskScheduler(
 // Stop 停止任务调度器
 func (ts *TaskScheduler) Stop() {
 	ts.logger.Info("Stopping task scheduler...")
-	
+
 	// 取消上下文，停止调度循环
 	ts.cancel()
-	
+
 	// 等待正在执行的任务完成（最多等待10秒）
 	deadline := time.Now().Add(10 * time.Second)
-	
+
 	for time.Now().Before(deadline) {
 		ts.mu.RLock()
 		hasRunningTasks := false
-		
+
 		for _, queue := range ts.accountQueues {
 			queue.mu.Lock()
 			if queue.processing {
 				hasRunningTasks = true
 			}
 			queue.mu.Unlock()
-			
+
 			if hasRunningTasks {
 				break
 			}
 		}
 		ts.mu.RUnlock()
-		
+
 		if !hasRunningTasks {
 			break
 		}
-		
+
 		time.Sleep(100 * time.Millisecond)
 	}
-	
+
 	ts.logger.Info("Task scheduler stopped")
 }
 
@@ -460,11 +460,12 @@ func (ts *TaskScheduler) performRiskControlCheck(task *models.Task, accountID st
 		return fmt.Errorf("account is busy with another task")
 	}
 
-	// 4. 检查连接状态
+	// 4. 连接状态检查移到实际执行时进行，这里只检查连接是否处于错误状态
 	connStatus := ts.connectionPool.GetConnectionStatus(accountID)
-	if connStatus != telegram.StatusConnected {
-		return fmt.Errorf("account connection not ready, status: %s", connStatus.String())
+	if connStatus == telegram.StatusConnectionError {
+		return fmt.Errorf("account connection has persistent error")
 	}
+	// 注意：StatusDisconnected 和 StatusConnecting 不算错误，连接会在执行时自动创建
 
 	// 5. 检查账号是否需要冷却（如果最近有失败的任务）
 	// 获取最近1小时内的失败任务数

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"sync"
 	"time"
 
@@ -214,7 +215,12 @@ func (cp *ConnectionPool) maintainConnection(accountID string, conn *ManagedConn
 	})
 
 	if err != nil && err != context.Canceled {
-		conn.logger.Error("Connection error", zap.Error(err))
+		conn.logger.Error("Connection error occurred",
+			zap.Error(err),
+			zap.String("error_type", fmt.Sprintf("%T", err)),
+			zap.String("account_id", accountID),
+			zap.String("phone", conn.config.Phone),
+			zap.Int("session_data_length", len(conn.config.SessionData)))
 
 		conn.mu.Lock()
 		conn.status = StatusError
@@ -248,7 +254,12 @@ func (cp *ConnectionPool) scheduleReconnect(accountID string, conn *ManagedConne
 func (cp *ConnectionPool) ExecuteTask(accountID string, task TaskInterface) error {
 	config, exists := cp.configs[accountID]
 	if !exists {
-		return fmt.Errorf("no configuration found for account %s", accountID)
+		// 动态加载账号配置
+		var err error
+		config, err = cp.loadAccountConfig(accountID)
+		if err != nil {
+			return fmt.Errorf("failed to load account configuration: %w", err)
+		}
 	}
 
 	conn, err := cp.GetOrCreateConnection(accountID, config)
@@ -272,9 +283,29 @@ func (cp *ConnectionPool) ExecuteTask(accountID string, task TaskInterface) erro
 		conn.mu.Unlock()
 	}()
 
-	// 检查连接状态
-	if conn.status != StatusConnected {
-		return fmt.Errorf("connection not ready, status: %s", conn.status.String())
+	// 等待连接建立完成，最多等待30秒
+	timeout := time.After(30 * time.Second)
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		conn.mu.Lock()
+		status := conn.status
+		conn.mu.Unlock()
+
+		if status == StatusConnected {
+			break
+		}
+		if status == StatusConnectionError {
+			return fmt.Errorf("connection failed, status: %s", status.String())
+		}
+
+		select {
+		case <-timeout:
+			return fmt.Errorf("connection timeout, status: %s", status.String())
+		case <-ticker.C:
+			// 继续检查
+		}
 	}
 
 	// 直接使用已建立的连接执行任务
@@ -378,6 +409,53 @@ func (cp *ConnectionPool) cleanupIdleConnections() {
 	if len(toRemove) > 0 {
 		cp.logger.Info("Cleaned up idle connections", zap.Int("count", len(toRemove)))
 	}
+}
+
+// loadAccountConfig 动态加载账号配置
+func (cp *ConnectionPool) loadAccountConfig(accountID string) (*ClientConfig, error) {
+	// 转换accountID为uint64
+	accountIDNum, err := strconv.ParseUint(accountID, 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("invalid account ID: %w", err)
+	}
+
+	// 从数据库获取账号信息
+	account, err := cp.accountRepo.GetByID(accountIDNum)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get account from database: %w", err)
+	}
+
+	// 检查账号状态
+	if !account.IsAvailable() {
+		return nil, fmt.Errorf("account is not available, status: %s", account.Status)
+	}
+
+	// 构建配置
+	config := &ClientConfig{
+		AppID:       cp.appID,
+		AppHash:     cp.appHash,
+		Phone:       account.Phone,
+		SessionData: []byte(account.SessionData), // 使用正确的字段名 SessionData
+	}
+
+	// 如果账号绑定了代理，添加代理配置
+	if account.ProxyID != nil && *account.ProxyID > 0 {
+		// 这里需要获取代理信息，暂时留空，后续可以添加
+		cp.logger.Debug("Account has proxy binding",
+			zap.String("account_id", accountID),
+			zap.Uint64("proxy_id", *account.ProxyID))
+	}
+
+	// 缓存配置
+	cp.mu.Lock()
+	cp.configs[accountID] = config
+	cp.mu.Unlock()
+
+	cp.logger.Info("Account configuration loaded dynamically",
+		zap.String("account_id", accountID),
+		zap.String("phone", account.Phone))
+
+	return config, nil
 }
 
 // GetStats 获取连接池统计信息

@@ -2,6 +2,7 @@ package telegram
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"strconv"
@@ -430,12 +431,28 @@ func (cp *ConnectionPool) loadAccountConfig(accountID string) (*ClientConfig, er
 		return nil, fmt.Errorf("account is not available, status: %s", account.Status)
 	}
 
+	// 解码session数据
+	sessionData, err := base64.StdEncoding.DecodeString(account.SessionData)
+	if err != nil {
+		cp.logger.Error("Failed to decode session data",
+			zap.String("account_id", accountID),
+			zap.String("phone", account.Phone),
+			zap.Int("raw_data_len", len(account.SessionData)),
+			zap.Error(err))
+		return nil, fmt.Errorf("failed to decode session data: %w", err)
+	}
+
+	cp.logger.Debug("Session data decoded successfully",
+		zap.String("account_id", accountID),
+		zap.Int("raw_data_len", len(account.SessionData)),
+		zap.Int("decoded_data_len", len(sessionData)))
+
 	// 构建配置
 	config := &ClientConfig{
 		AppID:       cp.appID,
 		AppHash:     cp.appHash,
 		Phone:       account.Phone,
-		SessionData: []byte(account.SessionData), // 使用正确的字段名 SessionData
+		SessionData: sessionData, // 使用解码后的JSON数据
 	}
 
 	// 如果账号绑定了代理，添加代理配置

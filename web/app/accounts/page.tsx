@@ -2,7 +2,6 @@
 
 import { toast } from "sonner"
 import { MainLayout } from "@/components/layout/main-layout"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -13,7 +12,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import { Plus, Search, Filter, MoreVertical, CheckCircle2, XCircle, AlertCircle, Upload, FileArchive } from "lucide-react"
+import { Plus, MoreVertical, CheckCircle2, XCircle, AlertCircle, Upload, FileArchive, Search, Filter } from "lucide-react"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -23,10 +22,9 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Badge } from "@/components/ui/badge"
 import { ModernTable } from "@/components/ui/modern-table"
-import { motion } from "framer-motion"
 import { cn } from "@/lib/utils"
 import { accountAPI, proxyAPI } from "@/lib/api"
-import { useState, useEffect, useRef, useCallback } from "react"
+import { useState, useEffect, useRef } from "react"
 import {
   Select,
   SelectContent,
@@ -37,13 +35,25 @@ import {
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Pencil, Trash2, Activity, Link2 } from "lucide-react"
+import { usePagination } from "@/hooks/use-pagination"
+import { PageHeader } from "@/components/common/page-header"
+import { FilterBar } from "@/components/common/filter-bar"
+import { motion } from "framer-motion"
 
 export default function AccountsPage() {
-  const [accounts, setAccounts] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
-  const [page, setPage] = useState(1)
-  const [total, setTotal] = useState(0)
-  const [search, setSearch] = useState("")
+  const {
+    data: accounts,
+    page,
+    total,
+    loading,
+    search,
+    setSearch,
+    setPage,
+    refresh,
+  } = usePagination({
+    fetchFn: accountAPI.list,
+  })
+  
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [selectedProxy, setSelectedProxy] = useState<string>("")
@@ -69,28 +79,10 @@ export default function AccountsPage() {
   const [healthChecking, setHealthChecking] = useState<string | null>(null)
 
   useEffect(() => {
-    loadAccounts()
-  }, [page])
-
-  useEffect(() => {
     if (uploadDialogOpen) {
       loadProxies()
     }
   }, [uploadDialogOpen])
-
-  // 搜索防抖
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (page === 1) {
-        loadAccounts()
-      } else {
-        setPage(1) // 重置到第一页，触发loadAccounts
-      }
-    }, 500)
-
-    return () => clearTimeout(timer)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search])
 
   useEffect(() => {
     if (bindProxyDialogOpen || editDialogOpen) {
@@ -116,32 +108,6 @@ export default function AccountsPage() {
       // 不显示错误提示，因为代理是可选的
     } finally {
       setLoadingProxies(false)
-    }
-  }
-
-  const loadAccounts = async () => {
-    try {
-      setLoading(true)
-      const params: any = { page, limit: 20 }
-      if (search) {
-        params.search = search
-      }
-      const response = await accountAPI.list(params)
-      if (response.data) {
-        // 后端返回格式：{ items: [], pagination: { current_page, per_page, total, total_pages, has_next, has_prev } }
-        const data = response.data as any
-        setAccounts(data.items || [])
-        setTotal(data.pagination?.total || 0)
-        // 更新页码（后端返回的current_page）
-        if (data.pagination?.current_page) {
-          setPage(data.pagination.current_page)
-        }
-      }
-    } catch (error) {
-      toast.error("加载账号失败，请稍后重试")
-      console.error("加载账号失败:", error)
-    } finally {
-      setLoading(false)
     }
   }
 
@@ -220,7 +186,7 @@ export default function AccountsPage() {
       })
       toast.success("账号更新成功")
       setEditDialogOpen(false)
-      loadAccounts()
+      refresh()
     } catch (error: any) {
       toast.error(error.message || "更新账号失败")
     }
@@ -235,7 +201,7 @@ export default function AccountsPage() {
     try {
       await accountAPI.delete(String(account.id))
       toast.success("账号删除成功")
-      loadAccounts()
+      refresh()
     } catch (error: any) {
       toast.error(error.message || "删除账号失败")
     }
@@ -249,7 +215,7 @@ export default function AccountsPage() {
       if (response.data) {
         const health = response.data as any
         toast.success(`健康检查完成：健康度 ${((health.score || 0) * 100).toFixed(0)}%`)
-        loadAccounts() // 重新加载以更新健康度
+        refresh() // 重新加载以更新健康度
       }
     } catch (error: any) {
       toast.error(error.message || "健康检查失败")
@@ -273,7 +239,7 @@ export default function AccountsPage() {
       await accountAPI.bindProxy(String(bindingAccount.id), proxyId)
       toast.success(proxyId ? "代理绑定成功" : "代理解绑成功")
       setBindProxyDialogOpen(false)
-      loadAccounts()
+      refresh()
     } catch (error: any) {
       toast.error(error.message || "代理绑定失败")
     }
@@ -305,7 +271,7 @@ export default function AccountsPage() {
       await accountAPI.create(data)
       toast.success("账号添加成功")
       setAddDialogOpen(false)
-      loadAccounts()
+      refresh()
     } catch (error: any) {
       toast.error(error.message || "添加账号失败")
     }
@@ -362,7 +328,7 @@ export default function AccountsPage() {
           
           setUploadDialogOpen(false)
           setSelectedProxy("") // 重置代理选择
-          loadAccounts() // 重新加载账号列表
+          refresh() // 重新加载账号列表
         } else {
           // 所有账号都创建失败
           const errorMsg = data.errors?.length > 0 
@@ -374,7 +340,7 @@ export default function AccountsPage() {
         toast.success("文件上传成功")
         setUploadDialogOpen(false)
         setSelectedProxy("") // 重置代理选择
-        loadAccounts()
+        refresh()
       }
     } catch (error: any) {
       console.error("上传账号文件失败:", error)
@@ -393,21 +359,18 @@ export default function AccountsPage() {
     <MainLayout>
       <div className="space-y-6">
         {/* Page Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight">账号管理</h1>
-            <p className="text-muted-foreground mt-1">
-              管理和监控您的TG账号
-            </p>
-          </div>
-          <div className="flex gap-2">
-            <Dialog open={uploadDialogOpen} onOpenChange={setUploadDialogOpen}>
-              <DialogTrigger asChild>
-                <Button variant="outline">
-                  <Upload className="h-4 w-4 mr-2" />
-                  上传账号文件
-                </Button>
-              </DialogTrigger>
+        <PageHeader
+          title="账号管理"
+          description="管理和监控您的TG账号"
+          actions={
+            <>
+              <Dialog open={uploadDialogOpen} onOpenChange={setUploadDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button variant="outline">
+                    <Upload className="h-4 w-4 mr-2" />
+                    上传账号文件
+                  </Button>
+                </DialogTrigger>
               <DialogContent className="sm:max-w-[500px]">
                 <DialogHeader>
                   <DialogTitle>上传账号文件</DialogTitle>
@@ -490,34 +453,26 @@ export default function AccountsPage() {
                 </div>
               </DialogContent>
             </Dialog>
-            <Button onClick={handleAddAccount}>
-              <Plus className="h-4 w-4 mr-2" />
-              手动添加
-            </Button>
-          </div>
-        </div>
+              <Button onClick={handleAddAccount}>
+                <Plus className="h-4 w-4 mr-2" />
+                手动添加
+              </Button>
+            </>
+          }
+        />
 
         {/* Filters */}
-        <Card>
-          <CardHeader>
-            <div className="flex items-center gap-4">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  type="search"
-                  placeholder="搜索手机号或备注..."
-                  className="pl-9"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                />
-              </div>
-              <Button variant="outline">
-                <Filter className="h-4 w-4 mr-2" />
-                筛选
-              </Button>
-            </div>
-          </CardHeader>
-        </Card>
+        <FilterBar
+          search={search}
+          onSearchChange={setSearch}
+          searchPlaceholder="搜索手机号或备注..."
+          filters={
+            <Button variant="outline">
+              <Filter className="h-4 w-4 mr-2" />
+              筛选
+            </Button>
+          }
+        />
 
         {/* Modern Accounts Table */}
         <ModernTable
@@ -640,9 +595,6 @@ export default function AccountsPage() {
             }
           ]}
           loading={loading}
-          searchable
-          searchPlaceholder="搜索手机号或备注..."
-          filterable
           emptyText="暂无账号数据"
           className="card-shadow"
         />

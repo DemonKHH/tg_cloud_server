@@ -39,9 +39,9 @@ export function ModernTable<T extends Record<string, any>>({
   data,
   columns,
   loading = false,
-  searchable = true,
+  searchable = false,
   searchPlaceholder = "搜索...",
-  filterable = true,
+  filterable = false,
   className,
   onRowClick,
   emptyText = "暂无数据"

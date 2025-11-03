@@ -2,10 +2,9 @@
 
 import { toast } from "sonner"
 import { MainLayout } from "@/components/layout/main-layout"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Plus, Search, X, RefreshCw, CheckCircle2, Clock, PlayCircle, AlertCircle, Ban, FileText, MoreVertical } from "lucide-react"
+import { Plus, X, RefreshCw, CheckCircle2, Clock, PlayCircle, AlertCircle, Ban, FileText, MoreVertical } from "lucide-react"
 import { taskAPI, accountAPI } from "@/lib/api"
 import { useState, useEffect } from "react"
 import { Badge } from "@/components/ui/badge"
@@ -35,14 +34,28 @@ import {
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { cn } from "@/lib/utils"
+import { usePagination } from "@/hooks/use-pagination"
+import { PageHeader } from "@/components/common/page-header"
+import { FilterBar } from "@/components/common/filter-bar"
 
 export default function TasksPage() {
-  const [tasks, setTasks] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
-  const [page, setPage] = useState(1)
-  const [total, setTotal] = useState(0)
-  const [search, setSearch] = useState("")
-  const [statusFilter, setStatusFilter] = useState<string>("")
+  const {
+    data: tasks,
+    page,
+    total,
+    loading,
+    search,
+    setSearch,
+    filters,
+    updateFilter,
+    setPage,
+    refresh,
+  } = usePagination({
+    fetchFn: taskAPI.list,
+    initialFilters: { status: "" },
+  })
+  
+  const statusFilter = filters.status || ""
   
   // 创建任务相关状态
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
@@ -78,24 +91,6 @@ export default function TasksPage() {
   const [loadingLogs, setLoadingLogs] = useState(false)
 
   useEffect(() => {
-    loadTasks()
-  }, [page, statusFilter])
-
-  // 搜索防抖
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (page === 1) {
-        loadTasks()
-      } else {
-        setPage(1)
-      }
-    }, 500)
-
-    return () => clearTimeout(timer)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search])
-
-  useEffect(() => {
     if (createDialogOpen) {
       loadAccounts()
     }
@@ -113,33 +108,6 @@ export default function TasksPage() {
       console.error("加载账号失败:", error)
     } finally {
       setLoadingAccounts(false)
-    }
-  }
-
-  const loadTasks = async () => {
-    try {
-      setLoading(true)
-      const params: any = { page, limit: 20 }
-      if (search) {
-        params.search = search
-      }
-      if (statusFilter) {
-        params.status = statusFilter
-      }
-      const response = await taskAPI.list(params)
-      if (response.data) {
-        const data = response.data as any
-        setTasks(data.items || [])
-        setTotal(data.pagination?.total || 0)
-        if (data.pagination?.current_page) {
-          setPage(data.pagination.current_page)
-        }
-      }
-    } catch (error) {
-      toast.error("加载任务失败，请稍后重试")
-      console.error("加载任务失败:", error)
-    } finally {
-      setLoading(false)
     }
   }
 
@@ -228,7 +196,7 @@ export default function TasksPage() {
     try {
       await taskAPI.cancel(String(task.id))
       toast.success("任务已取消")
-      loadTasks()
+      refresh()
     } catch (error: any) {
       toast.error(error.message || "取消任务失败")
     }
@@ -239,7 +207,7 @@ export default function TasksPage() {
     try {
       await taskAPI.retry(String(task.id))
       toast.success("任务已重新执行")
-      loadTasks()
+      refresh()
     } catch (error: any) {
       toast.error(error.message || "重试任务失败")
     }
@@ -380,7 +348,7 @@ export default function TasksPage() {
       })
       toast.success("任务创建成功")
       setCreateDialogOpen(false)
-      loadTasks()
+      refresh()
     } catch (error: any) {
       toast.error(error.message || "创建任务失败")
     }
@@ -390,56 +358,48 @@ export default function TasksPage() {
     <MainLayout>
       <div className="space-y-6">
         {/* Page Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight">任务管理</h1>
-            <p className="text-muted-foreground mt-1">
-              查看和管理您的任务
-            </p>
-          </div>
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={loadTasks}>
-              <RefreshCw className="h-4 w-4 mr-2" />
-              刷新
-            </Button>
-            <Button onClick={handleCreateTask}>
-              <Plus className="h-4 w-4 mr-2" />
-              创建任务
-            </Button>
-          </div>
-        </div>
+        <PageHeader
+          title="任务管理"
+          description="查看和管理您的任务"
+          actions={
+            <>
+              <Button variant="outline" onClick={refresh}>
+                <RefreshCw className="h-4 w-4 mr-2" />
+                刷新
+              </Button>
+              <Button onClick={handleCreateTask}>
+                <Plus className="h-4 w-4 mr-2" />
+                创建任务
+              </Button>
+            </>
+          }
+        />
 
         {/* Filters */}
-        <Card>
-          <CardHeader>
-            <div className="flex items-center gap-4">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  type="search"
-                  placeholder="搜索任务ID或账号ID..."
-                  className="pl-9"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                />
-              </div>
-              <Select value={statusFilter || "all"} onValueChange={(value) => setStatusFilter(value === "all" ? "" : value)}>
-                <SelectTrigger className="w-[180px]">
-                  <SelectValue placeholder="筛选状态" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">全部状态</SelectItem>
-                  <SelectItem value="pending">待执行</SelectItem>
-                  <SelectItem value="queued">已排队</SelectItem>
-                  <SelectItem value="running">执行中</SelectItem>
-                  <SelectItem value="completed">已完成</SelectItem>
-                  <SelectItem value="failed">失败</SelectItem>
-                  <SelectItem value="cancelled">已取消</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </CardHeader>
-        </Card>
+        <FilterBar
+          search={search}
+          onSearchChange={setSearch}
+          searchPlaceholder="搜索任务ID或账号ID..."
+          filters={
+            <Select 
+              value={statusFilter || "all"} 
+              onValueChange={(value) => updateFilter("status", value === "all" ? "" : value)}
+            >
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="筛选状态" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">全部状态</SelectItem>
+                <SelectItem value="pending">待执行</SelectItem>
+                <SelectItem value="queued">已排队</SelectItem>
+                <SelectItem value="running">执行中</SelectItem>
+                <SelectItem value="completed">已完成</SelectItem>
+                <SelectItem value="failed">失败</SelectItem>
+                <SelectItem value="cancelled">已取消</SelectItem>
+              </SelectContent>
+            </Select>
+          }
+        />
 
         {/* Tasks Table */}
         <ModernTable
@@ -556,9 +516,6 @@ export default function TasksPage() {
             }
           ]}
           loading={loading}
-          searchable
-          searchPlaceholder="搜索任务ID或账号ID..."
-          filterable
           emptyText="暂无任务数据"
           className="card-shadow"
         />

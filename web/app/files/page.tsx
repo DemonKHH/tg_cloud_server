@@ -2,12 +2,11 @@
 
 import { toast } from "sonner"
 import { MainLayout } from "@/components/layout/main-layout"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Plus, Upload, Download, Image, File, Trash2, Search, MoreVertical, Eye, Link2 } from "lucide-react"
+import { Upload, Download, Image, File, Trash2, MoreVertical, Eye, Link2 } from "lucide-react"
 import { fileAPI } from "@/lib/api"
-import { useState, useEffect, useRef } from "react"
+import { useState, useRef } from "react"
 import { Badge } from "@/components/ui/badge"
 import { ModernTable } from "@/components/ui/modern-table"
 import {
@@ -32,15 +31,28 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
-import { cn } from "@/lib/utils"
+import { usePagination } from "@/hooks/use-pagination"
+import { PageHeader } from "@/components/common/page-header"
+import { FilterBar } from "@/components/common/filter-bar"
 
 export default function FilesPage() {
-  const [files, setFiles] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
-  const [page, setPage] = useState(1)
-  const [total, setTotal] = useState(0)
-  const [search, setSearch] = useState("")
-  const [categoryFilter, setCategoryFilter] = useState<string>("")
+  const {
+    data: files,
+    page,
+    total,
+    loading,
+    search,
+    setSearch,
+    filters,
+    updateFilter,
+    setPage,
+    refresh,
+  } = usePagination({
+    fetchFn: fileAPI.list,
+    initialFilters: { category: "" },
+  })
+  
+  const categoryFilter = filters.category || ""
   const [uploading, setUploading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   
@@ -53,51 +65,6 @@ export default function FilesPage() {
   const [urlDialogOpen, setUrlDialogOpen] = useState(false)
   const [uploadUrl, setUploadUrl] = useState("")
   const [urlCategory, setUrlCategory] = useState("attachment")
-
-  useEffect(() => {
-    loadFiles()
-  }, [page, categoryFilter])
-
-  // 搜索防抖
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (page === 1) {
-        loadFiles()
-      } else {
-        setPage(1)
-      }
-    }, 500)
-
-    return () => clearTimeout(timer)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search])
-
-  const loadFiles = async () => {
-    try {
-      setLoading(true)
-      const params: any = { page, limit: 20 }
-      if (search) {
-        params.search = search
-      }
-      if (categoryFilter) {
-        params.category = categoryFilter
-      }
-      const response = await fileAPI.list(params)
-      if (response.data) {
-        const data = response.data as any
-        setFiles(data.items || [])
-        setTotal(data.pagination?.total || 0)
-        if (data.pagination?.current_page) {
-          setPage(data.pagination.current_page)
-        }
-      }
-    } catch (error) {
-      toast.error("加载文件失败，请稍后重试")
-      console.error("加载文件失败:", error)
-    } finally {
-      setLoading(false)
-    }
-  }
 
   const formatFileSize = (bytes: number) => {
     if (bytes === 0) return "0 B"
@@ -152,7 +119,7 @@ export default function FilesPage() {
       if (fileInputRef.current) {
         fileInputRef.current.value = ""
       }
-      loadFiles()
+      refresh()
     } catch (error: any) {
       toast.error(error.message || "文件上传失败")
     } finally {
@@ -173,7 +140,7 @@ export default function FilesPage() {
       toast.success("文件上传成功")
       setUrlDialogOpen(false)
       setUploadUrl("")
-      loadFiles()
+      refresh()
     } catch (error: any) {
       toast.error(error.message || "文件上传失败")
     } finally {
@@ -190,7 +157,7 @@ export default function FilesPage() {
     try {
       await fileAPI.delete(String(file.id))
       toast.success("文件删除成功")
-      loadFiles()
+      refresh()
     } catch (error: any) {
       toast.error(error.message || "删除文件失败")
     }
@@ -228,55 +195,47 @@ export default function FilesPage() {
     <MainLayout>
       <div className="space-y-6">
         {/* Page Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight">文件管理</h1>
-            <p className="text-muted-foreground mt-1">
-              上传和管理您的文件
-            </p>
-          </div>
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={() => setUrlDialogOpen(true)}>
-              <Link2 className="h-4 w-4 mr-2" />
-              从URL上传
-            </Button>
-            <Button onClick={() => fileInputRef.current?.click()}>
-              <Upload className="h-4 w-4 mr-2" />
-              上传文件
-            </Button>
-          </div>
-        </div>
+        <PageHeader
+          title="文件管理"
+          description="上传和管理您的文件"
+          actions={
+            <>
+              <Button variant="outline" onClick={() => setUrlDialogOpen(true)}>
+                <Link2 className="h-4 w-4 mr-2" />
+                从URL上传
+              </Button>
+              <Button onClick={() => fileInputRef.current?.click()}>
+                <Upload className="h-4 w-4 mr-2" />
+                上传文件
+              </Button>
+            </>
+          }
+        />
 
         {/* Filters */}
-        <Card>
-          <CardHeader>
-            <div className="flex items-center gap-4">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  type="search"
-                  placeholder="搜索文件名..."
-                  className="pl-9"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                />
-              </div>
-              <Select value={categoryFilter || "all"} onValueChange={(value) => setCategoryFilter(value === "all" ? "" : value)}>
-                <SelectTrigger className="w-[180px]">
-                  <SelectValue placeholder="筛选分类" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">全部分类</SelectItem>
-                  <SelectItem value="attachment">附件</SelectItem>
-                  <SelectItem value="image">图片</SelectItem>
-                  <SelectItem value="video">视频</SelectItem>
-                  <SelectItem value="document">文档</SelectItem>
-                  <SelectItem value="other">其他</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </CardHeader>
-        </Card>
+        <FilterBar
+          search={search}
+          onSearchChange={setSearch}
+          searchPlaceholder="搜索文件名..."
+          filters={
+            <Select 
+              value={categoryFilter || "all"} 
+              onValueChange={(value) => updateFilter("category", value === "all" ? "" : value)}
+            >
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="筛选分类" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">全部分类</SelectItem>
+                <SelectItem value="attachment">附件</SelectItem>
+                <SelectItem value="image">图片</SelectItem>
+                <SelectItem value="video">视频</SelectItem>
+                <SelectItem value="document">文档</SelectItem>
+                <SelectItem value="other">其他</SelectItem>
+              </SelectContent>
+            </Select>
+          }
+        />
 
         {/* Files Table */}
         <ModernTable
@@ -370,9 +329,6 @@ export default function FilesPage() {
             }
           ]}
           loading={loading}
-          searchable
-          searchPlaceholder="搜索文件名..."
-          filterable
           emptyText="暂无文件数据"
           className="card-shadow"
         />

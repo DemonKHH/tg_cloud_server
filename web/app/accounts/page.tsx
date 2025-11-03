@@ -26,7 +26,7 @@ import { ModernTable } from "@/components/ui/modern-table"
 import { motion } from "framer-motion"
 import { cn } from "@/lib/utils"
 import { accountAPI, proxyAPI } from "@/lib/api"
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import {
   Select,
   SelectContent,
@@ -35,6 +35,8 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
+import { Pencil, Trash2, Activity, Link2 } from "lucide-react"
 
 export default function AccountsPage() {
   const [accounts, setAccounts] = useState<any[]>([])
@@ -48,6 +50,23 @@ export default function AccountsPage() {
   const [proxies, setProxies] = useState<any[]>([])
   const [loadingProxies, setLoadingProxies] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  
+  // 编辑账号相关状态
+  const [editDialogOpen, setEditDialogOpen] = useState(false)
+  const [editingAccount, setEditingAccount] = useState<any>(null)
+  const [editForm, setEditForm] = useState({ note: "", phone: "", session_data: "" })
+  
+  // 绑定代理相关状态
+  const [bindProxyDialogOpen, setBindProxyDialogOpen] = useState(false)
+  const [bindingAccount, setBindingAccount] = useState<any>(null)
+  const [selectedBindProxy, setSelectedBindProxy] = useState<string>("")
+  
+  // 手动添加账号相关状态
+  const [addDialogOpen, setAddDialogOpen] = useState(false)
+  const [addForm, setAddForm] = useState({ phone: "", session_data: "", note: "", proxy_id: "" })
+  
+  // 健康检查相关状态
+  const [healthChecking, setHealthChecking] = useState<string | null>(null)
 
   useEffect(() => {
     loadAccounts()
@@ -58,6 +77,26 @@ export default function AccountsPage() {
       loadProxies()
     }
   }, [uploadDialogOpen])
+
+  // 搜索防抖
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (page === 1) {
+        loadAccounts()
+      } else {
+        setPage(1) // 重置到第一页，触发loadAccounts
+      }
+    }, 500)
+
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search])
+
+  useEffect(() => {
+    if (bindProxyDialogOpen || editDialogOpen) {
+      loadProxies()
+    }
+  }, [bindProxyDialogOpen, editDialogOpen])
 
   const loadProxies = async () => {
     try {
@@ -83,12 +122,20 @@ export default function AccountsPage() {
   const loadAccounts = async () => {
     try {
       setLoading(true)
-      const response = await accountAPI.list({ page, limit: 20 })
+      const params: any = { page, limit: 20 }
+      if (search) {
+        params.search = search
+      }
+      const response = await accountAPI.list(params)
       if (response.data) {
-        // 后端返回格式：{ items: [], pagination: { total, current_page, ... } }
+        // 后端返回格式：{ items: [], pagination: { current_page, per_page, total, total_pages, has_next, has_prev } }
         const data = response.data as any
         setAccounts(data.items || [])
         setTotal(data.pagination?.total || 0)
+        // 更新页码（后端返回的current_page）
+        if (data.pagination?.current_page) {
+          setPage(data.pagination.current_page)
+        }
       }
     } catch (error) {
       toast.error("加载账号失败，请稍后重试")
@@ -98,25 +145,169 @@ export default function AccountsPage() {
     }
   }
 
+  // 根据后端账号状态枚举映射图标和颜色
   const getStatusIcon = (status: string) => {
     switch (status) {
-      case "active":
+      case "normal":
         return <CheckCircle2 className="h-4 w-4 text-green-500" />
-      case "error":
-        return <XCircle className="h-4 w-4 text-red-500" />
-      default:
+      case "warning":
         return <AlertCircle className="h-4 w-4 text-yellow-500" />
+      case "restricted":
+        return <XCircle className="h-4 w-4 text-orange-500" />
+      case "dead":
+        return <XCircle className="h-4 w-4 text-red-500" />
+      case "cooling":
+        return <AlertCircle className="h-4 w-4 text-blue-500" />
+      case "maintenance":
+        return <AlertCircle className="h-4 w-4 text-gray-500" />
+      case "new":
+      default:
+        return <AlertCircle className="h-4 w-4 text-purple-500" />
     }
   }
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case "active":
-        return "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300"
-      case "error":
-        return "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300"
+      case "normal":
+        return "bg-green-50 text-green-700 border border-green-200 dark:bg-green-900 dark:text-green-300 dark:border-green-800"
+      case "warning":
+        return "bg-yellow-50 text-yellow-700 border border-yellow-200 dark:bg-yellow-900 dark:text-yellow-300 dark:border-yellow-800"
+      case "restricted":
+        return "bg-orange-50 text-orange-700 border border-orange-200 dark:bg-orange-900 dark:text-orange-300 dark:border-orange-800"
+      case "dead":
+        return "bg-red-50 text-red-700 border border-red-200 dark:bg-red-900 dark:text-red-300 dark:border-red-800"
+      case "cooling":
+        return "bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-900 dark:text-blue-300 dark:border-blue-800"
+      case "maintenance":
+        return "bg-gray-50 text-gray-700 border border-gray-200 dark:bg-gray-900 dark:text-gray-300 dark:border-gray-800"
+      case "new":
       default:
-        return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300"
+        return "bg-purple-50 text-purple-700 border border-purple-200 dark:bg-purple-900 dark:text-purple-300 dark:border-purple-800"
+    }
+  }
+
+  const getStatusText = (status: string) => {
+    const statusMap: Record<string, string> = {
+      new: "新建",
+      normal: "正常",
+      warning: "警告",
+      restricted: "限制",
+      dead: "死亡",
+      cooling: "冷却",
+      maintenance: "维护",
+    }
+    return statusMap[status] || status
+  }
+
+  // 编辑账号
+  const handleEditAccount = (account: any) => {
+    setEditingAccount(account)
+    setEditForm({
+      note: account.note || "",
+      phone: account.phone || "",
+      session_data: account.session_data || "",
+    })
+    setEditDialogOpen(true)
+  }
+
+  const handleSaveEdit = async () => {
+    if (!editingAccount) return
+    
+    try {
+      await accountAPI.update(String(editingAccount.id), {
+        note: editForm.note,
+        // session_data 通常不允许修改，除非是特殊情况
+      })
+      toast.success("账号更新成功")
+      setEditDialogOpen(false)
+      loadAccounts()
+    } catch (error: any) {
+      toast.error(error.message || "更新账号失败")
+    }
+  }
+
+  // 删除账号
+  const handleDeleteAccount = async (account: any) => {
+    if (!confirm(`确定要删除账号 ${account.phone} 吗？此操作不可恢复。`)) {
+      return
+    }
+
+    try {
+      await accountAPI.delete(String(account.id))
+      toast.success("账号删除成功")
+      loadAccounts()
+    } catch (error: any) {
+      toast.error(error.message || "删除账号失败")
+    }
+  }
+
+  // 健康检查
+  const handleCheckHealth = async (account: any) => {
+    try {
+      setHealthChecking(account.id)
+      const response = await accountAPI.checkHealth(String(account.id))
+      if (response.data) {
+        const health = response.data as any
+        toast.success(`健康检查完成：健康度 ${((health.score || 0) * 100).toFixed(0)}%`)
+        loadAccounts() // 重新加载以更新健康度
+      }
+    } catch (error: any) {
+      toast.error(error.message || "健康检查失败")
+    } finally {
+      setHealthChecking(null)
+    }
+  }
+
+  // 绑定代理
+  const handleBindProxy = (account: any) => {
+    setBindingAccount(account)
+    setSelectedBindProxy(account.proxy_id ? String(account.proxy_id) : "")
+    setBindProxyDialogOpen(true)
+  }
+
+  const handleSaveBindProxy = async () => {
+    if (!bindingAccount) return
+
+    try {
+      const proxyId = selectedBindProxy ? parseInt(selectedBindProxy) : undefined
+      await accountAPI.bindProxy(String(bindingAccount.id), proxyId)
+      toast.success(proxyId ? "代理绑定成功" : "代理解绑成功")
+      setBindProxyDialogOpen(false)
+      loadAccounts()
+    } catch (error: any) {
+      toast.error(error.message || "代理绑定失败")
+    }
+  }
+
+  // 手动添加账号
+  const handleAddAccount = () => {
+    setAddForm({ phone: "", session_data: "", note: "", proxy_id: "" })
+    setAddDialogOpen(true)
+  }
+
+  const handleSaveAdd = async () => {
+    if (!addForm.phone || !addForm.session_data) {
+      toast.error("请填写手机号和Session数据")
+      return
+    }
+
+    try {
+      const data: any = {
+        phone: addForm.phone,
+        session_data: addForm.session_data,
+      }
+      if (addForm.note) {
+        data.note = addForm.note
+      }
+      if (addForm.proxy_id) {
+        data.proxy_id = parseInt(addForm.proxy_id)
+      }
+      await accountAPI.create(data)
+      toast.success("账号添加成功")
+      setAddDialogOpen(false)
+      loadAccounts()
+    } catch (error: any) {
+      toast.error(error.message || "添加账号失败")
     }
   }
 
@@ -264,15 +455,15 @@ export default function AccountsPage() {
                   <div className="space-y-2">
                     <Label htmlFor="proxy-select">选择代理（可选）</Label>
                     <Select
-                      value={selectedProxy}
-                      onValueChange={setSelectedProxy}
+                      value={selectedProxy || "none"}
+                      onValueChange={(value) => setSelectedProxy(value === "none" ? "" : value)}
                       disabled={uploading || loadingProxies}
                     >
                       <SelectTrigger id="proxy-select">
                         <SelectValue placeholder={loadingProxies ? "加载中..." : "不绑定代理"} />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">不绑定代理</SelectItem>
+                        <SelectItem value="none">不绑定代理</SelectItem>
                         {proxies.map((proxy) => (
                           <SelectItem key={proxy.id} value={String(proxy.id)}>
                             {proxy.host}:{proxy.port} {proxy.username && `(${proxy.username})`}
@@ -299,7 +490,7 @@ export default function AccountsPage() {
                 </div>
               </DialogContent>
             </Dialog>
-            <Button>
+            <Button onClick={handleAddAccount}>
               <Plus className="h-4 w-4 mr-2" />
               手动添加
             </Button>
@@ -354,10 +545,10 @@ export default function AccountsPage() {
                 <div className="flex items-center gap-2">
                   {getStatusIcon(value)}
                   <Badge
-                    variant={value === 'active' ? 'default' : value === 'error' ? 'destructive' : 'secondary'}
-                    className="text-xs"
+                    variant={value === 'normal' ? 'default' : value === 'dead' || value === 'restricted' ? 'destructive' : 'secondary'}
+                    className={cn("text-xs", getStatusColor(value))}
                   >
-                    {value === 'active' ? '正常' : value === 'error' ? '异常' : '警告'}
+                    {getStatusText(value)}
                   </Badge>
                 </div>
               )
@@ -411,8 +602,8 @@ export default function AccountsPage() {
             {
               key: 'actions',
               title: '操作',
-              width: '80px',
-              render: () => (
+              width: '100px',
+              render: (_, record) => (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="ghost" size="icon" className="h-8 w-8">
@@ -420,11 +611,29 @@ export default function AccountsPage() {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent className="glass-effect" align="end">
-                    <DropdownMenuItem>编辑账号</DropdownMenuItem>
-                    <DropdownMenuItem>检查健康</DropdownMenuItem>
-                    <DropdownMenuItem>绑定代理</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => handleEditAccount(record)}>
+                      <Pencil className="h-4 w-4 mr-2" />
+                      编辑账号
+                    </DropdownMenuItem>
+                    <DropdownMenuItem 
+                      onClick={() => handleCheckHealth(record)}
+                      disabled={healthChecking === record.id}
+                    >
+                      <Activity className="h-4 w-4 mr-2" />
+                      {healthChecking === record.id ? "检查中..." : "检查健康"}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => handleBindProxy(record)}>
+                      <Link2 className="h-4 w-4 mr-2" />
+                      绑定代理
+                    </DropdownMenuItem>
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem className="text-destructive">删除账号</DropdownMenuItem>
+                    <DropdownMenuItem 
+                      onClick={() => handleDeleteAccount(record)}
+                      className="text-destructive"
+                    >
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      删除账号
+                    </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
               )
@@ -464,6 +673,157 @@ export default function AccountsPage() {
             </Button>
           </div>
         </div>
+
+        {/* 编辑账号对话框 */}
+        <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+          <DialogContent className="sm:max-w-[500px]">
+            <DialogHeader>
+              <DialogTitle>编辑账号</DialogTitle>
+              <DialogDescription>
+                更新账号信息。Session数据通常不允许修改。
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-phone">手机号</Label>
+                <Input
+                  id="edit-phone"
+                  value={editForm.phone}
+                  onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
+                  disabled
+                  className="bg-muted"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-note">备注</Label>
+                <Textarea
+                  id="edit-note"
+                  value={editForm.note}
+                  onChange={(e) => setEditForm({ ...editForm, note: e.target.value })}
+                  placeholder="输入备注信息..."
+                  rows={3}
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
+                取消
+              </Button>
+              <Button onClick={handleSaveEdit}>保存</Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* 绑定代理对话框 */}
+        <Dialog open={bindProxyDialogOpen} onOpenChange={setBindProxyDialogOpen}>
+          <DialogContent className="sm:max-w-[400px]">
+            <DialogHeader>
+              <DialogTitle>绑定代理</DialogTitle>
+              <DialogDescription>
+                为账号 {bindingAccount?.phone} 绑定或解绑代理
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="bind-proxy-select">选择代理</Label>
+                <Select
+                  value={selectedBindProxy || "none"}
+                  onValueChange={(value) => setSelectedBindProxy(value === "none" ? "" : value)}
+                  disabled={loadingProxies}
+                >
+                  <SelectTrigger id="bind-proxy-select">
+                    <SelectValue placeholder={loadingProxies ? "加载中..." : "不绑定代理"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">不绑定代理（解绑）</SelectItem>
+                    {proxies.map((proxy) => (
+                      <SelectItem key={proxy.id} value={String(proxy.id)}>
+                        {proxy.host}:{proxy.port} {proxy.username && `(${proxy.username})`}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setBindProxyDialogOpen(false)}>
+                取消
+              </Button>
+              <Button onClick={handleSaveBindProxy}>确认</Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* 手动添加账号对话框 */}
+        <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
+          <DialogContent className="sm:max-w-[600px]">
+            <DialogHeader>
+              <DialogTitle>手动添加账号</DialogTitle>
+              <DialogDescription>
+                手动输入账号信息添加新的TG账号
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="add-phone">手机号 *</Label>
+                <Input
+                  id="add-phone"
+                  value={addForm.phone}
+                  onChange={(e) => setAddForm({ ...addForm, phone: e.target.value })}
+                  placeholder="+1234567890"
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="add-session">Session数据 *</Label>
+                <Textarea
+                  id="add-session"
+                  value={addForm.session_data}
+                  onChange={(e) => setAddForm({ ...addForm, session_data: e.target.value })}
+                  placeholder="粘贴SessionString..."
+                  rows={6}
+                  required
+                  className="font-mono text-xs"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="add-note">备注（可选）</Label>
+                <Input
+                  id="add-note"
+                  value={addForm.note}
+                  onChange={(e) => setAddForm({ ...addForm, note: e.target.value })}
+                  placeholder="输入备注信息..."
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="add-proxy-select">代理（可选）</Label>
+                <Select
+                  value={addForm.proxy_id || "none"}
+                  onValueChange={(value) => setAddForm({ ...addForm, proxy_id: value === "none" ? "" : value })}
+                  disabled={loadingProxies}
+                >
+                  <SelectTrigger id="add-proxy-select">
+                    <SelectValue placeholder={loadingProxies ? "加载中..." : "不绑定代理"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">不绑定代理</SelectItem>
+                    {proxies.map((proxy) => (
+                      <SelectItem key={proxy.id} value={String(proxy.id)}>
+                        {proxy.host}:{proxy.port} {proxy.username && `(${proxy.username})`}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setAddDialogOpen(false)}>
+                取消
+              </Button>
+              <Button onClick={handleSaveAdd}>添加</Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     </MainLayout>
   )

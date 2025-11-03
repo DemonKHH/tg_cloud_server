@@ -5,26 +5,91 @@ import { MainLayout } from "@/components/layout/main-layout"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Plus, Upload, Download, Image, File, Trash2 } from "lucide-react"
+import { Plus, Upload, Download, Image, File, Trash2, Search, MoreVertical, Eye, Link2 } from "lucide-react"
 import { fileAPI } from "@/lib/api"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
+import { Badge } from "@/components/ui/badge"
+import { ModernTable } from "@/components/ui/modern-table"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { Label } from "@/components/ui/label"
+import { cn } from "@/lib/utils"
 
 export default function FilesPage() {
   const [files, setFiles] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [page, setPage] = useState(1)
+  const [total, setTotal] = useState(0)
+  const [search, setSearch] = useState("")
+  const [categoryFilter, setCategoryFilter] = useState<string>("")
+  const [uploading, setUploading] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  
+  // 上传对话框状态
+  const [uploadDialogOpen, setUploadDialogOpen] = useState(false)
+  const [uploadFile, setUploadFile] = useState<File | null>(null)
+  const [uploadCategory, setUploadCategory] = useState("attachment")
+  
+  // URL上传对话框状态
+  const [urlDialogOpen, setUrlDialogOpen] = useState(false)
+  const [uploadUrl, setUploadUrl] = useState("")
+  const [urlCategory, setUrlCategory] = useState("attachment")
 
   useEffect(() => {
     loadFiles()
-  }, [])
+  }, [page, categoryFilter])
+
+  // 搜索防抖
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (page === 1) {
+        loadFiles()
+      } else {
+        setPage(1)
+      }
+    }, 500)
+
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search])
 
   const loadFiles = async () => {
     try {
       setLoading(true)
-      const response = await fileAPI.list({ page: 1, limit: 20 })
+      const params: any = { page, limit: 20 }
+      if (search) {
+        params.search = search
+      }
+      if (categoryFilter) {
+        params.category = categoryFilter
+      }
+      const response = await fileAPI.list(params)
       if (response.data) {
-        // 后端返回格式：{ items: [], pagination: { total, current_page, ... } }
         const data = response.data as any
         setFiles(data.items || [])
+        setTotal(data.pagination?.total || 0)
+        if (data.pagination?.current_page) {
+          setPage(data.pagination.current_page)
+        }
       }
     } catch (error) {
       toast.error("加载文件失败，请稍后重试")
@@ -34,89 +99,423 @@ export default function FilesPage() {
     }
   }
 
-  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-
-    try {
-      await fileAPI.upload(file, "attachment")
-      toast.success("文件上传成功")
-      loadFiles()
-    } catch (error) {
-      toast.error("文件上传失败")
-      console.error("上传失败:", error)
-    }
+  const formatFileSize = (bytes: number) => {
+    if (bytes === 0) return "0 B"
+    const k = 1024
+    const sizes = ["B", "KB", "MB", "GB"]
+    const i = Math.floor(Math.log(bytes) / Math.log(k))
+    return `${(bytes / Math.pow(k, i)).toFixed(2)} ${sizes[i]}`
   }
 
   const getFileIcon = (fileType: string) => {
-    if (fileType === "image") return <Image className="h-5 w-5" />
-    return <File className="h-5 w-5" />
+    if (fileType?.startsWith("image/")) return <Image className="h-5 w-5 text-blue-500" />
+    return <File className="h-5 w-5 text-gray-500" />
+  }
+
+  const getCategoryText = (category: string) => {
+    const categoryMap: Record<string, string> = {
+      attachment: "附件",
+      image: "图片",
+      video: "视频",
+      document: "文档",
+      other: "其他",
+    }
+    return categoryMap[category] || category
+  }
+
+  const getFileTypeText = (mimeType: string) => {
+    if (!mimeType) return "未知"
+    const parts = mimeType.split("/")
+    if (parts.length === 2) {
+      return parts[1].toUpperCase()
+    }
+    return mimeType
+  }
+
+  // 文件上传
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploadFile(file)
+    setUploadDialogOpen(true)
+  }
+
+  const handleUpload = async () => {
+    if (!uploadFile) return
+
+    try {
+      setUploading(true)
+      await fileAPI.upload(uploadFile, uploadCategory)
+      toast.success("文件上传成功")
+      setUploadDialogOpen(false)
+      setUploadFile(null)
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ""
+      }
+      loadFiles()
+    } catch (error: any) {
+      toast.error(error.message || "文件上传失败")
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  // URL上传
+  const handleUploadFromURL = async () => {
+    if (!uploadUrl) {
+      toast.error("请输入文件URL")
+      return
+    }
+
+    try {
+      setUploading(true)
+      await fileAPI.uploadFromURL(uploadUrl, urlCategory)
+      toast.success("文件上传成功")
+      setUrlDialogOpen(false)
+      setUploadUrl("")
+      loadFiles()
+    } catch (error: any) {
+      toast.error(error.message || "文件上传失败")
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  // 删除文件
+  const handleDeleteFile = async (file: any) => {
+    if (!confirm(`确定要删除文件 ${file.original_name} 吗？`)) {
+      return
+    }
+
+    try {
+      await fileAPI.delete(String(file.id))
+      toast.success("文件删除成功")
+      loadFiles()
+    } catch (error: any) {
+      toast.error(error.message || "删除文件失败")
+    }
+  }
+
+  // 下载文件
+  const handleDownloadFile = (file: any) => {
+    window.open(fileAPI.download(String(file.id)), "_blank")
+  }
+
+  // 预览文件
+  const handlePreviewFile = (file: any) => {
+    if (file.file_type?.startsWith("image/")) {
+      window.open(fileAPI.preview(String(file.id)), "_blank")
+    } else {
+      toast.info("该文件类型不支持预览")
+    }
+  }
+
+  // 获取文件URL
+  const handleGetFileURL = async (file: any) => {
+    try {
+      const response = await fileAPI.getURL(String(file.id))
+      if (response.data) {
+        const url = (response.data as any).url
+        navigator.clipboard.writeText(url)
+        toast.success("文件URL已复制到剪贴板")
+      }
+    } catch (error: any) {
+      toast.error(error.message || "获取文件URL失败")
+    }
   }
 
   return (
     <MainLayout>
       <div className="space-y-6">
+        {/* Page Header */}
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold tracking-tight">文件管理</h1>
-            <p className="text-muted-foreground mt-1">上传和管理您的文件</p>
+            <p className="text-muted-foreground mt-1">
+              上传和管理您的文件
+            </p>
           </div>
-          <div>
-            <Input
-              type="file"
-              id="file-upload"
-              className="hidden"
-              onChange={handleUpload}
-            />
-            <Button asChild>
-              <label htmlFor="file-upload" className="cursor-pointer">
-                <Upload className="h-4 w-4 mr-2" />
-                上传文件
-              </label>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setUrlDialogOpen(true)}>
+              <Link2 className="h-4 w-4 mr-2" />
+              从URL上传
+            </Button>
+            <Button onClick={() => fileInputRef.current?.click()}>
+              <Upload className="h-4 w-4 mr-2" />
+              上传文件
             </Button>
           </div>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          {loading ? (
-            <div className="col-span-full text-center py-8 text-muted-foreground">
-              加载中...
+        {/* Filters */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-4">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  type="search"
+                  placeholder="搜索文件名..."
+                  className="pl-9"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+              </div>
+              <Select value={categoryFilter || "all"} onValueChange={(value) => setCategoryFilter(value === "all" ? "" : value)}>
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="筛选分类" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">全部分类</SelectItem>
+                  <SelectItem value="attachment">附件</SelectItem>
+                  <SelectItem value="image">图片</SelectItem>
+                  <SelectItem value="video">视频</SelectItem>
+                  <SelectItem value="document">文档</SelectItem>
+                  <SelectItem value="other">其他</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
-          ) : files.length === 0 ? (
-            <div className="col-span-full text-center py-8 text-muted-foreground">
-              暂无文件
-            </div>
-          ) : (
-            files.map((file) => (
-              <Card key={file.id} className="card-shadow hover:card-shadow-lg transition-all duration-300">
-                <CardHeader className="p-4">
+          </CardHeader>
+        </Card>
+
+        {/* Files Table */}
+        <ModernTable
+          data={files}
+          columns={[
+            {
+              key: 'original_name',
+              title: '文件名',
+              width: '250px',
+              render: (value, record) => (
+                <div className="flex items-center gap-3">
+                  {getFileIcon(record.file_type)}
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium truncate">{value}</div>
+                    <div className="text-xs text-muted-foreground truncate">
+                      {getFileTypeText(record.file_type)}
+                    </div>
+                  </div>
+                </div>
+              )
+            },
+            {
+              key: 'category',
+              title: '分类',
+              width: '120px',
+              render: (value) => (
+                <Badge variant="secondary" className="text-xs">
+                  {getCategoryText(value)}
+                </Badge>
+              )
+            },
+            {
+              key: 'file_size',
+              title: '大小',
+              width: '100px',
+              sortable: true,
+              render: (value) => (
+                <div className="text-sm text-muted-foreground">
+                  {formatFileSize(value || 0)}
+                </div>
+              )
+            },
+            {
+              key: 'created_at',
+              title: '上传时间',
+              width: '180px',
+              sortable: true,
+              render: (value) => (
+                <div className="text-sm text-muted-foreground">
+                  {new Date(value).toLocaleString()}
+                </div>
+              )
+            },
+            {
+              key: 'actions',
+              title: '操作',
+              width: '120px',
+              render: (_, record) => (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon" className="h-8 w-8">
+                      <MoreVertical className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent className="glass-effect" align="end">
+                    <DropdownMenuItem onClick={() => handleDownloadFile(record)}>
+                      <Download className="h-4 w-4 mr-2" />
+                      下载文件
+                    </DropdownMenuItem>
+                    {record.file_type?.startsWith("image/") && (
+                      <DropdownMenuItem onClick={() => handlePreviewFile(record)}>
+                        <Eye className="h-4 w-4 mr-2" />
+                        预览文件
+                      </DropdownMenuItem>
+                    )}
+                    <DropdownMenuItem onClick={() => handleGetFileURL(record)}>
+                      <Link2 className="h-4 w-4 mr-2" />
+                      复制URL
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem 
+                      onClick={() => handleDeleteFile(record)}
+                      className="text-destructive"
+                    >
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      删除文件
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )
+            }
+          ]}
+          loading={loading}
+          searchable
+          searchPlaceholder="搜索文件名..."
+          filterable
+          emptyText="暂无文件数据"
+          className="card-shadow"
+        />
+
+        {/* Pagination */}
+        <div className="flex items-center justify-between">
+          <div className="text-sm text-muted-foreground">
+            共 {total} 个文件，当前第 {page} 页
+          </div>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page === 1}
+              className="btn-modern"
+            >
+              上一页
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPage((p) => p + 1)}
+              disabled={page * 20 >= total}
+              className="btn-modern"
+            >
+              下一页
+            </Button>
+          </div>
+        </div>
+
+        {/* 隐藏的文件输入 */}
+        <Input
+          ref={fileInputRef}
+          type="file"
+          className="hidden"
+          onChange={handleFileSelect}
+        />
+
+        {/* 上传文件对话框 */}
+        <Dialog open={uploadDialogOpen} onOpenChange={setUploadDialogOpen}>
+          <DialogContent className="sm:max-w-[500px]">
+            <DialogHeader>
+              <DialogTitle>上传文件</DialogTitle>
+              <DialogDescription>
+                选择要上传的文件
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="upload-category">文件分类</Label>
+                <Select
+                  value={uploadCategory}
+                  onValueChange={setUploadCategory}
+                >
+                  <SelectTrigger id="upload-category">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="attachment">附件</SelectItem>
+                    <SelectItem value="image">图片</SelectItem>
+                    <SelectItem value="video">视频</SelectItem>
+                    <SelectItem value="document">文档</SelectItem>
+                    <SelectItem value="other">其他</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {uploadFile && (
+                <div className="p-4 border rounded-lg bg-muted/50">
                   <div className="flex items-center gap-3">
-                    {getFileIcon(file.file_type)}
+                    {getFileIcon(uploadFile.type)}
                     <div className="flex-1 min-w-0">
-                      <CardTitle className="text-sm truncate">{file.original_name}</CardTitle>
-                      <div className="text-xs text-muted-foreground mt-1">
-                        {(file.file_size / 1024).toFixed(1)} KB
+                      <div className="font-medium truncate">{uploadFile.name}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {formatFileSize(uploadFile.size)}
                       </div>
                     </div>
                   </div>
-                </CardHeader>
-                <CardContent className="p-4 pt-0">
-                  <div className="flex gap-2">
-                    <Button variant="outline" size="sm" className="flex-1">
-                      <Download className="h-3 w-3 mr-1" />
-                      下载
-                    </Button>
-                    <Button variant="outline" size="icon">
-                      <Trash2 className="h-3 w-3" />
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ))
-          )}
-        </div>
+                </div>
+              )}
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setUploadDialogOpen(false)}>
+                取消
+              </Button>
+              <Button onClick={handleUpload} disabled={!uploadFile || uploading}>
+                {uploading ? "上传中..." : "上传"}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* URL上传对话框 */}
+        <Dialog open={urlDialogOpen} onOpenChange={setUrlDialogOpen}>
+          <DialogContent className="sm:max-w-[500px]">
+            <DialogHeader>
+              <DialogTitle>从URL上传</DialogTitle>
+              <DialogDescription>
+                通过URL上传文件
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="upload-url">文件URL *</Label>
+                <Input
+                  id="upload-url"
+                  type="url"
+                  value={uploadUrl}
+                  onChange={(e) => setUploadUrl(e.target.value)}
+                  placeholder="https://example.com/file.jpg"
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="url-category">文件分类</Label>
+                <Select
+                  value={urlCategory}
+                  onValueChange={setUrlCategory}
+                >
+                  <SelectTrigger id="url-category">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="attachment">附件</SelectItem>
+                    <SelectItem value="image">图片</SelectItem>
+                    <SelectItem value="video">视频</SelectItem>
+                    <SelectItem value="document">文档</SelectItem>
+                    <SelectItem value="other">其他</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setUrlDialogOpen(false)}>
+                取消
+              </Button>
+              <Button onClick={handleUploadFromURL} disabled={!uploadUrl || uploading}>
+                {uploading ? "上传中..." : "上传"}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     </MainLayout>
   )
 }
-

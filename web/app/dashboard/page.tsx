@@ -17,6 +17,7 @@ import { motion } from "framer-motion"
 
 export default function DashboardPage() {
   const [overview, setOverview] = useState<any>(null)
+  const [dashboard, setDashboard] = useState<any>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -25,9 +26,17 @@ export default function DashboardPage() {
 
   const loadData = async () => {
     try {
-      const response = await statsAPI.getOverview("week")
-      if (response.data) {
-        setOverview(response.data)
+      // 同时加载仪表盘数据和概览数据
+      const [dashboardRes, overviewRes] = await Promise.all([
+        statsAPI.getDashboard(),
+        statsAPI.getOverview("week"),
+      ])
+      
+      if (dashboardRes.data) {
+        setDashboard(dashboardRes.data)
+      }
+      if (overviewRes.data) {
+        setOverview(overviewRes.data)
       }
     } catch (error) {
       toast.error("加载数据失败，请稍后重试")
@@ -49,11 +58,11 @@ export default function DashboardPage() {
   ], [])
 
   const taskStatusData = useMemo(() => [
-    { name: '已完成', value: overview?.completed_tasks || 45 },
-    { name: '运行中', value: overview?.active_tasks || 12 },
-    { name: '等待中', value: overview?.queued_tasks || 8 },
-    { name: '失败', value: overview?.failed_tasks || 3 },
-  ], [overview])
+    { name: '已完成', value: dashboard?.completed_tasks || overview?.completed_tasks || 0 },
+    { name: '运行中', value: dashboard?.running_tasks || overview?.running_tasks || 0 },
+    { name: '等待中', value: dashboard?.pending_tasks || overview?.pending_tasks || 0 },
+    { name: '失败', value: dashboard?.failed_tasks || overview?.failed_tasks || 0 },
+  ], [dashboard, overview])
 
   const growthData = useMemo(() => [
     { name: '1月', value: 120 },
@@ -108,29 +117,29 @@ export default function DashboardPage() {
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
           <StatsCard
             title="总账号数"
-            value={overview?.total_accounts || 156}
-            change="+12% 较上月"
+            value={dashboard?.total_accounts || overview?.total_accounts || 0}
+            change={dashboard?.account_growth || overview?.account_growth ? `+${dashboard?.account_growth || overview?.account_growth}% 较上月` : "暂无数据"}
             changeType="positive"
             icon={<Users className="h-5 w-5" />}
           />
           <StatsCard
             title="活跃任务"
-            value={overview?.active_tasks || 24}
-            change="+5% 运行中"
+            value={dashboard?.active_tasks || overview?.active_tasks || 0}
+            change={dashboard?.running_tasks || overview?.running_tasks ? `${dashboard?.running_tasks || overview?.running_tasks} 运行中` : "暂无数据"}
             changeType="positive"
             icon={<Zap className="h-5 w-5" />}
           />
           <StatsCard
-            title="系统健康度"
-            value="98.5%"
-            change="优秀状态"
+            title="正常账号"
+            value={dashboard?.normal_accounts || overview?.normal_accounts || 0}
+            change={dashboard?.normal_rate || overview?.normal_rate ? `${(dashboard?.normal_rate || overview?.normal_rate * 100).toFixed(1)}% 正常率` : "暂无数据"}
             changeType="positive"
             icon={<Shield className="h-5 w-5" />}
           />
           <StatsCard
-            title="响应时间"
-            value="125ms"
-            change="-8% 较上周"
+            title="完成任务"
+            value={dashboard?.completed_tasks || overview?.completed_tasks || 0}
+            change={dashboard?.today_tasks || overview?.today_tasks ? `${dashboard?.today_tasks || overview?.today_tasks} 今日任务` : "暂无数据"}
             changeType="positive"
             icon={<Clock className="h-5 w-5" />}
           />

@@ -157,8 +157,8 @@ export const accountAPI = {
   delete: (id: string) => apiClient.post(`/accounts/${id}/delete`),
   checkHealth: (id: string) => apiClient.get(`/accounts/${id}/health`),
   getAvailability: (id: string) => apiClient.get(`/accounts/${id}/availability`),
-  bindProxy: (id: string, proxyId: number) =>
-    apiClient.post(`/accounts/${id}/bind-proxy`, { proxy_id: proxyId }),
+  bindProxy: (id: string, proxyId?: number) =>
+    apiClient.post(`/accounts/${id}/bind-proxy`, { proxy_id: proxyId || null }),
   uploadFiles: (file: File, proxyId?: number) => {
     const formData = new FormData();
     formData.append('file', file);
@@ -167,6 +167,9 @@ export const accountAPI = {
     }
     return apiClient.postFormData('/accounts/upload', formData);
   },
+  getQueueInfo: (id: string) => apiClient.get(`/accounts/${id}/queue`),
+  batchBindProxy: (accountIds: string[], proxyId?: number) =>
+    apiClient.post('/accounts/batch/bind-proxy', { account_ids: accountIds, proxy_id: proxyId || null }),
 };
 
 // 任务管理API

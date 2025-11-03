@@ -577,7 +577,7 @@ export default function AccountsPage() {
                           onClick={() => handleEditAccount(record)}
                         >
                           <Pencil className="h-4 w-4" />
-                        </Button>
+                    </Button>
                       </TooltipTrigger>
                       <TooltipContent side="top">
                         <p className="text-xs">编辑账号信息</p>
@@ -597,8 +597,8 @@ export default function AccountsPage() {
                               : "hover:bg-green-50 text-green-600 hover:text-green-700"
                           )}
                           disabled={healthChecking === record.id}
-                          onClick={() => handleCheckHealth(record)}
-                        >
+                      onClick={() => handleCheckHealth(record)}
+                    >
                           <Activity className="h-4 w-4" />
                         </Button>
                       </TooltipTrigger>
@@ -633,8 +633,8 @@ export default function AccountsPage() {
                           variant="ghost"
                           size="icon"
                           className="h-8 w-8 hover:bg-red-50 text-red-600 hover:text-red-700"
-                          onClick={() => handleDeleteAccount(record)}
-                        >
+                      onClick={() => handleDeleteAccount(record)}
+                    >
                           <Trash2 className="h-4 w-4" />
                         </Button>
                       </TooltipTrigger>

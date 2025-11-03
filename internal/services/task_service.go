@@ -7,6 +7,7 @@ import (
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+	"gorm.io/gorm"
 
 	"tg_cloud_server/internal/common/logger"
 	"tg_cloud_server/internal/models"
@@ -278,6 +279,28 @@ func (s *TaskService) CancelTask(userID, taskID uint64) error {
 	return nil
 }
 
+// DeleteTask 删除任务
+func (s *TaskService) DeleteTask(userID, taskID uint64) error {
+	// 删除任务（Repository会验证用户权限）
+	err := s.taskRepo.DeleteByUserIDAndID(userID, taskID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ErrTaskNotFound
+		}
+		logger.LogTask(zapcore.ErrorLevel, "Failed to delete task",
+			zap.Uint64("user_id", userID),
+			zap.Uint64("task_id", taskID),
+			zap.Error(err))
+		return fmt.Errorf("failed to delete task: %w", err)
+	}
+
+	logger.LogTask(zapcore.InfoLevel, "Task deleted successfully",
+		zap.Uint64("user_id", userID),
+		zap.Uint64("task_id", taskID))
+
+	return nil
+}
+
 // GetTaskLogs 获取任务日志
 func (s *TaskService) GetTaskLogs(userID, taskID uint64) ([]*models.TaskLog, error) {
 	// 首先验证任务是否属于用户
@@ -515,6 +538,29 @@ func (s *TaskService) BatchCancelTasks(userID uint64, taskIDs []uint64) (int, er
 	}
 
 	s.logger.Info("Batch cancel tasks completed",
+		zap.Uint64("user_id", userID),
+		zap.Int("total", len(taskIDs)),
+		zap.Int("success", successCount))
+
+	return successCount, nil
+}
+
+// BatchDeleteTasks 批量删除任务
+func (s *TaskService) BatchDeleteTasks(userID uint64, taskIDs []uint64) (int, error) {
+	successCount := 0
+
+	for _, taskID := range taskIDs {
+		if err := s.DeleteTask(userID, taskID); err != nil {
+			s.logger.Warn("Failed to delete task in batch",
+				zap.Uint64("user_id", userID),
+				zap.Uint64("task_id", taskID),
+				zap.Error(err))
+			continue
+		}
+		successCount++
+	}
+
+	s.logger.Info("Batch delete tasks completed",
 		zap.Uint64("user_id", userID),
 		zap.Int("total", len(taskIDs)),
 		zap.Int("success", successCount))

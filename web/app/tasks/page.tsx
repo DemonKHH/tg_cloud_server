@@ -4,7 +4,7 @@ import { toast } from "sonner"
 import { MainLayout } from "@/components/layout/main-layout"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Plus, X, RefreshCw, CheckCircle2, Clock, PlayCircle, AlertCircle, Ban, FileText, MoreVertical, Pause, Play, Square } from "lucide-react"
+import { Plus, X, RefreshCw, CheckCircle2, Clock, PlayCircle, AlertCircle, Ban, FileText, MoreVertical, Pause, Play, Square, Trash2 } from "lucide-react"
 import { taskAPI, accountAPI } from "@/lib/api"
 import { useState, useEffect } from "react"
 import { Badge } from "@/components/ui/badge"
@@ -231,6 +231,23 @@ export default function TasksPage() {
     }
   }
 
+  // 删除任务
+  const handleDeleteTask = async (task: any) => {
+    if (!confirm(`确定要删除任务 #${task.id} 吗？此操作不可恢复。`)) {
+      return
+    }
+
+    try {
+      await taskAPI.delete(String(task.id))
+      toast.success("任务已删除")
+      refresh()
+    } catch (error: any) {
+      console.error('删除任务失败:', error)
+      const errorMessage = error?.response?.data?.msg || error.message || "删除任务失败"
+      toast.error(errorMessage)
+    }
+  }
+
   // 重试任务
   const handleRetryTask = async (task: any) => {
     try {
@@ -311,6 +328,8 @@ export default function TasksPage() {
         return ['pending', 'queued'].includes(status)
       case 'retry':
         return ['failed', 'cancelled'].includes(status)
+      case 'delete':
+        return true // 删除操作在所有状态下都可用
       default:
         return false
     }
@@ -334,6 +353,8 @@ export default function TasksPage() {
         return enabled ? '取消任务' : `取消任务 - 只有待执行或排队的任务才能取消（当前: ${statusText}）`
       case 'retry':
         return enabled ? '重试任务' : `重试任务 - 只有失败或已取消的任务才能重试（当前: ${statusText}）`
+      case 'delete':
+        return '删除任务 (不可恢复)'
       case 'logs':
         return '查看任务日志'
       default:
@@ -801,6 +822,15 @@ export default function TasksPage() {
                       <RefreshCw className="h-4 w-4" />, 
                       () => handleRetryTask(record),
                       "hover:bg-purple-50 text-purple-600 hover:text-purple-700"
+                    )}
+
+                    {/* 删除任务 */}
+                    {renderActionButton(
+                      'delete', 
+                      record, 
+                      <Trash2 className="h-4 w-4" />, 
+                      () => handleDeleteTask(record),
+                      "hover:bg-red-50 text-red-600 hover:text-red-700"
                     )}
                   </div>
                 </TooltipProvider>

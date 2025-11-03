@@ -179,6 +179,7 @@ export const taskAPI = {
   get: (id: string) => apiClient.get(`/tasks/${id}`),
   create: (data: any) => apiClient.post('/tasks', data),
   update: (id: string, data: any) => apiClient.post(`/tasks/${id}/update`, data),
+  delete: (id: string) => apiClient.post(`/tasks/${id}/delete`),
   cancel: (id: string) => apiClient.post(`/tasks/${id}/cancel`),
   retry: (id: string) => apiClient.post(`/tasks/${id}/retry`),
   control: (id: string, action: 'start' | 'pause' | 'stop' | 'resume') =>
@@ -188,6 +189,7 @@ export const taskAPI = {
   getLogs: (id: string) => apiClient.get(`/tasks/${id}/logs`),
   getStats: () => apiClient.get('/tasks/stats'),
   batchCancel: (ids: string[]) => apiClient.post('/tasks/batch/cancel', { task_ids: ids }),
+  batchDelete: (ids: string[]) => apiClient.post('/tasks/batch/delete', { task_ids: ids }),
 };
 
 // 代理管理API

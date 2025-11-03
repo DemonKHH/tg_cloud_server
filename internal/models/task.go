@@ -255,6 +255,11 @@ type BatchCancelRequest struct {
 	TaskIDs []uint64 `json:"task_ids" binding:"required"`
 }
 
+// BatchDeleteRequest 批量删除请求
+type BatchDeleteRequest struct {
+	TaskIDs []uint64 `json:"task_ids" binding:"required"`
+}
+
 // CleanupRequest 清理请求
 type CleanupRequest struct {
 	OlderThanDays int `json:"older_than_days" binding:"required,min=1"`

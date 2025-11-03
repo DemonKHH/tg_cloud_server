@@ -36,6 +36,7 @@ type TaskRepository interface {
 	// 批量操作
 	UpdateTasksStatus(taskIDs []uint64, status string) error
 	DeleteCompletedTasksBefore(userID uint64, cutoffTime time.Time) (int64, error)
+	DeleteByUserIDAndID(userID, taskID uint64) error
 }
 
 // taskRepository GORM实现
@@ -85,6 +86,18 @@ func (r *taskRepository) UpdateTask(taskID uint64, updates map[string]interface{
 // Delete 删除任务
 func (r *taskRepository) Delete(id uint64) error {
 	return r.db.Delete(&models.Task{}, id).Error
+}
+
+// DeleteByUserIDAndID 根据用户ID和任务ID删除任务（安全删除）
+func (r *taskRepository) DeleteByUserIDAndID(userID, taskID uint64) error {
+	result := r.db.Where("user_id = ? AND id = ?", userID, taskID).Delete(&models.Task{})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
 }
 
 // GetTaskSummaries 获取任务摘要列表

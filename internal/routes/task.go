@@ -19,6 +19,7 @@ func SetupTaskRoutes(router *gin.Engine, taskHandler *handlers.TaskHandler, auth
 		taskGroup.GET("", taskHandler.GetTasks)               // 获取任务列表
 		taskGroup.GET("/:id", taskHandler.GetTask)            // 获取任务详情
 		taskGroup.POST("/:id/update", taskHandler.UpdateTask) // 更新任务
+		taskGroup.POST("/:id/delete", taskHandler.DeleteTask) // 删除任务
 		taskGroup.POST("/:id/cancel", taskHandler.CancelTask) // 取消任务
 
 		// 任务操作
@@ -27,7 +28,8 @@ func SetupTaskRoutes(router *gin.Engine, taskHandler *handlers.TaskHandler, auth
 		taskGroup.GET("/:id/logs", taskHandler.GetTaskLogs)     // 获取任务日志
 
 		// 批量操作（需要高级用户权限）
-		taskGroup.POST("/batch/cancel", middleware.RequirePermission("advanced_features"), taskHandler.BatchCancel)         // 批量取消任务
+		taskGroup.POST("/batch/cancel", middleware.RequirePermission("advanced_features"), taskHandler.BatchCancel)        // 批量取消任务
+		taskGroup.POST("/batch/delete", middleware.RequirePermission("advanced_features"), taskHandler.BatchDelete)        // 批量删除任务
 		taskGroup.POST("/batch/control", middleware.RequirePermission("advanced_features"), taskHandler.BatchControlTasks) // 批量控制任务
 
 		// 统计与监控

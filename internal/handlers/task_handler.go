@@ -202,6 +202,35 @@ func (h *TaskHandler) CancelTask(c *gin.Context) {
 	response.SuccessWithMessage(c, "任务取消成功", nil)
 }
 
+// DeleteTask 删除任务
+func (h *TaskHandler) DeleteTask(c *gin.Context) {
+	userID, err := utils.GetUserID(c)
+	if err != nil {
+		response.Unauthorized(c, err.Error())
+		return
+	}
+	taskID, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		response.InvalidParam(c, "无效的任务ID")
+		return
+	}
+
+	if err := h.taskService.DeleteTask(userID, taskID); err != nil {
+		if err == services.ErrTaskNotFound {
+			response.TaskNotFound(c)
+			return
+		}
+		h.logger.Error("Failed to delete task",
+			zap.Uint64("user_id", userID),
+			zap.Uint64("task_id", taskID),
+			zap.Error(err))
+		response.InternalError(c, err.Error())
+		return
+	}
+
+	response.SuccessWithMessage(c, "任务删除成功", nil)
+}
+
 // RetryTask 重试任务
 func (h *TaskHandler) RetryTask(c *gin.Context) {
 	userID, err := utils.GetUserID(c)
@@ -315,6 +344,37 @@ func (h *TaskHandler) BatchCancel(c *gin.Context) {
 	})
 }
 
+// BatchDelete 批量删除任务
+func (h *TaskHandler) BatchDelete(c *gin.Context) {
+	userID, err := utils.GetUserID(c)
+	if err != nil {
+		response.Unauthorized(c, err.Error())
+		return
+	}
+
+	var req models.BatchDeleteRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.InvalidParam(c, err.Error())
+		return
+	}
+
+	successCount, err := h.taskService.BatchDeleteTasks(userID, req.TaskIDs)
+	if err != nil {
+		h.logger.Error("Failed to batch delete tasks",
+			zap.Uint64("user_id", userID),
+			zap.Int("total", len(req.TaskIDs)),
+			zap.Error(err))
+		response.InternalError(c, "批量删除任务失败")
+		return
+	}
+
+	response.SuccessWithMessage(c, "批量删除完成", gin.H{
+		"total":   len(req.TaskIDs),
+		"success": successCount,
+		"failed":  len(req.TaskIDs) - successCount,
+	})
+}
+
 // GetQueueInfo 获取队列信息
 func (h *TaskHandler) GetQueueInfo(c *gin.Context) {
 	userID, err := utils.GetUserID(c)
@@ -384,7 +444,7 @@ func (h *TaskHandler) ControlTask(c *gin.Context) {
 		response.InvalidParam(c, "Invalid task ID")
 		return
 	}
-	
+
 	var req models.TaskControlRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.InvalidParam(c, err.Error())
@@ -433,7 +493,7 @@ func (h *TaskHandler) BatchControlTasks(c *gin.Context) {
 		response.Unauthorized(c, err.Error())
 		return
 	}
-	
+
 	var req models.BatchTaskControlRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.InvalidParam(c, err.Error())

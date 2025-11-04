@@ -1,6 +1,7 @@
 package models
 
 import (
+	"fmt"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
@@ -24,6 +25,7 @@ type User struct {
 	PasswordHash string     `json:"-" gorm:"size:255;not null"` // 隐藏密码
 	Role         UserRole   `json:"role" gorm:"type:enum('admin','premium','standard');default:'standard'"`
 	IsActive     bool       `json:"is_active" gorm:"default:true"`
+	ExpiresAt    *time.Time `json:"expires_at" gorm:"index"` // 用户过期时间，null表示永不过期
 	LastLoginAt  *time.Time `json:"last_login_at"`
 	CreatedAt    time.Time  `json:"created_at"`
 	UpdatedAt    time.Time  `json:"updated_at"`
@@ -65,8 +67,26 @@ func (u *User) IsPremium() bool {
 	return u.Role == RolePremium || u.Role == RoleAdmin
 }
 
+// IsExpired 检查用户是否已过期
+func (u *User) IsExpired() bool {
+	if u.ExpiresAt == nil {
+		return false // 没有过期时间表示永不过期
+	}
+	return time.Now().After(*u.ExpiresAt)
+}
+
+// IsValidUser 检查用户是否有效（激活且未过期）
+func (u *User) IsValidUser() bool {
+	return u.IsActive && !u.IsExpired()
+}
+
 // HasPermission 检查用户权限
 func (u *User) HasPermission(permission string) bool {
+	// 首先检查用户状态
+	if !u.IsValidUser() {
+		return false
+	}
+
 	switch permission {
 	case "manage_users":
 		return u.Role == RoleAdmin
@@ -75,7 +95,7 @@ func (u *User) HasPermission(permission string) bool {
 	case "advanced_features":
 		return u.Role == RoleAdmin || u.Role == RolePremium
 	case "basic_features":
-		return u.IsActive
+		return true // 有效用户都有基础功能权限
 	default:
 		return false
 	}
@@ -95,6 +115,8 @@ type UserProfile struct {
 	Email       string     `json:"email"`
 	Role        UserRole   `json:"role"`
 	IsActive    bool       `json:"is_active"`
+	IsExpired   bool       `json:"is_expired"`
+	ExpiresAt   *time.Time `json:"expires_at"`
 	LastLoginAt *time.Time `json:"last_login_at"`
 	CreatedAt   time.Time  `json:"created_at"`
 	Stats       UserStats  `json:"stats"`
@@ -135,4 +157,32 @@ type LoginResponse struct {
 	AccessToken string      `json:"access_token"`
 	TokenType   string      `json:"token_type"`
 	ExpiresIn   int64       `json:"expires_in"`
+}
+
+// UserExpiredError 用户过期错误
+type UserExpiredError struct {
+	UserID    uint64     `json:"user_id"`
+	Username  string     `json:"username"`
+	ExpiresAt *time.Time `json:"expires_at"`
+	Message   string     `json:"message"`
+}
+
+// Error 实现error接口
+func (e *UserExpiredError) Error() string {
+	return e.Message
+}
+
+// NewUserExpiredError 创建用户过期错误
+func NewUserExpiredError(user *User) *UserExpiredError {
+	message := "用户账号已过期，请联系管理员续费"
+	if user.ExpiresAt != nil {
+		message = fmt.Sprintf("用户账号已于 %s 过期，请联系管理员续费", user.ExpiresAt.Format("2006-01-02 15:04:05"))
+	}
+
+	return &UserExpiredError{
+		UserID:    user.ID,
+		Username:  user.Username,
+		ExpiresAt: user.ExpiresAt,
+		Message:   message,
+	}
 }

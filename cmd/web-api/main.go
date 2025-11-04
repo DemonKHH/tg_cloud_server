@@ -121,11 +121,15 @@ func main() {
 	accountService := services.NewAccountService(accountRepo, proxyRepo)
 	proxyService := services.NewProxyService(proxyRepo)
 	taskService := services.NewTaskService(taskRepo, accountRepo)
-	
+
 	// 将任务调度器设置到任务服务中
 	taskService.SetTaskScheduler(taskScheduler)
 	logger.Info("Task service connected to task scheduler")
-	
+
+	// 初始化验证码服务
+	verifyCodeService := services.NewVerifyCodeService(accountRepo, userRepo, connectionPool, logger)
+	logger.Info("Verify code service initialized")
+
 	fileService := services.NewFileService(fileRepo, map[string]interface{}{
 		"upload_path":   "./uploads",
 		"base_url":      "http://localhost:8080",
@@ -147,6 +151,7 @@ func main() {
 	taskHandler := handlers.NewTaskHandler(taskService)
 	proxyHandler := handlers.NewProxyHandler(proxyService)
 	moduleHandler := handlers.NewModuleHandler(taskService, accountService)
+	verifyCodeHandler := handlers.NewVerifyCodeHandler(verifyCodeService)
 	fileHandler := handlers.NewFileHandler(fileService)
 	aiHandler := handlers.NewAIHandler(aiService)
 	statsHandler := handlers.NewStatsHandler(statsService)
@@ -173,6 +178,7 @@ func main() {
 	// 注册路由
 	routes.RegisterAuthRoutes(router, authHandler)
 	routes.RegisterAPIRoutes(router, accountHandler, taskHandler, proxyHandler, moduleHandler, statsHandler, fileHandler, aiHandler, authService, cfg)
+	routes.SetupVerifyCodeRoutes(router, verifyCodeHandler, authService)
 	routes.RegisterWebSocketRoutes(router, redisClient, authService)
 
 	// 注册指标端点

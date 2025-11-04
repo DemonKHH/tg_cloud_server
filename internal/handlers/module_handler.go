@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"fmt"
+
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
@@ -172,19 +174,17 @@ func (h *ModuleHandler) Broadcast(c *gin.Context) {
 	response.SuccessWithMessage(c, "群发任务创建成功", task)
 }
 
-// VerifyCode 验证码接收模块
-// @Summary 接收验证码
-// @Description 使用指定账号监听并接收验证码
+// VerifyCode 验证码接收模块 (已弃用，建议使用新的验证码API)
+// @Summary 接收验证码 (弃用)
+// @Description 此接口已弃用，建议使用 /api/v1/verify-code/generate 接口生成访问链接
 // @Tags 模块功能
 // @Accept json
 // @Produce json
 // @Security ApiKeyAuth
 // @Param request body VerifyCodeRequest true "验证码请求，必须包含account_id"
-// @Success 201 {object} models.Task "创建的任务"
+// @Success 200 {object} map[string]interface{} "弃用提示和迁移指南"
 // @Failure 400 {object} map[string]string "请求错误"
 // @Failure 401 {object} map[string]string "未授权"
-// @Failure 422 {object} map[string]string "账号验证失败"
-// @Failure 500 {object} map[string]string "服务器错误"
 // @Router /api/v1/modules/verify [post]
 func (h *ModuleHandler) VerifyCode(c *gin.Context) {
 	var req VerifyCodeRequest
@@ -194,27 +194,23 @@ func (h *ModuleHandler) VerifyCode(c *gin.Context) {
 		return
 	}
 
-	taskConfig := map[string]interface{}{
-		"timeout": req.Timeout,
-	}
+	h.logger.Warn("Using deprecated verify code API", 
+		zap.Uint64("account_id", req.AccountID),
+		zap.String("suggestion", "Please use /api/v1/verify-code/generate instead"))
 
-	if req.Source != "" {
-		taskConfig["source"] = req.Source
-	}
-	if req.Pattern != "" {
-		taskConfig["pattern"] = req.Pattern
-	}
-
-	task, err := h.createModuleTask(c, models.TaskTypeVerify, taskConfig)
-	if err != nil {
-		return
-	}
-
-	h.logger.Info("Verify code task created",
-		zap.Uint64("task_id", task.ID),
-		zap.Uint64("account_id", task.AccountID))
-
-	response.SuccessWithMessage(c, "验证码接收任务创建成功", task)
+	// 返回弃用警告和新API建议
+	response.Success(c, gin.H{
+		"deprecated": true,
+		"message":    "此接口已弃用，请使用新的验证码API",
+		"new_api": gin.H{
+			"generate_link": "/api/v1/verify-code/generate",
+			"description":   "先调用generate获取访问链接，然后访问链接获取验证码",
+		},
+		"migration_guide": gin.H{
+			"step1": fmt.Sprintf("POST /api/v1/verify-code/generate with {\"account_id\": %d}", req.AccountID),
+			"step2": "GET /api/v1/verify-code/{code} from the returned URL",
+		},
+	})
 }
 
 // GroupChat AI炒群模块

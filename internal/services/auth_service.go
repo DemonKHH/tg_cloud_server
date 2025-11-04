@@ -87,6 +87,8 @@ func (s *AuthService) Register(req *models.RegisterRequest) (*models.UserProfile
 		Email:       user.Email,
 		Role:        user.Role,
 		IsActive:    user.IsActive,
+		IsExpired:   user.IsExpired(),
+		ExpiresAt:   user.ExpiresAt,
 		LastLoginAt: user.LastLoginAt,
 		CreatedAt:   user.CreatedAt,
 		Stats:       *stats,
@@ -115,6 +117,11 @@ func (s *AuthService) Login(req *models.LoginRequest) (*models.LoginResponse, er
 	// 检查用户状态
 	if !user.IsActive {
 		return nil, errors.New("user account is disabled")
+	}
+
+	// 检查用户是否过期
+	if user.IsExpired() {
+		return nil, models.NewUserExpiredError(user)
 	}
 
 	// 更新最后登录时间
@@ -151,6 +158,8 @@ func (s *AuthService) Login(req *models.LoginRequest) (*models.LoginResponse, er
 		Email:       user.Email,
 		Role:        user.Role,
 		IsActive:    user.IsActive,
+		IsExpired:   user.IsExpired(),
+		ExpiresAt:   user.ExpiresAt,
 		LastLoginAt: user.LastLoginAt,
 		CreatedAt:   user.CreatedAt,
 		Stats:       *stats,
@@ -192,6 +201,8 @@ func (s *AuthService) GetUserProfile(userID uint64) (*models.UserProfile, error)
 		Email:       user.Email,
 		Role:        user.Role,
 		IsActive:    user.IsActive,
+		IsExpired:   user.IsExpired(),
+		ExpiresAt:   user.ExpiresAt,
 		LastLoginAt: user.LastLoginAt,
 		CreatedAt:   user.CreatedAt,
 		Stats:       *stats,
@@ -263,6 +274,11 @@ func (s *AuthService) RefreshToken(refreshToken string) (*models.LoginResponse, 
 		return nil, errors.New("user account is disabled")
 	}
 
+	// 检查用户是否过期
+	if user.IsExpired() {
+		return nil, models.NewUserExpiredError(user)
+	}
+
 	// 生成新的访问令牌
 	accessToken, expiresIn, err := s.generateAccessToken(user)
 	if err != nil {
@@ -287,6 +303,8 @@ func (s *AuthService) RefreshToken(refreshToken string) (*models.LoginResponse, 
 		Email:       user.Email,
 		Role:        user.Role,
 		IsActive:    user.IsActive,
+		IsExpired:   user.IsExpired(),
+		ExpiresAt:   user.ExpiresAt,
 		LastLoginAt: user.LastLoginAt,
 		CreatedAt:   user.CreatedAt,
 		Stats:       *stats,

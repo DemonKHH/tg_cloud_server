@@ -94,6 +94,20 @@ func AuthMiddleware(authService *services.AuthService) gin.HandlerFunc {
 			return
 		}
 
+		// 检查用户是否过期
+		if userProfile.IsExpired {
+			log.Warn("User account is expired",
+				zap.Uint64("user_id", userID),
+				zap.Time("expires_at", *userProfile.ExpiresAt))
+			c.JSON(http.StatusForbidden, gin.H{
+				"error":      "forbidden",
+				"message":    "用户账号已过期，请联系管理员续费",
+				"expires_at": userProfile.ExpiresAt,
+			})
+			c.Abort()
+			return
+		}
+
 		// 将用户信息存储到上下文
 		c.Set("user_id", userID)
 		c.Set("user_role", userProfile.Role)

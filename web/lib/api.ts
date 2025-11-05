@@ -252,6 +252,32 @@ export const aiAPI = {
   test: () => apiClient.post('/ai/test'),
 };
 
+// 验证码API
+export const verifyCodeAPI = {
+  // 生成验证码访问链接（需要认证）
+  generate: (data: { account_id: number; expires_in?: number }) =>
+    apiClient.post<{
+      code: string;
+      url: string;
+      expires_at: string;
+      expires_in: number;
+    }>('/verify-code/generate', data),
+  // 获取验证码（公开接口，无需认证）
+  getCode: (code: string, timeout?: number) => {
+    const params = timeout ? { timeout } : {};
+    return apiClient.get<{
+      success: boolean;
+      code?: string;
+      sender?: string;
+      received_at?: string;
+      wait_seconds?: number;
+      message: string;
+    }>(`/verify-code/${code}`, params);
+  },
+  // 获取会话信息（调试用，需要认证）
+  getSessionInfo: (code: string) => apiClient.get(`/verify-code/${code}/info`),
+};
+
 // 统计API
 export const statsAPI = {
   getOverview: (period?: string) => apiClient.get('/stats/overview', { period }),

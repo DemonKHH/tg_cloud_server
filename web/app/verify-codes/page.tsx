@@ -214,7 +214,7 @@ export default function VerifyCodesPage() {
     if (minutes > 0) {
       return { 
         text: `${minutes}分${seconds}秒后过期`, 
-        color: minutes > 2 ? "default" as const : "warning" as const
+        color: minutes > 2 ? "default" as const : "secondary" as const
       }
     } else {
       return { 
@@ -245,9 +245,9 @@ export default function VerifyCodesPage() {
   // 表格列定义
   const columns = [
     {
-      key: "account_phone",
+      key: "account_phone" as keyof VerifyCodeSession,
       title: "账号",
-      render: (session: VerifyCodeSession) => (
+      render: (_value: any, session: VerifyCodeSession) => (
         <div className="flex items-center gap-2">
           <Smartphone className="h-4 w-4 text-muted-foreground" />
           <span className="font-medium">{session.account_phone}</span>
@@ -255,9 +255,9 @@ export default function VerifyCodesPage() {
       )
     },
     {
-      key: "code",
+      key: "code" as keyof VerifyCodeSession,
       title: "访问代码",
-      render: (session: VerifyCodeSession) => (
+      render: (_value: any, session: VerifyCodeSession) => (
         <div className="flex items-center gap-2">
           <code className="px-2 py-1 bg-muted rounded text-sm font-mono">
             {session.code.substring(0, 8)}...
@@ -280,9 +280,9 @@ export default function VerifyCodesPage() {
       )
     },
     {
-      key: "url",
+      key: "url" as keyof VerifyCodeSession,
       title: "访问链接",
-      render: (session: VerifyCodeSession) => (
+      render: (_value: any, session: VerifyCodeSession) => (
         <div className="flex items-center gap-2">
           <span className="text-sm text-muted-foreground truncate max-w-[200px]">
             {session.url}
@@ -321,9 +321,9 @@ export default function VerifyCodesPage() {
       )
     },
     {
-      key: "expires_at",
+      key: "expires_at" as keyof VerifyCodeSession,
       title: "过期时间",
-      render: (session: VerifyCodeSession) => {
+      render: (_value: any, session: VerifyCodeSession) => {
         const { text, color } = formatExpiration(session.expires_at)
         return (
           <div className="flex items-center gap-2">
@@ -334,9 +334,9 @@ export default function VerifyCodesPage() {
       }
     },
     {
-      key: "actions",
+      key: "created_at" as keyof VerifyCodeSession, // 使用不同的key避免冲突
       title: "操作",
-      render: (session: VerifyCodeSession) => (
+      render: (_value: any, session: VerifyCodeSession) => (
         <div className="flex items-center gap-1">
           <TooltipProvider>
             <Tooltip>
@@ -377,27 +377,24 @@ export default function VerifyCodesPage() {
         />
 
         <div className="flex items-center justify-between">
-          <FilterBar className="flex-1 max-w-md">
-            <div className="flex items-center gap-2">
-              <Search className="h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="搜索账号或代码..."
-                value={searchKeyword}
-                onChange={(e) => setSearchKeyword(e.target.value)}
-                className="border-0 shadow-none focus-visible:ring-0"
-              />
-            </div>
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-32 border-0 shadow-none focus:ring-0">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">全部</SelectItem>
-                <SelectItem value="active">有效</SelectItem>
-                <SelectItem value="expired">已过期</SelectItem>
-              </SelectContent>
-            </Select>
-          </FilterBar>
+          <FilterBar 
+            className="flex-1 max-w-md"
+            search={searchKeyword}
+            onSearchChange={setSearchKeyword}
+            searchPlaceholder="搜索账号或代码..."
+            filters={
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="w-32">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">全部</SelectItem>
+                  <SelectItem value="active">有效</SelectItem>
+                  <SelectItem value="expired">已过期</SelectItem>
+                </SelectContent>
+              </Select>
+            }
+          />
 
           <div className="flex items-center gap-2">
             <Button
@@ -465,7 +462,7 @@ export default function VerifyCodesPage() {
                   </div>
 
                   <div className="flex items-start gap-2 p-3 bg-blue-50 rounded-lg">
-                    <AlertCircle className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
+                    <AlertCircle className="h-4 w-4 text-blue-600 mt-0.5 shrink-0" />
                     <div className="text-sm text-blue-800">
                       <p className="font-medium">使用说明：</p>
                       <ul className="mt-1 space-y-1 text-xs">
@@ -517,11 +514,7 @@ export default function VerifyCodesPage() {
             data={filteredSessions}
             columns={columns}
             loading={loading}
-            emptyState={{
-              icon: <Smartphone className="h-12 w-12 text-muted-foreground" />,
-              title: "暂无验证码会话",
-              description: "点击"生成验证码链接"创建新的验证码访问会话"
-            }}
+            emptyText="暂无验证码会话，点击'生成验证码链接'创建新的验证码访问会话"
           />
         </motion.div>
 

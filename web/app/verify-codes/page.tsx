@@ -20,7 +20,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 import { Badge } from "@/components/ui/badge"
-import { ModernTable } from "@/components/ui/modern-table"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { cn } from "@/lib/utils"
 import { verifyCodeAPI, accountAPI } from "@/lib/api"
 import { useState, useEffect, useRef } from "react"
@@ -510,12 +510,137 @@ export default function VerifyCodesPage() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
         >
-          <ModernTable
-            data={filteredSessions}
-            columns={columns}
-            loading={loading}
-            emptyText="暂无验证码会话，点击'生成验证码链接'创建新的验证码访问会话"
-          />
+          <div className="rounded-md border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>账号</TableHead>
+                  <TableHead>访问代码</TableHead>
+                  <TableHead>访问链接</TableHead>
+                  <TableHead>过期时间</TableHead>
+                  <TableHead>操作</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {loading ? (
+                  Array.from({ length: 3 }).map((_, index) => (
+                    <TableRow key={index}>
+                      <TableCell><div className="h-4 bg-muted rounded animate-pulse" /></TableCell>
+                      <TableCell><div className="h-4 bg-muted rounded animate-pulse" /></TableCell>
+                      <TableCell><div className="h-4 bg-muted rounded animate-pulse" /></TableCell>
+                      <TableCell><div className="h-4 bg-muted rounded animate-pulse" /></TableCell>
+                      <TableCell><div className="h-4 bg-muted rounded animate-pulse" /></TableCell>
+                    </TableRow>
+                  ))
+                ) : filteredSessions.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={5} className="h-24 text-center">
+                      暂无验证码会话，点击'生成验证码链接'创建新的验证码访问会话
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  filteredSessions.map((session) => (
+                    <TableRow key={session.code}>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <Smartphone className="h-4 w-4 text-muted-foreground" />
+                          <span className="font-medium">{session.account_phone}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <code className="px-2 py-1 bg-muted rounded text-sm font-mono">
+                            {session.code.substring(0, 8)}...
+                          </code>
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => copyToClipboard(session.code, "访问代码")}
+                                >
+                                  <Copy className="h-3 w-3" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>复制代码</TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm text-muted-foreground truncate max-w-[200px]">
+                            {session.url}
+                          </span>
+                          <div className="flex gap-1">
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => copyToClipboard(session.url, "访问链接")}
+                                  >
+                                    <Copy className="h-3 w-3" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>复制链接</TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => openLink(session.url)}
+                                  >
+                                    <ExternalLink className="h-3 w-3" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>在新标签页打开</TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        {(() => {
+                          const { text, color } = formatExpiration(session.expires_at)
+                          return (
+                            <div className="flex items-center gap-2">
+                              <Clock className="h-4 w-4 text-muted-foreground" />
+                              <Badge variant={color}>{text}</Badge>
+                            </div>
+                          )
+                        })()}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1">
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => deleteSession(session.code)}
+                                  className="hover:bg-red-50 text-red-600 hover:text-red-700"
+                                >
+                                  <XCircle className="h-4 w-4" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>删除会话</TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
         </motion.div>
 
         {filteredSessions.length > 0 && (

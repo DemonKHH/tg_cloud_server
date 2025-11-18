@@ -8,7 +8,7 @@ import { Plus, TestTube, CheckCircle2, XCircle, AlertCircle, Pencil, Trash2, Mor
 import { proxyAPI } from "@/lib/api"
 import { useState } from "react"
 import { Badge } from "@/components/ui/badge"
-import { ModernTable } from "@/components/ui/modern-table"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { cn } from "@/lib/utils"
 import {
   Dialog,
@@ -277,179 +277,168 @@ export default function ProxiesPage() {
           }
         />
 
-        {/* Proxies Table */}
-        <ModernTable
-          data={proxies}
-          columns={[
-            {
-              key: 'host',
-              title: '代理地址',
-              width: '200px',
-              render: (value, record) => (
-                <div className="space-y-1">
-                  <div className="font-medium">{value}:{record.port}</div>
-                  <div className="text-xs text-muted-foreground">
-                    {record.name || record.ip}
-                  </div>
-                </div>
-              )
-            },
-            {
-              key: 'protocol',
-              title: '协议',
-              width: '100px',
-              render: (value) => (
-                <Badge variant="secondary" className="text-xs">
-                  {getProtocolText(value)}
-                </Badge>
-              )
-            },
-            {
-              key: 'status',
-              title: '状态',
-              width: '120px',
-              sortable: true,
-              render: (value) => (
-                <div className="flex items-center gap-2">
-                  {getStatusIcon(value)}
-                  <Badge
-                    variant={value === 'active' ? 'default' : value === 'error' ? 'destructive' : 'secondary'}
-                    className={cn("text-xs", getStatusColor(value))}
-                  >
-                    {getStatusText(value)}
-                  </Badge>
-                </div>
-              )
-            },
-            {
-              key: 'success_rate',
-              title: '成功率',
-              width: '120px',
-              sortable: true,
-              render: (value) => (
-                <div className="text-sm">
-                  {value ? `${value.toFixed(1)}%` : '-'}
-                </div>
-              )
-            },
-            {
-              key: 'avg_latency',
-              title: '平均延迟',
-              width: '120px',
-              sortable: true,
-              render: (value) => (
-                <div className="text-sm">
-                  {value ? `${value}ms` : '-'}
-                </div>
-              )
-            },
-            {
-              key: 'username',
-              title: '认证',
-              width: '120px',
-              render: (value) => (
-                <Badge variant={value ? 'default' : 'secondary'} className="text-xs">
-                  {value ? '已认证' : '无需认证'}
-                </Badge>
-              )
-            },
-            {
-              key: 'country',
-              title: '国家',
-              width: '100px',
-              render: (value) => (
-                <div className="text-sm text-muted-foreground">
-                  {value || '-'}
-                </div>
-              )
-            },
-            {
-              key: 'last_test_at',
-              title: '最后测试',
-              width: '180px',
-              sortable: true,
-              render: (value) => (
-                <div className="text-sm text-muted-foreground">
-                  {value ? new Date(value).toLocaleString() : '从未测试'}
-                </div>
-              )
-            },
-            {
-              key: 'actions',
-              title: '操作',
-              width: '140px',
-              render: (_, record) => (
-                <TooltipProvider>
-                  <div className="flex items-center gap-1">
-                    {/* 测试代理 */}
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className={cn(
-                            "h-8 w-8",
-                            testingProxy === record.id
-                              ? "opacity-50 cursor-not-allowed text-muted-foreground"
-                              : "hover:bg-orange-50 text-orange-600 hover:text-orange-700"
-                          )}
-                          disabled={testingProxy === record.id}
-                          onClick={() => handleTestProxy(record)}
+        {/* 代理数据表 */}
+        <div className="rounded-md border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-[200px]">代理地址</TableHead>
+                <TableHead className="w-[100px]">协议</TableHead>
+                <TableHead className="w-[120px]">状态</TableHead>
+                <TableHead className="w-[120px]">成功率</TableHead>
+                <TableHead className="w-[120px]">平均延迟</TableHead>
+                <TableHead className="w-[120px]">认证</TableHead>
+                <TableHead className="w-[100px]">国家</TableHead>
+                <TableHead className="w-[180px]">最后测试</TableHead>
+                <TableHead className="w-[140px]">操作</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {loading ? (
+                // 加载状态
+                Array.from({ length: 5 }).map((_, index) => (
+                  <TableRow key={index}>
+                    <TableCell><div className="h-4 bg-muted rounded animate-pulse" /></TableCell>
+                    <TableCell><div className="h-4 bg-muted rounded animate-pulse" /></TableCell>
+                    <TableCell><div className="h-4 bg-muted rounded animate-pulse" /></TableCell>
+                    <TableCell><div className="h-4 bg-muted rounded animate-pulse" /></TableCell>
+                    <TableCell><div className="h-4 bg-muted rounded animate-pulse" /></TableCell>
+                    <TableCell><div className="h-4 bg-muted rounded animate-pulse" /></TableCell>
+                    <TableCell><div className="h-4 bg-muted rounded animate-pulse" /></TableCell>
+                    <TableCell><div className="h-4 bg-muted rounded animate-pulse" /></TableCell>
+                    <TableCell><div className="h-4 bg-muted rounded animate-pulse" /></TableCell>
+                  </TableRow>
+                ))
+              ) : proxies.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={9} className="h-24 text-center">
+                    暂无代理数据
+                  </TableCell>
+                </TableRow>
+              ) : (
+                proxies.map((record) => (
+                  <TableRow key={record.id}>
+                    <TableCell>
+                      <div className="space-y-1">
+                        <div className="font-medium">{record.host}:{record.port}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {record.name || record.ip}
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="secondary" className="text-xs">
+                        {getProtocolText(record.protocol)}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        {getStatusIcon(record.status)}
+                        <Badge
+                          variant={record.status === 'active' ? 'default' : record.status === 'error' ? 'destructive' : 'secondary'}
+                          className={cn("text-xs", getStatusColor(record.status))}
                         >
-                          <TestTube className="h-4 w-4" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent side="top">
-                        <p className="text-xs">
-                          {testingProxy === record.id ? "测试中..." : "测试代理连接"}
-                        </p>
-                      </TooltipContent>
-                    </Tooltip>
+                          {getStatusText(record.status)}
+                        </Badge>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="text-sm">
+                        {record.success_rate ? `${record.success_rate.toFixed(1)}%` : '-'}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="text-sm">
+                        {record.avg_latency ? `${record.avg_latency}ms` : '-'}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={record.username ? 'default' : 'secondary'} className="text-xs">
+                        {record.username ? '已认证' : '无需认证'}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="text-sm text-muted-foreground">
+                        {record.country || '-'}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="text-sm text-muted-foreground">
+                        {record.last_test_at ? new Date(record.last_test_at).toLocaleString() : '从未测试'}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <TooltipProvider>
+                        <div className="flex items-center gap-1">
+                          {/* 测试代理 */}
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className={cn(
+                                  "h-8 w-8",
+                                  testingProxy === record.id
+                                    ? "opacity-50 cursor-not-allowed text-muted-foreground"
+                                    : "hover:bg-orange-50 text-orange-600 hover:text-orange-700"
+                                )}
+                                disabled={testingProxy === record.id}
+                                onClick={() => handleTestProxy(record)}
+                              >
+                                <TestTube className="h-4 w-4" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent side="top">
+                              <p className="text-xs">
+                                {testingProxy === record.id ? "测试中..." : "测试代理连接"}
+                              </p>
+                            </TooltipContent>
+                          </Tooltip>
 
-                    {/* 编辑代理 */}
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 hover:bg-blue-50 text-blue-600 hover:text-blue-700"
-                          onClick={() => handleEditProxy(record)}
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent side="top">
-                        <p className="text-xs">编辑代理配置</p>
-                      </TooltipContent>
-                    </Tooltip>
+                          {/* 编辑代理 */}
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 hover:bg-blue-50 text-blue-600 hover:text-blue-700"
+                                onClick={() => handleEditProxy(record)}
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent side="top">
+                              <p className="text-xs">编辑代理配置</p>
+                            </TooltipContent>
+                          </Tooltip>
 
-                    {/* 删除代理 */}
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 hover:bg-red-50 text-red-600 hover:text-red-700"
-                          onClick={() => handleDeleteProxy(record)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent side="top">
-                        <p className="text-xs">删除代理 (不可恢复)</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </div>
-                </TooltipProvider>
-              )
-            }
-          ]}
-          loading={loading}
-          emptyText="暂无代理数据"
-          className="card-shadow"
-        />
+                          {/* 删除代理 */}
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 hover:bg-red-50 text-red-600 hover:text-red-700"
+                                onClick={() => handleDeleteProxy(record)}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent side="top">
+                              <p className="text-xs">删除代理 (不可恢复)</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </div>
+                      </TooltipProvider>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
 
-        {/* Pagination */}
+        {/* 分页 */}
         <div className="flex items-center justify-between">
           <div className="text-sm text-muted-foreground">
             共 {total} 个代理，当前第 {page} 页
@@ -460,7 +449,6 @@ export default function ProxiesPage() {
               size="sm"
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={page === 1}
-              className="btn-modern"
             >
               上一页
             </Button>
@@ -469,7 +457,6 @@ export default function ProxiesPage() {
               size="sm"
               onClick={() => setPage((p) => p + 1)}
               disabled={page * 20 >= total}
-              className="btn-modern"
             >
               下一页
             </Button>

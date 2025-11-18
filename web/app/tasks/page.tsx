@@ -8,7 +8,7 @@ import { Plus, X, RefreshCw, CheckCircle2, Clock, PlayCircle, AlertCircle, Ban, 
 import { taskAPI, accountAPI } from "@/lib/api"
 import { useState, useEffect } from "react"
 import { Badge } from "@/components/ui/badge"
-import { ModernTable } from "@/components/ui/modern-table"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import {
   Dialog,
   DialogContent,
@@ -665,184 +665,175 @@ export default function TasksPage() {
           }
         />
 
-        {/* Tasks Table */}
-        <ModernTable
-          data={tasks}
-          columns={[
-            {
-              key: 'id',
-              title: '任务ID',
-              width: '100px',
-              sortable: true,
-              render: (value) => (
-                <span className="font-mono text-sm">#{value}</span>
-              )
-            },
-            {
-              key: 'task_type',
-              title: '任务类型',
-              width: '150px',
-              render: (value) => (
-                <Badge variant="secondary" className="text-xs">
-                  {getTaskTypeText(value)}
-                </Badge>
-              )
-            },
-            {
-              key: 'status',
-              title: '状态',
-              width: '120px',
-              sortable: true,
-              render: (value) => (
-                <div className="flex items-center gap-2">
-                  {getStatusIcon(value)}
-                  <Badge
-                    variant={value === 'completed' ? 'default' : value === 'failed' ? 'destructive' : 'secondary'}
-                    className={cn("text-xs", getStatusColor(value))}
-                  >
-                    {getStatusText(value)}
-                  </Badge>
-                </div>
-              )
-            },
-            {
-              key: 'account_id',
-              title: '账号',
-              width: '120px',
-              render: (value, record) => (
-                <div className="text-sm">
-                  {record.account_phone || record.account?.phone || `ID: ${value}`}
-                </div>
-              )
-            },
-            {
-              key: 'priority',
-              title: '优先级',
-              width: '100px',
-              sortable: true,
-              render: (value) => (
-                <span className="text-sm">{value}/10</span>
-              )
-            },
-            {
-              key: 'created_at',
-              title: '创建时间',
-              width: '180px',
-              sortable: true,
-              render: (value) => (
-                <div className="text-sm text-muted-foreground">
-                  {new Date(value).toLocaleString()}
-                </div>
-              )
-            },
-            {
-              key: 'completed_at',
-              title: '完成时间',
-              width: '180px',
-              sortable: true,
-              render: (value) => (
-                <div className="text-sm text-muted-foreground">
-                  {value ? new Date(value).toLocaleString() : '-'}
-                </div>
-              )
-            },
-            {
-              key: 'actions',
-              title: '操作',
-              width: '240px',
-              render: (_, record) => (
-                <TooltipProvider>
-                  <div className="flex items-center gap-1">
-                    {/* 查看日志 - 始终可用 */}
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 hover:bg-blue-50 text-blue-600 hover:text-blue-700"
-                          onClick={() => handleViewLogs(record)}
+        {/* 任务数据表 */}
+        <div className="rounded-md border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-[100px]">任务ID</TableHead>
+                <TableHead className="w-[150px]">任务类型</TableHead>
+                <TableHead className="w-[120px]">状态</TableHead>
+                <TableHead className="w-[120px]">账号</TableHead>
+                <TableHead className="w-[100px]">优先级</TableHead>
+                <TableHead className="w-[180px]">创建时间</TableHead>
+                <TableHead className="w-[180px]">完成时间</TableHead>
+                <TableHead className="w-[240px]">操作</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {loading ? (
+                // 加载状态
+                Array.from({ length: 5 }).map((_, index) => (
+                  <TableRow key={index}>
+                    <TableCell><div className="h-4 bg-muted rounded animate-pulse" /></TableCell>
+                    <TableCell><div className="h-4 bg-muted rounded animate-pulse" /></TableCell>
+                    <TableCell><div className="h-4 bg-muted rounded animate-pulse" /></TableCell>
+                    <TableCell><div className="h-4 bg-muted rounded animate-pulse" /></TableCell>
+                    <TableCell><div className="h-4 bg-muted rounded animate-pulse" /></TableCell>
+                    <TableCell><div className="h-4 bg-muted rounded animate-pulse" /></TableCell>
+                    <TableCell><div className="h-4 bg-muted rounded animate-pulse" /></TableCell>
+                    <TableCell><div className="h-4 bg-muted rounded animate-pulse" /></TableCell>
+                  </TableRow>
+                ))
+              ) : tasks.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={8} className="h-24 text-center">
+                    暂无任务数据
+                  </TableCell>
+                </TableRow>
+              ) : (
+                tasks.map((record) => (
+                  <TableRow key={record.id}>
+                    <TableCell>
+                      <span className="font-mono text-sm">#{record.id}</span>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="secondary" className="text-xs">
+                        {getTaskTypeText(record.task_type)}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        {getStatusIcon(record.status)}
+                        <Badge
+                          variant={record.status === 'completed' ? 'default' : record.status === 'failed' ? 'destructive' : 'secondary'}
+                          className={cn("text-xs", getStatusColor(record.status))}
                         >
-                          <FileText className="h-4 w-4" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent side="top">
-                        <p className="text-xs">查看任务日志</p>
-                      </TooltipContent>
-                    </Tooltip>
+                          {getStatusText(record.status)}
+                        </Badge>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="text-sm">
+                        {record.account_phone || record.account?.phone || `ID: ${record.account_id}`}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <span className="text-sm">{record.priority}/10</span>
+                    </TableCell>
+                    <TableCell>
+                      <div className="text-sm text-muted-foreground">
+                        {new Date(record.created_at).toLocaleString()}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="text-sm text-muted-foreground">
+                        {record.completed_at ? new Date(record.completed_at).toLocaleString() : '-'}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <TooltipProvider>
+                        <div className="flex items-center gap-1">
+                          {/* 查看日志 - 始终可用 */}
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 hover:bg-blue-50 text-blue-600 hover:text-blue-700"
+                                onClick={() => handleViewLogs(record)}
+                              >
+                                <FileText className="h-4 w-4" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent side="top">
+                              <p className="text-xs">查看任务日志</p>
+                            </TooltipContent>
+                          </Tooltip>
 
-                    {/* 启动任务 */}
-                    {renderActionButton(
-                      'start', 
-                      record, 
-                      <Play className="h-4 w-4" />, 
-                      () => handleStartTask(record),
-                      "hover:bg-green-50 text-green-600 hover:text-green-700"
-                    )}
+                          {/* 启动任务 */}
+                          {renderActionButton(
+                            'start', 
+                            record, 
+                            <Play className="h-4 w-4" />, 
+                            () => handleStartTask(record),
+                            "hover:bg-green-50 text-green-600 hover:text-green-700"
+                          )}
 
-                    {/* 暂停任务 */}
-                    {renderActionButton(
-                      'pause', 
-                      record, 
-                      <Pause className="h-4 w-4" />, 
-                      () => handlePauseTask(record),
-                      "hover:bg-orange-50 text-orange-600 hover:text-orange-700"
-                    )}
+                          {/* 暂停任务 */}
+                          {renderActionButton(
+                            'pause', 
+                            record, 
+                            <Pause className="h-4 w-4" />, 
+                            () => handlePauseTask(record),
+                            "hover:bg-orange-50 text-orange-600 hover:text-orange-700"
+                          )}
 
-                    {/* 恢复任务 */}
-                    {renderActionButton(
-                      'resume', 
-                      record, 
-                      <PlayCircle className="h-4 w-4" />, 
-                      () => handleResumeTask(record),
-                      "hover:bg-emerald-50 text-emerald-600 hover:text-emerald-700"
-                    )}
+                          {/* 恢复任务 */}
+                          {renderActionButton(
+                            'resume', 
+                            record, 
+                            <PlayCircle className="h-4 w-4" />, 
+                            () => handleResumeTask(record),
+                            "hover:bg-emerald-50 text-emerald-600 hover:text-emerald-700"
+                          )}
 
-                    {/* 停止任务 */}
-                    {renderActionButton(
-                      'stop', 
-                      record, 
-                      <Square className="h-4 w-4" />, 
-                      () => handleStopTask(record),
-                      "hover:bg-red-50 text-red-600 hover:text-red-700"
-                    )}
+                          {/* 停止任务 */}
+                          {renderActionButton(
+                            'stop', 
+                            record, 
+                            <Square className="h-4 w-4" />, 
+                            () => handleStopTask(record),
+                            "hover:bg-red-50 text-red-600 hover:text-red-700"
+                          )}
 
-                    {/* 取消任务 */}
-                    {renderActionButton(
-                      'cancel', 
-                      record, 
-                      <X className="h-4 w-4" />, 
-                      () => handleCancelTask(record),
-                      "hover:bg-gray-50 text-gray-600 hover:text-gray-700"
-                    )}
+                          {/* 取消任务 */}
+                          {renderActionButton(
+                            'cancel', 
+                            record, 
+                            <X className="h-4 w-4" />, 
+                            () => handleCancelTask(record),
+                            "hover:bg-gray-50 text-gray-600 hover:text-gray-700"
+                          )}
 
-                    {/* 重试任务 */}
-                    {renderActionButton(
-                      'retry', 
-                      record, 
-                      <RefreshCw className="h-4 w-4" />, 
-                      () => handleRetryTask(record),
-                      "hover:bg-purple-50 text-purple-600 hover:text-purple-700"
-                    )}
+                          {/* 重试任务 */}
+                          {renderActionButton(
+                            'retry', 
+                            record, 
+                            <RefreshCw className="h-4 w-4" />, 
+                            () => handleRetryTask(record),
+                            "hover:bg-purple-50 text-purple-600 hover:text-purple-700"
+                          )}
 
-                    {/* 删除任务 */}
-                    {renderActionButton(
-                      'delete', 
-                      record, 
-                      <Trash2 className="h-4 w-4" />, 
-                      () => handleDeleteTask(record),
-                      "hover:bg-red-50 text-red-600 hover:text-red-700"
-                    )}
-                  </div>
-                </TooltipProvider>
-              )
-            }
-          ]}
-          loading={loading}
-          emptyText="暂无任务数据"
-          className="card-shadow"
-        />
+                          {/* 删除任务 */}
+                          {renderActionButton(
+                            'delete', 
+                            record, 
+                            <Trash2 className="h-4 w-4" />, 
+                            () => handleDeleteTask(record),
+                            "hover:bg-red-50 text-red-600 hover:text-red-700"
+                          )}
+                        </div>
+                      </TooltipProvider>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
 
-        {/* Pagination */}
+        {/* 分页 */}
         <div className="flex items-center justify-between">
           <div className="text-sm text-muted-foreground">
             共 {total} 个任务，当前第 {page} 页
@@ -853,7 +844,6 @@ export default function TasksPage() {
               size="sm"
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={page === 1}
-              className="btn-modern"
             >
               上一页
             </Button>
@@ -862,7 +852,6 @@ export default function TasksPage() {
               size="sm"
               onClick={() => setPage((p) => p + 1)}
               disabled={page * 20 >= total}
-              className="btn-modern"
             >
               下一页
             </Button>

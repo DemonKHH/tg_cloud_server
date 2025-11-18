@@ -8,7 +8,7 @@ import { Upload, Download, Image, File, Trash2, MoreVertical, Eye, Link2 } from 
 import { fileAPI } from "@/lib/api"
 import { useState, useRef } from "react"
 import { Badge } from "@/components/ui/badge"
-import { ModernTable } from "@/components/ui/modern-table"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { cn } from "@/lib/utils"
 import {
   Dialog,
@@ -237,145 +237,147 @@ export default function FilesPage() {
           }
         />
 
-        {/* Files Table */}
-        <ModernTable
-          data={files}
-          columns={[
-            {
-              key: 'original_name',
-              title: '文件名',
-              width: '250px',
-              render: (value, record) => (
-                <div className="flex items-center gap-3">
-                  {getFileIcon(record.file_type)}
-                  <div className="flex-1 min-w-0">
-                    <div className="font-medium truncate">{value}</div>
-                    <div className="text-xs text-muted-foreground truncate">
-                      {getFileTypeText(record.file_type)}
-                    </div>
-                  </div>
-                </div>
-              )
-            },
-            {
-              key: 'category',
-              title: '分类',
-              width: '120px',
-              render: (value) => (
-                <Badge variant="secondary" className="text-xs">
-                  {getCategoryText(value)}
-                </Badge>
-              )
-            },
-            {
-              key: 'file_size',
-              title: '大小',
-              width: '100px',
-              sortable: true,
-              render: (value) => (
-                <div className="text-sm text-muted-foreground">
-                  {formatFileSize(value || 0)}
-                </div>
-              )
-            },
-            {
-              key: 'created_at',
-              title: '上传时间',
-              width: '180px',
-              sortable: true,
-              render: (value) => (
-                <div className="text-sm text-muted-foreground">
-                  {new Date(value).toLocaleString()}
-                </div>
-              )
-            },
-            {
-              key: 'actions',
-              title: '操作',
-              width: '180px',
-              render: (_, record) => (
-                <TooltipProvider>
-                  <div className="flex items-center gap-1">
-                    {/* 下载文件 */}
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 hover:bg-green-50 text-green-600 hover:text-green-700"
-                          onClick={() => handleDownloadFile(record)}
-                        >
-                          <Download className="h-4 w-4" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent side="top">
-                        <p className="text-xs">下载文件</p>
-                      </TooltipContent>
-                    </Tooltip>
+        {/* 文件数据表 */}
+        <div className="rounded-md border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-[250px]">文件名</TableHead>
+                <TableHead className="w-[120px]">分类</TableHead>
+                <TableHead className="w-[100px]">大小</TableHead>
+                <TableHead className="w-[180px]">上传时间</TableHead>
+                <TableHead className="w-[180px]">操作</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {loading ? (
+                Array.from({ length: 5 }).map((_, index) => (
+                  <TableRow key={index}>
+                    <TableCell><div className="h-4 bg-muted rounded animate-pulse" /></TableCell>
+                    <TableCell><div className="h-4 bg-muted rounded animate-pulse" /></TableCell>
+                    <TableCell><div className="h-4 bg-muted rounded animate-pulse" /></TableCell>
+                    <TableCell><div className="h-4 bg-muted rounded animate-pulse" /></TableCell>
+                    <TableCell><div className="h-4 bg-muted rounded animate-pulse" /></TableCell>
+                  </TableRow>
+                ))
+              ) : files.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={5} className="h-24 text-center">
+                    暂无文件数据
+                  </TableCell>
+                </TableRow>
+              ) : (
+                files.map((record) => (
+                  <TableRow key={record.id}>
+                    <TableCell>
+                      <div className="flex items-center gap-3">
+                        {getFileIcon(record.file_type)}
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium truncate">{record.original_name}</div>
+                          <div className="text-xs text-muted-foreground truncate">
+                            {getFileTypeText(record.file_type)}
+                          </div>
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="secondary" className="text-xs">
+                        {getCategoryText(record.category)}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="text-sm text-muted-foreground">
+                        {formatFileSize(record.file_size || 0)}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="text-sm text-muted-foreground">
+                        {new Date(record.created_at).toLocaleString()}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <TooltipProvider>
+                        <div className="flex items-center gap-1">
+                          {/* 下载文件 */}
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 hover:bg-green-50 text-green-600 hover:text-green-700"
+                                onClick={() => handleDownloadFile(record)}
+                              >
+                                <Download className="h-4 w-4" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent side="top">
+                              <p className="text-xs">下载文件</p>
+                            </TooltipContent>
+                          </Tooltip>
 
-                    {/* 预览文件 (仅图片) */}
-                    {record.file_type?.startsWith("image/") && (
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 hover:bg-blue-50 text-blue-600 hover:text-blue-700"
-                            onClick={() => handlePreviewFile(record)}
-                          >
-                            <Eye className="h-4 w-4" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent side="top">
-                          <p className="text-xs">预览图片</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    )}
+                          {/* 预览文件 (仅图片) */}
+                          {record.file_type?.startsWith("image/") && (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 hover:bg-blue-50 text-blue-600 hover:text-blue-700"
+                                  onClick={() => handlePreviewFile(record)}
+                                >
+                                  <Eye className="h-4 w-4" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent side="top">
+                                <p className="text-xs">预览图片</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          )}
 
-                    {/* 复制URL */}
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 hover:bg-purple-50 text-purple-600 hover:text-purple-700"
-                          onClick={() => handleGetFileURL(record)}
-                        >
-                          <Link2 className="h-4 w-4" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent side="top">
-                        <p className="text-xs">复制文件URL</p>
-                      </TooltipContent>
-                    </Tooltip>
+                          {/* 复制URL */}
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 hover:bg-purple-50 text-purple-600 hover:text-purple-700"
+                                onClick={() => handleGetFileURL(record)}
+                              >
+                                <Link2 className="h-4 w-4" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent side="top">
+                              <p className="text-xs">复制文件URL</p>
+                            </TooltipContent>
+                          </Tooltip>
 
-                    {/* 删除文件 */}
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 hover:bg-red-50 text-red-600 hover:text-red-700"
-                          onClick={() => handleDeleteFile(record)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent side="top">
-                        <p className="text-xs">删除文件 (不可恢复)</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </div>
-                </TooltipProvider>
-              )
-            }
-          ]}
-          loading={loading}
-          emptyText="暂无文件数据"
-          className="card-shadow"
-        />
+                          {/* 删除文件 */}
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 hover:bg-red-50 text-red-600 hover:text-red-700"
+                                onClick={() => handleDeleteFile(record)}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent side="top">
+                              <p className="text-xs">删除文件 (不可恢复)</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </div>
+                      </TooltipProvider>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
 
-        {/* Pagination */}
+        {/* 分页 */}
         <div className="flex items-center justify-between">
           <div className="text-sm text-muted-foreground">
             共 {total} 个文件，当前第 {page} 页
@@ -386,7 +388,6 @@ export default function FilesPage() {
               size="sm"
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={page === 1}
-              className="btn-modern"
             >
               上一页
             </Button>
@@ -395,7 +396,6 @@ export default function FilesPage() {
               size="sm"
               onClick={() => setPage((p) => p + 1)}
               disabled={page * 20 >= total}
-              className="btn-modern"
             >
               下一页
             </Button>

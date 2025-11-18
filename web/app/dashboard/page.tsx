@@ -13,6 +13,7 @@ import {
   ModernBarChart, 
   ModernPieChart 
 } from "@/components/charts/modern-charts"
+import { Progress } from "@/components/ui/progress"
 import { motion } from "framer-motion"
 
 export default function DashboardPage() {

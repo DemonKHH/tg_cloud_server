@@ -27,7 +27,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 import { Badge } from "@/components/ui/badge"
-import { ModernTable } from "@/components/ui/modern-table"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { cn } from "@/lib/utils"
 import { accountAPI, proxyAPI } from "@/lib/api"
 import { useState, useEffect, useRef } from "react"
@@ -480,179 +480,178 @@ export default function AccountsPage() {
           }
         />
 
-        {/* Modern Accounts Table */}
-        <ModernTable
-          data={accounts}
-          columns={[
-            {
-              key: 'phone',
-              title: '账号信息',
-              width: '200px',
-              render: (value, record) => (
-                <div className="space-y-1">
-                  <div className="font-medium">{value}</div>
-                  {record.note && (
-                    <div className="text-sm text-muted-foreground">{record.note}</div>
-                  )}
-                </div>
-              )
-            },
-            {
-              key: 'status',
-              title: '状态',
-              width: '120px',
-              sortable: true,
-              render: (value) => (
-                <div className="flex items-center gap-2">
-                  {getStatusIcon(value)}
-                  <Badge
-                    variant={value === 'normal' ? 'default' : value === 'dead' || value === 'restricted' ? 'destructive' : 'secondary'}
-                    className={cn("text-xs", getStatusColor(value))}
-                  >
-                    {getStatusText(value)}
-                  </Badge>
-                </div>
-              )
-            },
-            {
-              key: 'health_score',
-              title: '健康度',
-              width: '150px',
-              sortable: true,
-              render: (value) => (
-                <div className="flex items-center gap-3">
-                  <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden max-w-16">
-                    <motion.div
-                      initial={{ width: 0 }}
-                      animate={{ width: `${(value || 0) * 100}%` }}
-                      transition={{ duration: 0.8, ease: "easeOut" }}
-                      className={cn(
-                        "h-full transition-colors",
-                        (value || 0) >= 0.8 ? 'bg-green-500' :
-                        (value || 0) >= 0.6 ? 'bg-yellow-500' : 'bg-red-500'
-                      )}
-                    />
-                  </div>
-                  <span className="text-sm font-medium min-w-12">
-                    {((value || 0) * 100).toFixed(0)}%
-                  </span>
-                </div>
-              )
-            },
-            {
-              key: 'proxy_id',
-              title: '代理',
-              width: '100px',
-              render: (value) => (
-                <Badge variant={value ? 'default' : 'secondary'} className="text-xs">
-                  {value ? '已绑定' : '未绑定'}
-                </Badge>
-              )
-            },
-            {
-              key: 'last_used_at',
-              title: '最后使用',
-              width: '120px',
-              sortable: true,
-              render: (value) => (
-                <div className="text-sm text-muted-foreground">
-                  {value ? new Date(value).toLocaleDateString() : '从未使用'}
-                </div>
-              )
-            },
-            {
-              key: 'actions',
-              title: '操作',
-              width: '180px',
-              render: (_, record) => (
-                <TooltipProvider>
-                  <div className="flex items-center gap-1">
-                    {/* 编辑账号 */}
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 hover:bg-blue-50 text-blue-600 hover:text-blue-700"
-                          onClick={() => handleEditAccount(record)}
+        {/* 账号数据表 */}
+        <div className="rounded-md border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-[200px]">账号信息</TableHead>
+                <TableHead className="w-[120px]">状态</TableHead>
+                <TableHead className="w-[150px]">健康度</TableHead>
+                <TableHead className="w-[100px]">代理</TableHead>
+                <TableHead className="w-[120px]">最后使用</TableHead>
+                <TableHead className="w-[180px]">操作</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {loading ? (
+                // 加载状态
+                Array.from({ length: 5 }).map((_, index) => (
+                  <TableRow key={index}>
+                    <TableCell><div className="h-4 bg-muted rounded animate-pulse" /></TableCell>
+                    <TableCell><div className="h-4 bg-muted rounded animate-pulse" /></TableCell>
+                    <TableCell><div className="h-4 bg-muted rounded animate-pulse" /></TableCell>
+                    <TableCell><div className="h-4 bg-muted rounded animate-pulse" /></TableCell>
+                    <TableCell><div className="h-4 bg-muted rounded animate-pulse" /></TableCell>
+                    <TableCell><div className="h-4 bg-muted rounded animate-pulse" /></TableCell>
+                  </TableRow>
+                ))
+              ) : accounts.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="h-24 text-center">
+                    暂无账号数据
+                  </TableCell>
+                </TableRow>
+              ) : (
+                accounts.map((record) => (
+                  <TableRow key={record.id}>
+                    <TableCell>
+                      <div className="space-y-1">
+                        <div className="font-medium">{record.phone}</div>
+                        {record.note && (
+                          <div className="text-sm text-muted-foreground">{record.note}</div>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        {getStatusIcon(record.status)}
+                        <Badge
+                          variant={record.status === 'normal' ? 'default' : record.status === 'dead' || record.status === 'restricted' ? 'destructive' : 'secondary'}
+                          className={cn("text-xs", getStatusColor(record.status))}
                         >
-                          <Pencil className="h-4 w-4" />
-                    </Button>
-                      </TooltipTrigger>
-                      <TooltipContent side="top">
-                        <p className="text-xs">编辑账号信息</p>
-                      </TooltipContent>
-                    </Tooltip>
+                          {getStatusText(record.status)}
+                        </Badge>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-3">
+                        <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden max-w-16">
+                          <motion.div
+                            initial={{ width: 0 }}
+                            animate={{ width: `${(record.health_score || 0) * 100}%` }}
+                            transition={{ duration: 0.8, ease: "easeOut" }}
+                            className={cn(
+                              "h-full transition-colors",
+                              (record.health_score || 0) >= 0.8 ? 'bg-green-500' :
+                              (record.health_score || 0) >= 0.6 ? 'bg-yellow-500' : 'bg-red-500'
+                            )}
+                          />
+                        </div>
+                        <span className="text-sm font-medium min-w-12">
+                          {((record.health_score || 0) * 100).toFixed(0)}%
+                        </span>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={record.proxy_id ? 'default' : 'secondary'} className="text-xs">
+                        {record.proxy_id ? '已绑定' : '未绑定'}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="text-sm text-muted-foreground">
+                        {record.last_used_at ? new Date(record.last_used_at).toLocaleDateString() : '从未使用'}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <TooltipProvider>
+                        <div className="flex items-center gap-1">
+                          {/* 编辑账号 */}
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 hover:bg-blue-50 text-blue-600 hover:text-blue-700"
+                                onClick={() => handleEditAccount(record)}
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent side="top">
+                              <p className="text-xs">编辑账号信息</p>
+                            </TooltipContent>
+                          </Tooltip>
 
-                    {/* 检查健康 */}
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className={cn(
-                            "h-8 w-8",
-                            healthChecking === record.id
-                              ? "opacity-50 cursor-not-allowed text-muted-foreground"
-                              : "hover:bg-green-50 text-green-600 hover:text-green-700"
-                          )}
-                          disabled={healthChecking === record.id}
-                      onClick={() => handleCheckHealth(record)}
-                    >
-                          <Activity className="h-4 w-4" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent side="top">
-                        <p className="text-xs">
-                          {healthChecking === record.id ? "检查中..." : "检查账号健康"}
-                        </p>
-                      </TooltipContent>
-                    </Tooltip>
+                          {/* 检查健康 */}
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className={cn(
+                                  "h-8 w-8",
+                                  healthChecking === record.id
+                                    ? "opacity-50 cursor-not-allowed text-muted-foreground"
+                                    : "hover:bg-green-50 text-green-600 hover:text-green-700"
+                                )}
+                                disabled={healthChecking === record.id}
+                                onClick={() => handleCheckHealth(record)}
+                              >
+                                <Activity className="h-4 w-4" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent side="top">
+                              <p className="text-xs">
+                                {healthChecking === record.id ? "检查中..." : "检查账号健康"}
+                              </p>
+                            </TooltipContent>
+                          </Tooltip>
 
-                    {/* 绑定代理 */}
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 hover:bg-purple-50 text-purple-600 hover:text-purple-700"
-                          onClick={() => handleBindProxy(record)}
-                        >
-                          <Link2 className="h-4 w-4" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent side="top">
-                        <p className="text-xs">绑定代理服务器</p>
-                      </TooltipContent>
-                    </Tooltip>
+                          {/* 绑定代理 */}
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 hover:bg-purple-50 text-purple-600 hover:text-purple-700"
+                                onClick={() => handleBindProxy(record)}
+                              >
+                                <Link2 className="h-4 w-4" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent side="top">
+                              <p className="text-xs">绑定代理服务器</p>
+                            </TooltipContent>
+                          </Tooltip>
 
-                    {/* 删除账号 */}
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 hover:bg-red-50 text-red-600 hover:text-red-700"
-                      onClick={() => handleDeleteAccount(record)}
-                    >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent side="top">
-                        <p className="text-xs">删除账号 (不可恢复)</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </div>
-                </TooltipProvider>
-              )
-            }
-          ]}
-          loading={loading}
-          emptyText="暂无账号数据"
-          className="card-shadow"
-        />
+                          {/* 删除账号 */}
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 hover:bg-red-50 text-red-600 hover:text-red-700"
+                                onClick={() => handleDeleteAccount(record)}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent side="top">
+                              <p className="text-xs">删除账号 (不可恢复)</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </div>
+                      </TooltipProvider>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
 
-        {/* Pagination */}
+        {/* 分页 */}
         <div className="flex items-center justify-between">
           <div className="text-sm text-muted-foreground">
             共 {total} 个账号，当前第 {page} 页
@@ -663,7 +662,6 @@ export default function AccountsPage() {
               size="sm"
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={page === 1}
-              className="btn-modern"
             >
               上一页
             </Button>
@@ -672,7 +670,6 @@ export default function AccountsPage() {
               size="sm"
               onClick={() => setPage((p) => p + 1)}
               disabled={page * 20 >= total}
-              className="btn-modern"
             >
               下一页
             </Button>

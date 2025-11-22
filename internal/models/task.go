@@ -251,8 +251,7 @@ type TaskSummary struct {
 	ID           uint64     `json:"id"`
 	TaskType     TaskType   `json:"task_type"`
 	Status       TaskStatus `json:"status"`
-	AccountID    uint64     `json:"account_id"`
-	AccountPhone string     `json:"account_phone"`
+	AccountPhone string     `json:"account_phone"` // 显示账号信息（如 "1个账号" 或 "3个账号"）
 	Priority     int        `json:"priority"`
 	CreatedAt    time.Time  `json:"created_at"`
 	StartedAt    *time.Time `json:"started_at"`

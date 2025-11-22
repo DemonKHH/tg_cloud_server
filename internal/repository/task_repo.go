@@ -2,6 +2,7 @@ package repository
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -105,15 +106,39 @@ func (r *taskRepository) GetTaskSummaries(conditions map[string]interface{}, off
 	var tasks []*models.TaskSummary
 	var total int64
 
+	// 处理 account_id 条件（如果存在）
+	var accountIDCondition string
+	var accountIDParams []interface{}
+	if accountID, ok := conditions["account_id"]; ok {
+		// 将 account_id 条件转换为 account_ids 搜索
+		accountIDStr := fmt.Sprintf("%d", accountID)
+		accountIDCondition = "(tasks.account_ids = ? OR tasks.account_ids LIKE ? OR tasks.account_ids LIKE ? OR tasks.account_ids LIKE ?)"
+		accountIDParams = []interface{}{
+			accountIDStr,
+			accountIDStr + ",%",
+			"%," + accountIDStr + ",%",
+			"%," + accountIDStr,
+		}
+		// 从 conditions 中移除 account_id
+		delete(conditions, "account_id")
+	}
+
+	// 构建查询
 	query := r.db.Model(&models.Task{}).
-		Select(`tasks.id, tasks.task_type, tasks.status, tasks.account_id, 
-		        tg_accounts.phone as account_phone, tasks.priority, 
-		        tasks.created_at, tasks.started_at, tasks.completed_at`).
-		Joins("LEFT JOIN tg_accounts ON tasks.account_id = tg_accounts.id").
+		Select(`tasks.id, tasks.task_type, tasks.status, tasks.account_ids, 
+		        tasks.priority, tasks.created_at, tasks.started_at, tasks.completed_at`).
 		Where(conditions)
+
+	// 添加 account_id 条件（如果有）
+	if accountIDCondition != "" {
+		query = query.Where(accountIDCondition, accountIDParams...)
+	}
 
 	// 获取总数
 	countQuery := r.db.Model(&models.Task{}).Where(conditions)
+	if accountIDCondition != "" {
+		countQuery = countQuery.Where(accountIDCondition, accountIDParams...)
+	}
 	if err := countQuery.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
@@ -121,6 +146,7 @@ func (r *taskRepository) GetTaskSummaries(conditions map[string]interface{}, off
 	// 获取数据并计算持续时间
 	type TaskWithDuration struct {
 		models.TaskSummary
+		AccountIDs     string     `gorm:"column:account_ids"`
 		StartedAtRaw   *time.Time `gorm:"column:started_at"`
 		CompletedAtRaw *time.Time `gorm:"column:completed_at"`
 	}
@@ -139,6 +165,16 @@ func (r *taskRepository) GetTaskSummaries(conditions map[string]interface{}, off
 		task := rawTask.TaskSummary
 		task.StartedAt = rawTask.StartedAtRaw
 		task.CompletedAt = rawTask.CompletedAtRaw
+
+		// 设置账号信息（显示账号数量）
+		if rawTask.AccountIDs != "" {
+			accountCount := len(strings.Split(rawTask.AccountIDs, ","))
+			if accountCount == 1 {
+				task.AccountPhone = "1个账号"
+			} else {
+				task.AccountPhone = fmt.Sprintf("%d个账号", accountCount)
+			}
+		}
 
 		// 计算持续时间
 		if task.StartedAt != nil && task.CompletedAt != nil {

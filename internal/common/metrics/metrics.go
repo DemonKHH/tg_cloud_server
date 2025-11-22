@@ -64,14 +64,6 @@ var (
 		[]string{"status", "user_id"},
 	)
 
-	AccountHealthScore = promauto.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: "account_health_score",
-			Help: "Account health score",
-		},
-		[]string{"account_id", "phone"},
-	)
-
 	// Telegram连接指标
 	TelegramConnectionsActive = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -208,11 +200,6 @@ func (m *MetricsService) UpdateTaskQueueLength(accountID uint64, length float64)
 // UpdateAccountCount 更新账号数量
 func (m *MetricsService) UpdateAccountCount(status string, userID uint64, count float64) {
 	AccountsTotal.WithLabelValues(status, strconv.FormatUint(userID, 10)).Set(count)
-}
-
-// UpdateAccountHealthScore 更新账号健康度评分
-func (m *MetricsService) UpdateAccountHealthScore(accountID uint64, phone string, score float64) {
-	AccountHealthScore.WithLabelValues(strconv.FormatUint(accountID, 10), phone).Set(score)
 }
 
 // UpdateTelegramConnections 更新Telegram连接数

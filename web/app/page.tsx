@@ -171,8 +171,8 @@ export default function HomePage() {
             {
               icon: Users,
               title: "智能账号管理",
-              description: "统一管理海量TG账号，实时健康检测、状态监控和风险预警",
-              features: ["健康度评估", "自动检测", "批量导入"],
+              description: "统一管理海量TG账号，实时状态监控、自动检测和风险预警",
+              features: ["状态监控", "自动检测", "批量导入"],
               color: "from-blue-500/10 to-blue-600/5"
             },
             {

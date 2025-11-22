@@ -34,14 +34,14 @@ func (t *AccountCheckTask) Execute(ctx context.Context, api *tg.Client) error {
 	}
 
 	checkResults := make(map[string]interface{})
-	healthScore := 100.0
+	checkScore := 100.0
 	var issues []string
 	var suggestions []string
 
 	// 1. 基本账号信息检查
 	_, err := api.UsersGetFullUser(ctx, &tg.InputUserSelf{})
 	if err != nil {
-		healthScore -= 50
+		checkScore -= 50
 		issues = append(issues, "无法获取账号基本信息")
 		suggestions = append(suggestions, "检查账号登录状态")
 		checkResults["basic_info_check"] = "failed"
@@ -54,7 +54,7 @@ func (t *AccountCheckTask) Execute(ctx context.Context, api *tg.Client) error {
 	// 2. 连接状态检查
 	_, err = api.HelpGetConfig(ctx)
 	if err != nil {
-		healthScore -= 30
+		checkScore -= 30
 		issues = append(issues, "Telegram服务连接异常")
 		suggestions = append(suggestions, "检查网络连接和代理设置")
 		checkResults["connection_check"] = "failed"
@@ -67,7 +67,7 @@ func (t *AccountCheckTask) Execute(ctx context.Context, api *tg.Client) error {
 		Limit: 5,
 	})
 	if err != nil {
-		healthScore -= 20
+		checkScore -= 20
 		issues = append(issues, "无法获取对话列表")
 		suggestions = append(suggestions, "检查账号是否被限制")
 		checkResults["dialogs_check"] = "failed"
@@ -88,18 +88,18 @@ func (t *AccountCheckTask) Execute(ctx context.Context, api *tg.Client) error {
 	}
 
 	// 5. 账号状态评估
-	if healthScore >= 90 {
+	if checkScore >= 90 {
 		checkResults["account_status"] = "excellent"
-	} else if healthScore >= 70 {
+	} else if checkScore >= 70 {
 		checkResults["account_status"] = "good"
-	} else if healthScore >= 50 {
+	} else if checkScore >= 50 {
 		checkResults["account_status"] = "warning"
 	} else {
 		checkResults["account_status"] = "critical"
 	}
 
 	// 更新任务结果
-	t.task.Result["health_score"] = healthScore
+	t.task.Result["check_score"] = checkScore
 	t.task.Result["issues"] = issues
 	t.task.Result["suggestions"] = suggestions
 	t.task.Result["check_results"] = checkResults

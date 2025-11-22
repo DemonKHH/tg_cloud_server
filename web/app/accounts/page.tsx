@@ -234,8 +234,10 @@ export default function AccountsPage() {
       const response = await accountAPI.checkHealth(String(account.id))
       if (response.data) {
         const health = response.data as any
-        toast.success(`健康检查完成：健康度 ${((health.score || 0) * 100).toFixed(0)}%`)
-        refresh() // 重新加载以更新健康度
+        const status = health.status || 'unknown'
+        const issuesCount = (health.issues || []).length
+        toast.success(`检查完成：状态 ${status}${issuesCount > 0 ? `，发现 ${issuesCount} 个问题` : ''}`)
+        refresh() // 重新加载以更新状态
       }
     } catch (error: any) {
       toast.error(error.message || "健康检查失败")
@@ -610,19 +612,17 @@ export default function AccountsPage() {
           >
             <Card className="relative overflow-hidden border-none shadow-sm bg-gradient-to-br from-orange-50 to-orange-100/50 dark:from-orange-950/50 dark:to-orange-900/30">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium text-orange-900 dark:text-orange-100">平均健康度</CardTitle>
+                <CardTitle className="text-sm font-medium text-orange-900 dark:text-orange-100">正常账号</CardTitle>
                 <div className="h-10 w-10 rounded-full bg-orange-500/10 flex items-center justify-center">
                   <Activity className="h-5 w-5 text-orange-600 dark:text-orange-400" />
                 </div>
               </CardHeader>
               <CardContent>
                 <div className="text-3xl font-bold text-orange-900 dark:text-orange-100">
-                  {accounts.length > 0 
-                    ? ((accounts.reduce((sum, a) => sum + (a.health_score || 0), 0) / accounts.length) * 100).toFixed(0)
-                    : 0}%
+                  {accounts.filter(a => a.status === 'normal').length}
                 </div>
                 <p className="text-xs text-orange-700/70 dark:text-orange-300/70 mt-1">
-                  所有账号的平均健康度
+                  状态正常的账号数量
                 </p>
               </CardContent>
               <div className="absolute -right-4 -bottom-4 h-24 w-24 rounded-full bg-orange-500/5" />
@@ -806,7 +806,7 @@ export default function AccountsPage() {
                       <TableHead className="w-[200px] font-semibold">账号信息</TableHead>
                       <TableHead className="w-[180px] font-semibold">Telegram 信息</TableHead>
                       <TableHead className="w-[120px] font-semibold">状态</TableHead>
-                      <TableHead className="w-[150px] font-semibold">健康度</TableHead>
+                      <TableHead className="w-[150px] font-semibold">连接状态</TableHead>
                       <TableHead className="w-[100px] font-semibold">代理</TableHead>
                       <TableHead className="w-[140px] font-semibold">最后使用</TableHead>
                       <TableHead className="w-[200px] text-right font-semibold">操作</TableHead>
@@ -966,27 +966,23 @@ export default function AccountsPage() {
                           </Badge>
                         </TableCell>
                         <TableCell className="py-4">
-                          <div className="flex items-center gap-3">
-                            <div className="flex-1 h-2.5 bg-muted rounded-full overflow-hidden max-w-[90px] shadow-inner">
-                              <motion.div
-                                initial={{ width: 0 }}
-                                animate={{ width: `${(record.health_score || 0) * 100}%` }}
-                                transition={{ duration: 0.8, ease: "easeOut", delay: index * 0.02 }}
-                                className={cn(
-                                  "h-full transition-all",
-                                  (record.health_score || 0) >= 0.8 ? 'bg-gradient-to-r from-green-500 to-green-600' :
-                                  (record.health_score || 0) >= 0.6 ? 'bg-gradient-to-r from-yellow-500 to-yellow-600' : 
-                                  'bg-gradient-to-r from-red-500 to-red-600'
-                                )}
-                              />
-                            </div>
-                            <span className={cn(
-                              "text-sm font-bold min-w-[45px]",
-                              (record.health_score || 0) >= 0.8 ? 'text-green-600 dark:text-green-400' :
-                              (record.health_score || 0) >= 0.6 ? 'text-yellow-600 dark:text-yellow-400' : 
-                              'text-red-600 dark:text-red-400'
-                            )}>
-                              {((record.health_score || 0) * 100).toFixed(0)}%
+                          <div className="flex items-center gap-2">
+                            <div className={cn(
+                              "h-2 w-2 rounded-full",
+                              record.status === 'normal' ? 'bg-green-500 animate-pulse' :
+                              record.status === 'warning' ? 'bg-yellow-500' :
+                              record.status === 'cooling' ? 'bg-blue-500' :
+                              record.status === 'restricted' ? 'bg-orange-500' :
+                              record.status === 'dead' ? 'bg-red-500' :
+                              'bg-gray-400'
+                            )} />
+                            <span className="text-sm text-muted-foreground">
+                              {record.status === 'normal' ? '已连接' :
+                               record.status === 'warning' ? '异常' :
+                               record.status === 'cooling' ? '冷却中' :
+                               record.status === 'restricted' ? '受限' :
+                               record.status === 'dead' ? '已死亡' :
+                               '未知'}
                             </span>
                           </div>
                         </TableCell>

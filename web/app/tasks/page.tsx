@@ -1154,7 +1154,7 @@ export default function TasksPage() {
                     <p className="text-xs text-muted-foreground">例如：30s, 2m, 5m</p>
                   </div>
                   <div className="bg-muted/50 rounded-lg p-3 text-xs text-muted-foreground">
-                    <p>账号检查任务将自动检查账号的状态和健康度。</p>
+                    <p>账号检查任务将自动检查账号的连接状态和可用性。</p>
                   </div>
                 </>
               )}

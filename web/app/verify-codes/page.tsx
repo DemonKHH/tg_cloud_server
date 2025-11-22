@@ -40,7 +40,6 @@ interface Account {
   id: number
   phone: string
   status: string
-  health_score: number
   proxy_id?: number
   created_at: string
 }

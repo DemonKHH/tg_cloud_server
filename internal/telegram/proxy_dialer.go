@@ -28,7 +28,7 @@ func createProxyDialer(config *ProxyConfig) (proxy.Dialer, error) {
 func createHTTPProxyDialer(config *ProxyConfig) (proxy.Dialer, error) {
 	proxyURL := &url.URL{
 		Scheme: config.Protocol,
-		Host:   fmt.Sprintf("%s:%d", config.Host, config.Port),
+		Host:   fmt.Sprintf("%s:%d", config.IP, config.Port),
 	}
 
 	if config.Username != "" && config.Password != "" {
@@ -58,7 +58,7 @@ func createHTTPProxyDialer(config *ProxyConfig) (proxy.Dialer, error) {
 
 // createSOCKS5ProxyDialer 创建SOCKS5代理拨号器
 func createSOCKS5ProxyDialer(config *ProxyConfig) (proxy.Dialer, error) {
-	proxyAddr := fmt.Sprintf("%s:%d", config.Host, config.Port)
+	proxyAddr := fmt.Sprintf("%s:%d", config.IP, config.Port)
 
 	var auth *proxy.Auth
 	if config.Username != "" && config.Password != "" {

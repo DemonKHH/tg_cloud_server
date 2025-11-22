@@ -66,7 +66,6 @@ export default function ProxiesPage() {
   const [editingProxy, setEditingProxy] = useState<any>(null)
   const [form, setForm] = useState({
     name: "",
-    host: "",
     ip: "",
     port: "",
     protocol: "http",
@@ -135,7 +134,6 @@ export default function ProxiesPage() {
     setEditingProxy(null)
     setForm({
       name: "",
-      host: "",
       ip: "",
       port: "",
       protocol: "http",
@@ -151,7 +149,6 @@ export default function ProxiesPage() {
     setEditingProxy(proxy)
     setForm({
       name: proxy.name || "",
-      host: proxy.host || "",
       ip: proxy.ip || "",
       port: String(proxy.port || ""),
       protocol: proxy.protocol || "http",
@@ -164,8 +161,8 @@ export default function ProxiesPage() {
 
   // 保存代理
   const handleSaveProxy = async () => {
-    if (!form.host || !form.ip || !form.port) {
-      toast.error("请填写主机、IP和端口")
+    if (!form.ip || !form.port) {
+      toast.error("请填写IP和端口")
       return
     }
 
@@ -178,7 +175,6 @@ export default function ProxiesPage() {
 
       const data: any = {
         name: form.name || undefined,
-        host: form.host,
         ip: form.ip,
         port: port,
         protocol: form.protocol,
@@ -320,9 +316,9 @@ export default function ProxiesPage() {
                   <TableRow key={record.id}>
                     <TableCell>
                       <div className="space-y-1">
-                        <div className="font-medium">{record.host}:{record.port}</div>
+                        <div className="font-medium">{record.ip}:{record.port}</div>
                         <div className="text-xs text-muted-foreground">
-                          {record.name || record.ip}
+                          {record.name}
                         </div>
                       </div>
                     </TableCell>
@@ -483,16 +479,6 @@ export default function ProxiesPage() {
                 />
               </div>
               <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="proxy-host">主机地址 *</Label>
-                  <Input
-                    id="proxy-host"
-                    value={form.host}
-                    onChange={(e) => setForm({ ...form, host: e.target.value })}
-                    placeholder="example.com"
-                    required
-                  />
-                </div>
                 <div className="space-y-2">
                   <Label htmlFor="proxy-ip">IP地址 *</Label>
                   <Input

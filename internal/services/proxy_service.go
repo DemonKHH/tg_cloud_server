@@ -43,12 +43,12 @@ func (s *proxyService) CreateProxy(userID uint64, req *models.CreateProxyRequest
 	s.logger.Info("Creating proxy",
 		zap.Uint64("user_id", userID),
 		zap.String("name", req.Name),
-		zap.String("host", req.Host))
+		zap.String("ip", req.IP))
 
 	proxy := &models.ProxyIP{
 		UserID:   userID,
 		Name:     req.Name,
-		Host:     req.Host,
+		IP:       req.IP,
 		Port:     req.Port,
 		Username: req.Username,
 		Password: req.Password,
@@ -92,8 +92,8 @@ func (s *proxyService) UpdateProxy(userID, proxyID uint64, req *models.UpdatePro
 	if req.Name != "" {
 		proxy.Name = req.Name
 	}
-	if req.Host != "" {
-		proxy.Host = req.Host
+	if req.IP != "" {
+		proxy.IP = req.IP
 	}
 	if req.Port != 0 {
 		proxy.Port = req.Port
@@ -136,7 +136,7 @@ func (s *proxyService) TestProxy(userID, proxyID uint64) (*models.ProxyTestResul
 
 	s.logger.Info("Testing proxy connection",
 		zap.Uint64("proxy_id", proxyID),
-		zap.String("host", proxy.Host),
+		zap.String("ip", proxy.IP),
 		zap.Int("port", proxy.Port))
 
 	result := &models.ProxyTestResult{
@@ -184,10 +184,10 @@ func (s *proxyService) GetProxyStats(userID uint64) (*models.ProxyStats, error) 
 func (s *proxyService) testProxyConnection(proxy *models.ProxyIP) error {
 	// 构建代理URL
 	proxyURL := fmt.Sprintf("%s://%s:%s@%s:%d",
-		proxy.Protocol, proxy.Username, proxy.Password, proxy.Host, proxy.Port)
+		proxy.Protocol, proxy.Username, proxy.Password, proxy.IP, proxy.Port)
 
 	// 简单的连接测试 - 尝试连接到代理服务器
-	address := net.JoinHostPort(proxy.Host, fmt.Sprintf("%d", proxy.Port))
+	address := net.JoinHostPort(proxy.IP, fmt.Sprintf("%d", proxy.Port))
 	conn, err := net.DialTimeout("tcp", address, 5*time.Second)
 	if err != nil {
 		return fmt.Errorf("failed to connect to proxy server: %w", err)

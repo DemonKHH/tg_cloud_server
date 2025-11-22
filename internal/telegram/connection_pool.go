@@ -61,7 +61,7 @@ type ClientConfig struct {
 // ProxyConfig 代理配置
 type ProxyConfig struct {
 	Protocol string `json:"protocol"`
-	Host     string `json:"host"`
+	IP       string `json:"ip"`
 	Port     int    `json:"port"`
 	Username string `json:"username,omitempty"`
 	Password string `json:"password,omitempty"`
@@ -166,7 +166,7 @@ func (cp *ConnectionPool) createNewConnection(accountID string, config *ClientCo
 
 		cp.logger.Info("Proxy configuration applied for account",
 			zap.String("account_id", accountID),
-			zap.String("proxy", fmt.Sprintf("%s://%s:%d", config.ProxyConfig.Protocol, config.ProxyConfig.Host, config.ProxyConfig.Port)))
+			zap.String("proxy", fmt.Sprintf("%s://%s:%d", config.ProxyConfig.Protocol, config.ProxyConfig.IP, config.ProxyConfig.Port)))
 
 		// 测试代理连接（可选，用于验证代理是否可用）
 		if err := testProxyConnection(config.ProxyConfig); err != nil {

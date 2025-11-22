@@ -212,6 +212,9 @@ func (cp *ConnectionPool) maintainConnection(accountID string, conn *ManagedConn
 
 		conn.logger.Info("Connection established successfully")
 
+		// 连接成功，更新账号状态为正常
+		cp.updateAccountStatusOnSuccess(accountID)
+
 		// 连接成功后，获取并更新账号信息（在同一个 Run 上下文中）
 		go cp.updateAccountInfoFromTelegram(accountID, conn, ctx)
 
@@ -231,6 +234,9 @@ func (cp *ConnectionPool) maintainConnection(accountID string, conn *ManagedConn
 		conn.mu.Lock()
 		conn.status = StatusError
 		conn.mu.Unlock()
+
+		// 更新账号状态
+		cp.updateAccountStatusOnError(accountID, err)
 
 		// 自动重连逻辑
 		cp.scheduleReconnect(accountID, conn)

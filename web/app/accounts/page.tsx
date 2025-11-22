@@ -806,7 +806,7 @@ export default function AccountsPage() {
                       <TableHead className="w-[200px] font-semibold">账号信息</TableHead>
                       <TableHead className="w-[180px] font-semibold">Telegram 信息</TableHead>
                       <TableHead className="w-[120px] font-semibold">状态</TableHead>
-                      <TableHead className="w-[150px] font-semibold">连接状态</TableHead>
+                      <TableHead className="w-[150px] font-semibold">最后检查</TableHead>
                       <TableHead className="w-[100px] font-semibold">代理</TableHead>
                       <TableHead className="w-[140px] font-semibold">最后使用</TableHead>
                       <TableHead className="w-[200px] text-right font-semibold">操作</TableHead>

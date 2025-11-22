@@ -39,6 +39,12 @@
   - `updateAccountStatusOnSuccess()`: 连接/任务成功时更新状态为 normal
   - `updateAccountStatusOnError()`: 连接失败时根据错误类型更新状态
   - `updateAccountStatusOnTaskError()`: 任务失败时根据错误类型更新状态
+  - **在 `maintainConnection()` 中**：
+    - 连接成功时调用 `updateAccountStatusOnSuccess()`
+    - 连接错误时调用 `updateAccountStatusOnError()`
+  - **在 `ExecuteTask()` 中**：
+    - 任务执行前连接成功时调用 `updateAccountStatusOnSuccess()`
+    - 任务执行失败时调用 `updateAccountStatusOnTaskError()`
   - 错误类型映射：
     - `AUTH_KEY_UNREGISTERED`, `USER_DEACTIVATED`, `PHONE_NUMBER_BANNED` → `dead`
     - `FLOOD_WAIT`, `SLOWMODE_WAIT`, `PEER_FLOOD` → `cooling`
@@ -86,21 +92,27 @@ ALTER TABLE tg_accounts DROP COLUMN IF EXISTS health_score;
 
 ### 自动状态更新规则
 
-1. **连接成功或任务成功**
+1. **连接建立成功时** (`maintainConnection`)
    - 如果账号状态为 `warning` 或 `new` → 更新为 `normal`
    - 更新 `last_check_at` 和 `last_used_at`
 
-2. **连接失败**
-   - 严重错误 → `dead`
-   - 限流错误 → `cooling`
+2. **连接断开/失败时** (`maintainConnection`)
+   - 严重错误（AUTH_KEY_UNREGISTERED等） → `dead`
+   - 限流错误（FLOOD_WAIT等） → `cooling`
    - 其他错误且当前为 `normal`/`new` → `warning`
+   - 更新 `last_check_at`
 
-3. **任务执行失败**
+3. **任务执行成功时** (`ExecuteTask`)
+   - 如果账号状态为 `warning` 或 `new` → 更新为 `normal`
+   - 更新 `last_check_at` 和 `last_used_at`
+
+4. **任务执行失败时** (`ExecuteTask`)
    - 严重错误 → `dead`
    - 限流错误 → `cooling`
    - 权限错误 → `restricted`
+   - 更新 `last_check_at`
 
-4. **定时恢复**
+5. **定时恢复** (定时任务)
    - `cooling` 状态超过1小时 → `normal`
    - `warning` 状态超过24小时 → `normal`
 

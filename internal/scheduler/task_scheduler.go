@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"sync"
@@ -346,6 +347,9 @@ func (ts *TaskScheduler) executeTask(task *models.Task) {
 	failCount := 0
 	var lastError error
 
+	// 记录任务开始日志
+	ts.createTaskLog(task.ID, nil, "task_started", fmt.Sprintf("开始执行任务，共 %d 个账号", len(accountIDs)), nil)
+
 	for i, accountID := range accountIDs {
 		accountIDStr := fmt.Sprintf("%d", accountID)
 
@@ -354,6 +358,9 @@ func (ts *TaskScheduler) executeTask(task *models.Task) {
 			zap.String("account_id", accountIDStr),
 			zap.Int("account_index", i+1),
 			zap.Int("total_accounts", len(accountIDs)))
+
+		// 记录账号开始执行日志
+		ts.createTaskLog(task.ID, &accountID, "account_started", fmt.Sprintf("开始使用账号 %d 执行任务 (%d/%d)", accountID, i+1, len(accountIDs)), nil)
 
 		// 执行风控检查
 		if err := ts.performRiskControlCheck(task, accountIDStr); err != nil {
@@ -365,10 +372,15 @@ func (ts *TaskScheduler) executeTask(task *models.Task) {
 				"status": "failed",
 				"error":  fmt.Sprintf("risk control check failed: %v", err),
 			}
+			// 记录风控检查失败日志
+			ts.createTaskLog(task.ID, &accountID, "risk_check_failed", fmt.Sprintf("账号 %d 风控检查失败: %v", accountID, err), nil)
 			failCount++
 			lastError = err
 			continue
 		}
+
+		// 记录风控检查通过日志
+		ts.createTaskLog(task.ID, &accountID, "risk_check_passed", fmt.Sprintf("账号 %d 风控检查通过", accountID), nil)
 
 		// 创建任务执行器
 		taskExecutor, err := ts.createTaskExecutor(task)
@@ -381,6 +393,8 @@ func (ts *TaskScheduler) executeTask(task *models.Task) {
 				"status": "failed",
 				"error":  fmt.Sprintf("failed to create executor: %v", err),
 			}
+			// 记录创建执行器失败日志
+			ts.createTaskLog(task.ID, &accountID, "executor_creation_failed", fmt.Sprintf("账号 %d 创建任务执行器失败: %v", accountID, err), nil)
 			failCount++
 			lastError = err
 			continue
@@ -391,17 +405,27 @@ func (ts *TaskScheduler) executeTask(task *models.Task) {
 		err = ts.connectionPool.ExecuteTask(accountIDStr, taskExecutor)
 		accountDuration := time.Since(accountStartTime)
 
+		// 保存该账号的执行结果（从 task.Result 中提取）
+		accountResult := make(map[string]interface{})
+		accountResult["duration"] = accountDuration.String()
+
+		// 复制任务执行器写入的结果
+		for key, value := range task.Result {
+			if key != "account_results" && key != "success_count" && key != "fail_count" && key != "total_accounts" {
+				accountResult[key] = value
+			}
+		}
+
 		if err != nil {
 			logger.LogTask(zapcore.ErrorLevel, "Task execution failed for account",
 				zap.Uint64("task_id", task.ID),
 				zap.String("account_id", accountIDStr),
 				zap.Duration("duration", accountDuration),
 				zap.Error(err))
-			accountResults[accountIDStr] = map[string]interface{}{
-				"status":   "failed",
-				"error":    err.Error(),
-				"duration": accountDuration.String(),
-			}
+			accountResult["status"] = "failed"
+			accountResult["error"] = err.Error()
+			// 记录执行失败日志
+			ts.createTaskLog(task.ID, &accountID, "execution_failed", fmt.Sprintf("账号 %d 执行失败: %v (耗时: %s)", accountID, err, accountDuration), accountResult)
 			failCount++
 			lastError = err
 		} else {
@@ -409,12 +433,17 @@ func (ts *TaskScheduler) executeTask(task *models.Task) {
 				zap.Uint64("task_id", task.ID),
 				zap.String("account_id", accountIDStr),
 				zap.Duration("duration", accountDuration))
-			accountResults[accountIDStr] = map[string]interface{}{
-				"status":   "success",
-				"duration": accountDuration.String(),
-			}
+			accountResult["status"] = "success"
+			// 记录执行成功日志
+			ts.createTaskLog(task.ID, &accountID, "execution_success", fmt.Sprintf("账号 %d 执行成功 (耗时: %s)", accountID, accountDuration), accountResult)
 			successCount++
 		}
+
+		// 保存该账号的结果
+		accountResults[accountIDStr] = accountResult
+
+		// 恢复 account_results（防止被任务执行器覆盖）
+		task.Result["account_results"] = accountResults
 	}
 
 	// 更新任务结果
@@ -431,6 +460,7 @@ func (ts *TaskScheduler) executeTask(task *models.Task) {
 			zap.Int("total_accounts", len(accountIDs)),
 			zap.Duration("duration", duration),
 			zap.Error(lastError))
+		ts.createTaskLog(task.ID, nil, "task_failed", fmt.Sprintf("任务执行失败，所有 %d 个账号都失败了 (总耗时: %s)", len(accountIDs), duration), task.Result)
 		ts.completeTaskWithError(task, fmt.Errorf("all %d accounts failed, last error: %w", len(accountIDs), lastError))
 	} else if failCount > 0 {
 		// 部分成功
@@ -440,6 +470,7 @@ func (ts *TaskScheduler) executeTask(task *models.Task) {
 			zap.Int("fail_count", failCount),
 			zap.Int("total_accounts", len(accountIDs)),
 			zap.Duration("duration", duration))
+		ts.createTaskLog(task.ID, nil, "task_partial_success", fmt.Sprintf("任务部分成功: %d 成功, %d 失败 (总耗时: %s)", successCount, failCount, duration), task.Result)
 		ts.completeTaskWithSuccess(task)
 	} else {
 		// 全部成功
@@ -447,6 +478,7 @@ func (ts *TaskScheduler) executeTask(task *models.Task) {
 			zap.Uint64("task_id", task.ID),
 			zap.Int("total_accounts", len(accountIDs)),
 			zap.Duration("duration", duration))
+		ts.createTaskLog(task.ID, nil, "task_completed", fmt.Sprintf("任务执行成功，所有 %d 个账号都成功了 (总耗时: %s)", len(accountIDs), duration), task.Result)
 		ts.completeTaskWithSuccess(task)
 	}
 }
@@ -661,4 +693,37 @@ func (ts *TaskScheduler) GetQueueStatus(accountID string) *models.QueueInfo {
 func (ts *TaskScheduler) Close() {
 	ts.logger.Info("Closing task scheduler")
 	ts.cancel()
+}
+
+// createTaskLog 创建任务日志
+func (ts *TaskScheduler) createTaskLog(taskID uint64, accountID *uint64, action, message string, extraData interface{}) {
+	var extraDataJSON []byte
+	if extraData != nil {
+		var err error
+		extraDataJSON, err = json.Marshal(extraData)
+		if err != nil {
+			ts.logger.Warn("Failed to marshal extra data for task log",
+				zap.Uint64("task_id", taskID),
+				zap.Error(err))
+			extraDataJSON = []byte("{}")
+		}
+	} else {
+		extraDataJSON = []byte("{}")
+	}
+
+	taskLog := &models.TaskLog{
+		TaskID:    taskID,
+		AccountID: accountID,
+		Action:    action,
+		Message:   message,
+		ExtraData: extraDataJSON,
+		CreatedAt: time.Now(),
+	}
+
+	if err := ts.taskRepo.CreateTaskLog(taskLog); err != nil {
+		ts.logger.Error("Failed to create task log",
+			zap.Uint64("task_id", taskID),
+			zap.String("action", action),
+			zap.Error(err))
+	}
 }

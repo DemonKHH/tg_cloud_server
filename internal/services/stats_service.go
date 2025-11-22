@@ -111,9 +111,6 @@ func (s *statsService) GetAccountStatistics(ctx context.Context, userID uint64, 
 	// 获取状态分布
 	statusDistribution, _ := s.getAccountStatusDistribution(ctx, userID)
 
-	// 获取健康度分布
-	healthDistribution := s.getAccountHealthDistribution(ctx, userID)
-
 	// 获取代理使用情况
 	proxyUsage := s.getProxyUsageStats(ctx, userID)
 
@@ -135,7 +132,6 @@ func (s *statsService) GetAccountStatistics(ctx context.Context, userID uint64, 
 		TotalAccounts:          totalAccounts,
 		ActiveAccounts:         activeAccounts,
 		StatusDistribution:     statusDistribution,
-		HealthDistribution:     healthDistribution,
 		ConnectionDistribution: make(map[string]int64), // 简化实现
 		ProxyUsage:             proxyUsage,
 		ActivityStats:          activityStats,
@@ -208,7 +204,6 @@ func (s *statsService) GetUserDashboard(ctx context.Context, userID uint64) (*mo
 	// 获取性能指标（简化实现）
 	performanceMetrics := models.DashboardMetrics{
 		TasksPerHour:     s.getTasksPerHourTrend(ctx, userID),
-		HealthScoreTrend: s.getHealthScoreTrend(ctx, userID),
 		SuccessRateTrend: s.getSuccessRateTrend(ctx, userID),
 		AccountGrowth:    s.getAccountGrowthTrend(ctx, userID),
 	}
@@ -361,7 +356,6 @@ func (s *statsService) getAccountActivityStats(ctx context.Context, userID uint6
 		ActiveToday:      18,
 		ActiveThisWeek:   22,
 		ActiveThisMonth:  25,
-		AvgHealthScore:   82.5,
 		InactiveAccounts: 3,
 	}
 }
@@ -390,7 +384,6 @@ func (s *statsService) getQuickStats(ctx context.Context, userID uint64) models.
 		CompletedTasks: 142,
 		FailedTasks:    8,
 		SuccessRate:    94.7,
-		AvgHealthScore: 82.5,
 		ActiveProxies:  8,
 	}
 }
@@ -403,17 +396,6 @@ func (s *statsService) getTasksPerHourTrend(ctx context.Context, userID uint64) 
 		{Timestamp: now.Add(-2 * time.Hour), Value: 18, Label: "2h前"},
 		{Timestamp: now.Add(-1 * time.Hour), Value: 15, Label: "1h前"},
 		{Timestamp: now, Value: 22, Label: "现在"},
-	}
-}
-
-func (s *statsService) getHealthScoreTrend(ctx context.Context, userID uint64) []models.TimeSeriesPoint {
-	now := time.Now()
-	return []models.TimeSeriesPoint{
-		{Timestamp: now.Add(-24 * time.Hour), Value: 81.2},
-		{Timestamp: now.Add(-18 * time.Hour), Value: 82.1},
-		{Timestamp: now.Add(-12 * time.Hour), Value: 83.5},
-		{Timestamp: now.Add(-6 * time.Hour), Value: 82.8},
-		{Timestamp: now, Value: 85.2},
 	}
 }
 

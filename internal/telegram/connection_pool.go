@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -269,6 +270,8 @@ func (cp *ConnectionPool) ExecuteTask(accountID string, task TaskInterface) erro
 
 	conn, err := cp.GetOrCreateConnection(accountID, config)
 	if err != nil {
+		// 连接失败，更新账号状态为警告
+		cp.updateAccountStatusOnError(accountID, err)
 		return fmt.Errorf("failed to get connection: %w", err)
 	}
 
@@ -302,24 +305,41 @@ func (cp *ConnectionPool) ExecuteTask(accountID string, task TaskInterface) erro
 			break
 		}
 		if status == StatusConnectionError {
+			// 连接错误，更新账号状态
+			cp.updateAccountStatusOnError(accountID, fmt.Errorf("connection failed"))
 			return fmt.Errorf("connection failed, status: %s", status.String())
 		}
 
 		select {
 		case <-timeout:
+			// 连接超时，更新账号状态
+			cp.updateAccountStatusOnError(accountID, fmt.Errorf("connection timeout"))
 			return fmt.Errorf("connection timeout, status: %s", status.String())
 		case <-ticker.C:
 			// 继续检查
 		}
 	}
 
+	// 连接成功，更新账号状态为正常（如果之前不是正常状态）
+	cp.updateAccountStatusOnSuccess(accountID)
+
 	// 直接使用已建立的连接执行任务
 	conn.logger.Debug("Executing task", zap.String("task_type", task.GetType()))
 
-	return conn.client.Run(context.Background(), func(ctx context.Context) error {
+	// 执行任务并捕获错误
+	taskErr := conn.client.Run(context.Background(), func(ctx context.Context) error {
 		api := conn.client.API()
 		return task.Execute(ctx, api)
 	})
+
+	// 根据任务执行结果更新账号状态
+	if taskErr != nil {
+		cp.updateAccountStatusOnTaskError(accountID, taskErr)
+	} else {
+		cp.updateAccountStatusOnSuccess(accountID)
+	}
+
+	return taskErr
 }
 
 // GetConnectionStatus 获取连接状态
@@ -645,6 +665,139 @@ func (cp *ConnectionPool) updateAccountInfoFromTelegram(accountID string, conn *
 		zap.Any("tg_user_id", info.TgUserID),
 		zap.Any("username", info.Username),
 		zap.Any("first_name", info.FirstName))
+}
+
+// updateAccountStatusOnSuccess 连接或任务成功时更新账号状态
+func (cp *ConnectionPool) updateAccountStatusOnSuccess(accountID string) {
+	accountIDNum, err := strconv.ParseUint(accountID, 10, 64)
+	if err != nil {
+		return
+	}
+
+	account, err := cp.accountRepo.GetByID(accountIDNum)
+	if err != nil {
+		return
+	}
+
+	// 如果账号状态是警告或新建，更新为正常
+	if account.Status == models.AccountStatusWarning || account.Status == models.AccountStatusNew {
+		account.Status = models.AccountStatusNormal
+		now := time.Now()
+		account.LastCheckAt = &now
+		account.LastUsedAt = &now
+
+		if err := cp.accountRepo.Update(account); err != nil {
+			cp.logger.Error("Failed to update account status to normal",
+				zap.String("account_id", accountID),
+				zap.Error(err))
+		} else {
+			cp.logger.Info("Account status updated to normal",
+				zap.String("account_id", accountID))
+		}
+	} else {
+		// 只更新最后使用时间
+		now := time.Now()
+		account.LastUsedAt = &now
+		account.LastCheckAt = &now
+		cp.accountRepo.Update(account)
+	}
+}
+
+// updateAccountStatusOnError 连接失败时更新账号状态
+func (cp *ConnectionPool) updateAccountStatusOnError(accountID string, err error) {
+	accountIDNum, parseErr := strconv.ParseUint(accountID, 10, 64)
+	if parseErr != nil {
+		return
+	}
+
+	account, getErr := cp.accountRepo.GetByID(accountIDNum)
+	if getErr != nil {
+		return
+	}
+
+	// 根据错误类型判断是否需要更新状态
+	errorStr := strings.ToUpper(err.Error())
+
+	// 检查是否是严重错误（账号被封禁等）
+	if strings.Contains(errorStr, "AUTH_KEY_UNREGISTERED") ||
+		strings.Contains(errorStr, "USER_DEACTIVATED") ||
+		strings.Contains(errorStr, "PHONE_NUMBER_BANNED") {
+		account.Status = models.AccountStatusDead
+		cp.logger.Warn("Account marked as dead due to critical error",
+			zap.String("account_id", accountID),
+			zap.Error(err))
+	} else if strings.Contains(errorStr, "FLOOD_WAIT") ||
+		strings.Contains(errorStr, "SLOWMODE_WAIT") {
+		// 触发限流，设置为冷却状态
+		account.Status = models.AccountStatusCooling
+		cp.logger.Warn("Account marked as cooling due to rate limit",
+			zap.String("account_id", accountID),
+			zap.Error(err))
+	} else if account.Status == models.AccountStatusNormal || account.Status == models.AccountStatusNew {
+		// 其他错误，设置为警告状态
+		account.Status = models.AccountStatusWarning
+		cp.logger.Warn("Account marked as warning due to error",
+			zap.String("account_id", accountID),
+			zap.Error(err))
+	}
+
+	now := time.Now()
+	account.LastCheckAt = &now
+
+	if updateErr := cp.accountRepo.Update(account); updateErr != nil {
+		cp.logger.Error("Failed to update account status on error",
+			zap.String("account_id", accountID),
+			zap.Error(updateErr))
+	}
+}
+
+// updateAccountStatusOnTaskError 任务执行失败时更新账号状态
+func (cp *ConnectionPool) updateAccountStatusOnTaskError(accountID string, err error) {
+	accountIDNum, parseErr := strconv.ParseUint(accountID, 10, 64)
+	if parseErr != nil {
+		return
+	}
+
+	account, getErr := cp.accountRepo.GetByID(accountIDNum)
+	if getErr != nil {
+		return
+	}
+
+	errorStr := strings.ToUpper(err.Error())
+
+	// 检查是否是严重错误
+	if strings.Contains(errorStr, "AUTH_KEY_UNREGISTERED") ||
+		strings.Contains(errorStr, "USER_DEACTIVATED") ||
+		strings.Contains(errorStr, "PHONE_NUMBER_BANNED") {
+		account.Status = models.AccountStatusDead
+		cp.logger.Warn("Account marked as dead due to task error",
+			zap.String("account_id", accountID),
+			zap.Error(err))
+	} else if strings.Contains(errorStr, "FLOOD_WAIT") ||
+		strings.Contains(errorStr, "SLOWMODE_WAIT") ||
+		strings.Contains(errorStr, "PEER_FLOOD") {
+		account.Status = models.AccountStatusCooling
+		cp.logger.Warn("Account marked as cooling due to rate limit in task",
+			zap.String("account_id", accountID),
+			zap.Error(err))
+	} else if strings.Contains(errorStr, "CHAT_WRITE_FORBIDDEN") ||
+		strings.Contains(errorStr, "USER_RESTRICTED") ||
+		strings.Contains(errorStr, "CHAT_RESTRICTED") {
+		account.Status = models.AccountStatusRestricted
+		cp.logger.Warn("Account marked as restricted due to task error",
+			zap.String("account_id", accountID),
+			zap.Error(err))
+	}
+	// 其他错误不改变状态，可能是临时性问题
+
+	now := time.Now()
+	account.LastCheckAt = &now
+
+	if updateErr := cp.accountRepo.Update(account); updateErr != nil {
+		cp.logger.Error("Failed to update account status on task error",
+			zap.String("account_id", accountID),
+			zap.Error(updateErr))
+	}
 }
 
 // Close 关闭连接池

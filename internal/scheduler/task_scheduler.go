@@ -181,7 +181,6 @@ func (ts *TaskScheduler) GetAccountAvailability(accountID string) (*models.Accou
 	availability := &models.AccountAvailability{
 		AccountID:        account.ID,
 		Status:           account.Status,
-		HealthScore:      account.HealthScore,
 		QueueSize:        queueSize,
 		IsTaskRunning:    isTaskRunning,
 		ConnectionStatus: models.ConnectionStatus(connectionStatus),
@@ -204,12 +203,11 @@ func (ts *TaskScheduler) ValidateAccountForTask(accountID string, taskType model
 	}
 
 	result := &models.ValidationResult{
-		AccountID:   account.ID,
-		IsValid:     true,
-		Warnings:    []string{},
-		Errors:      []string{},
-		QueueSize:   ts.getQueueSize(),
-		HealthScore: account.HealthScore,
+		AccountID: account.ID,
+		IsValid:   true,
+		Warnings:  []string{},
+		Errors:    []string{},
+		QueueSize: ts.getQueueSize(),
 	}
 
 	// 账号状态检查
@@ -225,9 +223,8 @@ func (ts *TaskScheduler) ValidateAccountForTask(accountID string, taskType model
 		return result, nil
 	}
 
-	// 健康度检查
-	if account.HealthScore < 0.3 {
-		result.Warnings = append(result.Warnings, "账号健康度较低，建议谨慎使用")
+	if account.Status == models.AccountStatusRestricted {
+		result.Warnings = append(result.Warnings, "账号受限，可能影响任务执行")
 	}
 
 	// 任务队列检查
@@ -543,24 +540,19 @@ func (ts *TaskScheduler) performRiskControlCheck(task *models.Task, accountID st
 		return fmt.Errorf("account is not available, status: %s", account.Status)
 	}
 
-	// 2. 检查账号健康度
-	if account.HealthScore < 0.3 {
-		return fmt.Errorf("account health score too low: %.2f (minimum: 0.3)", account.HealthScore)
-	}
-
-	// 3. 检查账号是否忙碌
+	// 2. 检查账号是否忙碌
 	if ts.connectionPool.IsAccountBusy(accountID) {
 		return fmt.Errorf("account is busy with another task")
 	}
 
-	// 4. 连接状态检查移到实际执行时进行，这里只检查连接是否处于错误状态
+	// 3. 连接状态检查移到实际执行时进行，这里只检查连接是否处于错误状态
 	connStatus := ts.connectionPool.GetConnectionStatus(accountID)
 	if connStatus == telegram.StatusConnectionError {
 		return fmt.Errorf("account connection has persistent error")
 	}
 	// 注意：StatusDisconnected 和 StatusConnecting 不算错误，连接会在执行时自动创建
 
-	// 5. 检查账号是否需要冷却（如果最近有失败的任务）
+	// 4. 检查账号是否需要冷却（如果最近有失败的任务）
 	// 获取最近1小时内的失败任务数
 	oneHourAgo := time.Now().Add(-1 * time.Hour)
 	recentFailedTasks, err := ts.taskRepo.GetTasksByAccountID(accountIDUint, []string{"failed"})
@@ -578,12 +570,12 @@ func (ts *TaskScheduler) performRiskControlCheck(task *models.Task, accountID st
 		}
 	}
 
-	// 6. 检查账号是否在冷却状态
+	// 5. 检查账号是否在冷却状态
 	if account.Status == models.AccountStatusCooling {
 		return fmt.Errorf("account is in cooling period")
 	}
 
-	// 7. 检查任务频率限制（避免短时间内大量相同类型任务）
+	// 6. 检查任务频率限制（避免短时间内大量相同类型任务）
 	recentTasks, err := ts.taskRepo.GetTasksByAccountID(accountIDUint, []string{"running", "queued"})
 	if err == nil {
 		sameTypeCount := 0
@@ -606,7 +598,7 @@ func (ts *TaskScheduler) performRiskControlCheck(task *models.Task, accountID st
 	ts.logger.Debug("Risk control check passed",
 		zap.Uint64("task_id", task.ID),
 		zap.String("account_id", accountID),
-		zap.Float64("health_score", account.HealthScore))
+		zap.String("status", string(account.Status)))
 
 	return nil
 }
@@ -674,12 +666,25 @@ func (ts *TaskScheduler) getQueueSize() int {
 
 // generateRecommendations 生成建议和警告
 func (ts *TaskScheduler) generateRecommendations(account *models.TGAccount, availability *models.AccountAvailability) {
-	if account.HealthScore < 0.3 {
-		availability.Warnings = append(availability.Warnings, "账号健康度过低，建议暂停使用")
-		availability.Recommendation = "建议让账号休息一段时间"
-	} else if account.HealthScore < 0.7 {
-		availability.Warnings = append(availability.Warnings, "账号健康度偏低，建议减少使用频率")
-		availability.Recommendation = "适当降低任务频率"
+	// 根据账号状态生成建议
+	switch account.Status {
+	case models.AccountStatusDead:
+		availability.Errors = append(availability.Errors, "账号已死亡")
+		availability.Recommendation = "请更换新账号"
+	case models.AccountStatusRestricted:
+		availability.Warnings = append(availability.Warnings, "账号受限")
+		availability.Recommendation = "暂停使用，等待限制解除"
+	case models.AccountStatusWarning:
+		availability.Warnings = append(availability.Warnings, "账号状态异常")
+		availability.Recommendation = "减少使用频率"
+	case models.AccountStatusCooling:
+		availability.Warnings = append(availability.Warnings, "账号冷却中")
+		availability.Recommendation = "等待冷却期结束"
+	case models.AccountStatusMaintenance:
+		availability.Warnings = append(availability.Warnings, "账号维护中")
+		availability.Recommendation = "暂时无法使用"
+	default:
+		availability.Recommendation = "账号状态正常"
 	}
 
 	if availability.QueueSize > 5 {

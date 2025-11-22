@@ -546,7 +546,7 @@ func (s *CronService) updateAccountStatuses(ctx context.Context) {
 			zap.Duration("duration", time.Since(start)))
 	}()
 
-	// 获取所有活跃账号
+	// 获取所有账号
 	accounts, err := s.accountRepo.GetAll()
 	if err != nil {
 		s.logger.Error("Failed to get accounts for status update", zap.Error(err))
@@ -554,19 +554,43 @@ func (s *CronService) updateAccountStatuses(ctx context.Context) {
 	}
 
 	updatedCount := 0
+	now := time.Now()
+
 	for _, account := range accounts {
-		// 检查账号健康度
-		if health, err := s.accountService.CheckAccountHealth(account.UserID, account.ID); err == nil {
-			// 根据健康度更新状态
-			if health.Score < 50 && account.Status != "warning" {
-				account.Status = "warning"
-				if err := s.accountRepo.Update(account); err != nil {
-					s.logger.Error("Failed to update account status",
-						zap.Uint64("account_id", account.ID),
-						zap.Error(err))
-				} else {
-					updatedCount++
-				}
+		needsUpdate := false
+
+		// 检查冷却状态是否应该恢复
+		if account.Status == models.AccountStatusCooling {
+			// 如果账号在冷却状态超过1小时，尝试恢复为正常状态
+			if account.LastCheckAt != nil && now.Sub(*account.LastCheckAt) > 1*time.Hour {
+				account.Status = models.AccountStatusNormal
+				needsUpdate = true
+				s.logger.Info("Account recovered from cooling status",
+					zap.Uint64("account_id", account.ID),
+					zap.String("phone", account.Phone))
+			}
+		}
+
+		// 检查警告状态是否应该恢复
+		if account.Status == models.AccountStatusWarning {
+			// 如果账号在警告状态超过24小时且没有新的错误，尝试恢复为正常状态
+			if account.LastCheckAt != nil && now.Sub(*account.LastCheckAt) > 24*time.Hour {
+				account.Status = models.AccountStatusNormal
+				needsUpdate = true
+				s.logger.Info("Account recovered from warning status",
+					zap.Uint64("account_id", account.ID),
+					zap.String("phone", account.Phone))
+			}
+		}
+
+		if needsUpdate {
+			account.LastCheckAt = &now
+			if err := s.accountRepo.Update(account); err != nil {
+				s.logger.Error("Failed to update account status",
+					zap.Uint64("account_id", account.ID),
+					zap.Error(err))
+			} else {
+				updatedCount++
 			}
 		}
 	}

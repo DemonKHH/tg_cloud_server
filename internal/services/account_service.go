@@ -52,10 +52,9 @@ func (s *AccountService) CreateAccount(userID uint64, req *models.CreateAccountR
 	}
 
 	account := &models.TGAccount{
-		UserID:      userID,
-		Phone:       req.Phone,
-		Status:      models.AccountStatusNew,
-		HealthScore: 1.0,
+		UserID: userID,
+		Phone:  req.Phone,
+		Status: models.AccountStatusNew,
 	}
 
 	// 如果提供了session数据，设置它
@@ -173,26 +172,25 @@ func (s *AccountService) DeleteAccount(userID, accountID uint64) error {
 	return nil
 }
 
-// CheckAccountHealth 检查账号健康度
+// CheckAccountHealth 检查账号健康状态
 func (s *AccountService) CheckAccountHealth(userID, accountID uint64) (*models.AccountHealthReport, error) {
 	account, err := s.accountRepo.GetByUserIDAndID(userID, accountID)
 	if err != nil {
 		return nil, ErrAccountNotFound
 	}
 
-	// 创建健康度报告
+	// 创建健康报告
 	now := time.Now()
 	report := &models.AccountHealthReport{
 		AccountID:   account.ID,
 		Phone:       account.Phone,
 		Status:      account.Status,
-		HealthScore: account.HealthScore,
 		CheckedAt:   &now,
 		Issues:      []string{},
 		Suggestions: []string{},
 	}
 
-	// 检查各种健康指标
+	// 检查各种状态指标
 	s.checkAccountStatus(account, report)
 	s.checkProxyStatus(account, report)
 	s.checkUsagePattern(account, report)
@@ -215,7 +213,6 @@ func (s *AccountService) GetAccountAvailability(userID, accountID uint64) (*mode
 	availability := &models.AccountAvailability{
 		AccountID:        account.ID,
 		Status:           account.Status,
-		HealthScore:      account.HealthScore,
 		QueueSize:        0,                          // 需要从任务调度器获取
 		IsTaskRunning:    false,                      // 需要从连接池获取
 		ConnectionStatus: models.ConnectionStatus(0), // 需要从连接池获取
@@ -238,12 +235,11 @@ func (s *AccountService) ValidateAccountForTask(userID, accountID uint64, taskTy
 	}
 
 	result := &models.ValidationResult{
-		AccountID:   account.ID,
-		IsValid:     true,
-		Warnings:    []string{},
-		Errors:      []string{},
-		QueueSize:   0, // 需要从任务调度器获取
-		HealthScore: account.HealthScore,
+		AccountID: account.ID,
+		IsValid:   true,
+		Warnings:  []string{},
+		Errors:    []string{},
+		QueueSize: 0, // 需要从任务调度器获取
 	}
 
 	// 检查账号状态
@@ -257,11 +253,10 @@ func (s *AccountService) ValidateAccountForTask(userID, accountID uint64, taskTy
 	case models.AccountStatusMaintenance:
 		result.IsValid = false
 		result.Errors = append(result.Errors, "账号处于维护状态，暂时无法执行任务")
-	}
-
-	// 检查健康度
-	if account.HealthScore < 0.3 {
-		result.Warnings = append(result.Warnings, "账号健康度较低，建议谨慎使用")
+	case models.AccountStatusRestricted:
+		result.Warnings = append(result.Warnings, "账号受限，可能影响任务执行")
+	case models.AccountStatusWarning:
+		result.Warnings = append(result.Warnings, "账号状态异常，建议谨慎使用")
 	}
 
 	// 检查特定任务类型的要求
@@ -354,23 +349,28 @@ func (s *AccountService) checkUsagePattern(account *models.TGAccount, report *mo
 			report.Suggestions = append(report.Suggestions, "账号长时间未使用，建议定期使用保持活跃")
 		}
 	}
-
-	if account.HealthScore < 0.5 {
-		report.Issues = append(report.Issues, "账号健康度较低")
-		report.Suggestions = append(report.Suggestions, "减少使用频率，让账号休息一段时间")
-	}
 }
 
 // generateAvailabilityRecommendations 生成可用性建议
 func (s *AccountService) generateAvailabilityRecommendations(account *models.TGAccount, availability *models.AccountAvailability) {
-	if account.HealthScore < 0.3 {
-		availability.Errors = append(availability.Errors, "账号健康度过低")
-		availability.Recommendation = "建议暂停使用此账号"
-	} else if account.HealthScore < 0.7 {
-		availability.Warnings = append(availability.Warnings, "账号健康度偏低")
-		availability.Recommendation = "适当减少使用频率"
-	} else {
-		availability.Recommendation = "账号状态良好，可正常使用"
+	switch account.Status {
+	case models.AccountStatusDead:
+		availability.Errors = append(availability.Errors, "账号已死亡")
+		availability.Recommendation = "请更换新账号"
+	case models.AccountStatusRestricted:
+		availability.Warnings = append(availability.Warnings, "账号受限")
+		availability.Recommendation = "暂停使用，等待限制解除"
+	case models.AccountStatusWarning:
+		availability.Warnings = append(availability.Warnings, "账号状态异常")
+		availability.Recommendation = "减少使用频率"
+	case models.AccountStatusCooling:
+		availability.Warnings = append(availability.Warnings, "账号冷却中")
+		availability.Recommendation = "等待冷却期结束"
+	case models.AccountStatusMaintenance:
+		availability.Warnings = append(availability.Warnings, "账号维护中")
+		availability.Recommendation = "暂时无法使用"
+	default:
+		availability.Recommendation = "账号状态正常，可正常使用"
 	}
 }
 
@@ -378,12 +378,12 @@ func (s *AccountService) generateAvailabilityRecommendations(account *models.TGA
 func (s *AccountService) validateTaskSpecificRequirements(account *models.TGAccount, taskType models.TaskType, result *models.ValidationResult) {
 	switch taskType {
 	case models.TaskTypePrivate:
-		if account.HealthScore < 0.5 {
-			result.Warnings = append(result.Warnings, "私信任务对账号健康度要求较高")
+		if account.Status == models.AccountStatusWarning || account.Status == models.AccountStatusRestricted {
+			result.Warnings = append(result.Warnings, "私信任务对账号状态要求较高")
 		}
 	case models.TaskTypeBroadcast:
-		if account.HealthScore < 0.6 {
-			result.Warnings = append(result.Warnings, "群发任务风险较高，建议使用健康度更高的账号")
+		if account.Status == models.AccountStatusWarning || account.Status == models.AccountStatusRestricted {
+			result.Warnings = append(result.Warnings, "群发任务风险较高，建议使用状态正常的账号")
 		}
 	case models.TaskTypeGroupChat:
 		if account.Status == models.AccountStatusWarning {
@@ -448,7 +448,6 @@ func (s *AccountService) generateDetailedHealthReport(account *models.TGAccount)
 	report := &models.AccountHealthReport{
 		AccountID:    account.ID,
 		Phone:        account.Phone,
-		HealthScore:  100.0,
 		Status:       account.Status,
 		LastCheckAt:  &now,
 		CheckedAt:    &now,
@@ -461,39 +460,22 @@ func (s *AccountService) generateDetailedHealthReport(account *models.TGAccount)
 	// 基本状态检查
 	switch account.Status {
 	case models.AccountStatusDead:
-		report.HealthScore = 0
 		report.Issues = append(report.Issues, "账号已死亡")
 		report.Suggestions = append(report.Suggestions, "更换新账号")
 	case models.AccountStatusRestricted:
-		report.HealthScore -= 40
 		report.Issues = append(report.Issues, "账号受限")
 		report.Suggestions = append(report.Suggestions, "等待限制解除")
 	case models.AccountStatusCooling:
-		report.HealthScore -= 20
 		report.Issues = append(report.Issues, "账号冷却中")
 		report.Suggestions = append(report.Suggestions, "暂停使用")
+	case models.AccountStatusWarning:
+		report.Issues = append(report.Issues, "账号状态异常")
+		report.Suggestions = append(report.Suggestions, "减少使用频率")
+	case models.AccountStatusMaintenance:
+		report.Issues = append(report.Issues, "账号维护中")
+		report.Suggestions = append(report.Suggestions, "等待维护完成")
 	}
 
-	// 简化连接状态检查 - 实际实现需要根据模型定义调整
-	// switch account.ConnectionStatus {
-	// case models.StatusConnectionError:
-	//	report.HealthScore -= 30
-	//	report.Issues = append(report.Issues, "连接异常")
-	//	report.Suggestions = append(report.Suggestions, "检查网络和代理设置")
-	// case models.StatusDisconnected:
-	//	report.HealthScore -= 15
-	//	report.Issues = append(report.Issues, "未连接")
-	//	report.Suggestions = append(report.Suggestions, "重新建立连接")
-	// }
-
-	// 确保健康度在0-100范围内
-	if report.HealthScore > 100 {
-		report.HealthScore = 100
-	} else if report.HealthScore < 0 {
-		report.HealthScore = 0
-	}
-
-	report.Score = report.HealthScore
 	return report
 }
 
@@ -525,7 +507,6 @@ func (s *AccountService) CreateAccountsFromUploadData(userID uint64, accounts []
 			Phone:       item.Phone,
 			SessionData: item.SessionData,
 			Status:      models.AccountStatusNew,
-			HealthScore: 1.0,
 			ProxyID:     proxyID,
 		}
 

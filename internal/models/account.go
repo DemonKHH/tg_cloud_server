@@ -56,7 +56,6 @@ type TGAccount struct {
 	SessionData string        `json:"-" gorm:"type:text"` // 隐藏敏感数据
 	ProxyID     *uint64       `json:"proxy_id" gorm:"index"`
 	Status      AccountStatus `json:"status" gorm:"type:enum('new','normal','warning','restricted','dead','cooling','maintenance');default:'new'"`
-	HealthScore float64       `json:"health_score" gorm:"type:decimal(3,2);default:1.00"`
 
 	// Telegram 账号信息（从 Telegram 获取并存储）
 	TgUserID  *int64  `json:"tg_user_id" gorm:"index"`        // Telegram 用户ID
@@ -91,8 +90,7 @@ func (a *TGAccount) IsAvailable() bool {
 // NeedsAttention 检查账号是否需要关注
 func (a *TGAccount) NeedsAttention() bool {
 	return a.Status == AccountStatusWarning ||
-		a.Status == AccountStatusRestricted ||
-		a.HealthScore < 0.3
+		a.Status == AccountStatusRestricted
 }
 
 // GetStatusColor 获取状态颜色（用于前端显示）
@@ -118,17 +116,15 @@ func (a *TGAccount) GetStatusColor() string {
 // BeforeCreate 创建前钩子
 func (a *TGAccount) BeforeCreate(tx *gorm.DB) error {
 	a.Status = AccountStatusNew
-	a.HealthScore = 1.0
 	return nil
 }
 
 // AccountSummary 账号摘要信息（用于列表显示）
 type AccountSummary struct {
-	ID          uint64        `json:"id"`
-	Phone       string        `json:"phone"`
-	Status      AccountStatus `json:"status"`
-	HealthScore float64       `json:"health_score"`
-	ProxyID     *uint64       `json:"proxy_id,omitempty"`
+	ID      uint64        `json:"id"`
+	Phone   string        `json:"phone"`
+	Status  AccountStatus `json:"status"`
+	ProxyID *uint64       `json:"proxy_id,omitempty"`
 
 	// Telegram 信息（始终返回，即使为空）
 	TgUserID  *int64  `json:"tg_user_id"`
@@ -149,7 +145,6 @@ type AccountSummary struct {
 type AccountAvailability struct {
 	AccountID        uint64           `json:"account_id"`
 	Status           AccountStatus    `json:"status"`
-	HealthScore      float64          `json:"health_score"`
 	QueueSize        int              `json:"queue_size"`
 	IsTaskRunning    bool             `json:"is_task_running"`
 	ConnectionStatus ConnectionStatus `json:"connection_status"`
@@ -161,12 +156,11 @@ type AccountAvailability struct {
 
 // ValidationResult 账号验证结果
 type ValidationResult struct {
-	AccountID   uint64   `json:"account_id"`
-	IsValid     bool     `json:"is_valid"`
-	Warnings    []string `json:"warnings"`
-	Errors      []string `json:"errors"`
-	QueueSize   int      `json:"queue_size"`
-	HealthScore float64  `json:"health_score"`
+	AccountID uint64   `json:"account_id"`
+	IsValid   bool     `json:"is_valid"`
+	Warnings  []string `json:"warnings"`
+	Errors    []string `json:"errors"`
+	QueueSize int      `json:"queue_size"`
 }
 
 // CreateAccountRequest 创建账号请求
@@ -199,8 +193,6 @@ type UpdateAccountRequest struct {
 type AccountHealthReport struct {
 	AccountID    uint64                 `json:"account_id"`
 	Phone        string                 `json:"phone"`
-	HealthScore  float64                `json:"health_score"`
-	Score        float64                `json:"score"` // 别名字段用于兼容
 	Status       AccountStatus          `json:"status"`
 	LastCheckAt  *time.Time             `json:"last_check_at"`
 	CheckedAt    *time.Time             `json:"checked_at"` // 别名字段用于兼容

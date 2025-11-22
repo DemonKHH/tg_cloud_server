@@ -51,9 +51,6 @@ type AccountStatistics struct {
 	// 状态分布
 	StatusDistribution map[string]int64 `json:"status_distribution"`
 
-	// 健康度分布
-	HealthDistribution map[string]int64 `json:"health_distribution"`
-
 	// 连接状态分布
 	ConnectionDistribution map[string]int64 `json:"connection_distribution"`
 
@@ -84,11 +81,10 @@ type ProxyUsageStats struct {
 
 // AccountActivityStats 账号活跃度统计
 type AccountActivityStats struct {
-	ActiveToday      int64   `json:"active_today"`      // 今日活跃账号
-	ActiveThisWeek   int64   `json:"active_this_week"`  // 本周活跃账号
-	ActiveThisMonth  int64   `json:"active_this_month"` // 本月活跃账号
-	AvgHealthScore   float64 `json:"avg_health_score"`  // 平均健康分数
-	InactiveAccounts int64   `json:"inactive_accounts"` // 非活跃账号
+	ActiveToday      int64 `json:"active_today"`      // 今日活跃账号
+	ActiveThisWeek   int64 `json:"active_this_week"`  // 本周活跃账号
+	ActiveThisMonth  int64 `json:"active_this_month"` // 本月活跃账号
+	InactiveAccounts int64 `json:"inactive_accounts"` // 非活跃账号
 }
 
 // AccountRiskStats 账号风控统计
@@ -140,7 +136,6 @@ type DashboardQuickStats struct {
 	CompletedTasks int64   `json:"completed_tasks"`
 	FailedTasks    int64   `json:"failed_tasks"`
 	SuccessRate    float64 `json:"success_rate"`
-	AvgHealthScore float64 `json:"avg_health_score"`
 	ActiveProxies  int64   `json:"active_proxies"`
 }
 
@@ -168,7 +163,6 @@ type SystemNotification struct {
 // DashboardMetrics 仪表盘性能指标
 type DashboardMetrics struct {
 	TasksPerHour     []TimeSeriesPoint `json:"tasks_per_hour"`
-	HealthScoreTrend []TimeSeriesPoint `json:"health_score_trend"`
 	SuccessRateTrend []TimeSeriesPoint `json:"success_rate_trend"`
 	AccountGrowth    []TimeSeriesPoint `json:"account_growth"`
 }

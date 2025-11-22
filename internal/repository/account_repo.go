@@ -18,12 +18,10 @@ type AccountRepository interface {
 	GetByUserID(userID uint64, offset, limit int) ([]*models.TGAccount, int64, error)
 	Update(account *models.TGAccount) error
 	UpdateStatus(id uint64, status models.AccountStatus) error
-	UpdateHealthScore(id uint64, score float64) error
 	Delete(id uint64) error
 	GetAccountsByStatus(status models.AccountStatus) ([]*models.TGAccount, error)
 	CountByUserID(userID uint64) (int64, error)
 	CountActiveByUserID(userID uint64) (int64, error)
-	GetAccountsNeedingHealthCheck() ([]*models.TGAccount, error)
 	GetAccountSummaries(userID uint64, page, limit int, search string) ([]*models.AccountSummary, int64, error)
 	GetAll() ([]*models.TGAccount, error)
 	UpdateSessionData(accountID uint64, sessionData []byte) error
@@ -124,18 +122,6 @@ func (r *accountRepository) UpdateStatus(id uint64, status models.AccountStatus)
 		}).Error
 }
 
-// UpdateHealthScore 更新健康度分数
-func (r *accountRepository) UpdateHealthScore(id uint64, score float64) error {
-	now := time.Now()
-	return r.db.Model(&models.TGAccount{}).
-		Where("id = ?", id).
-		Updates(map[string]interface{}{
-			"health_score":  score,
-			"last_check_at": &now,
-			"updated_at":    now,
-		}).Error
-}
-
 // Delete 删除账号
 func (r *accountRepository) Delete(id uint64) error {
 	return r.db.Delete(&models.TGAccount{}, id).Error
@@ -169,26 +155,6 @@ func (r *accountRepository) CountActiveByUserID(userID uint64) (int64, error) {
 	return count, err
 }
 
-// GetAccountsNeedingHealthCheck 获取需要健康检查的账号
-func (r *accountRepository) GetAccountsNeedingHealthCheck() ([]*models.TGAccount, error) {
-	var accounts []*models.TGAccount
-
-	// 获取超过5分钟未检查或从未检查的账号
-	fiveMinutesAgo := time.Now().Add(-5 * time.Minute)
-
-	err := r.db.Preload("User").Preload("ProxyIP").
-		Where("(last_check_at IS NULL OR last_check_at < ?) AND status NOT IN (?)",
-			fiveMinutesAgo,
-			[]models.AccountStatus{
-				models.AccountStatusDead,
-				models.AccountStatusMaintenance,
-				}).
-		Limit(50). // 限制每次检查的数量
-		Find(&accounts).Error
-
-	return accounts, err
-}
-
 // UpdateLastUsed 更新最后使用时间
 func (r *accountRepository) UpdateLastUsed(id uint64) error {
 	now := time.Now()
@@ -208,10 +174,6 @@ func (r *accountRepository) GetAccountsWithFilters(filters map[string]interface{
 			query = query.Where("user_id = ?", value)
 		case "status":
 			query = query.Where("status = ?", value)
-		case "health_score_min":
-			query = query.Where("health_score >= ?", value)
-		case "health_score_max":
-			query = query.Where("health_score <= ?", value)
 		case "has_proxy":
 			if value.(bool) {
 				query = query.Where("proxy_id IS NOT NULL")
@@ -264,7 +226,7 @@ func (r *accountRepository) GetAccountSummaries(userID uint64, page, limit int, 
 
 	// 获取摘要数据（包含 Telegram 信息）
 	err := query.
-		Select("id, user_id, phone, status, health_score, proxy_id, tg_user_id, username, first_name, last_name, bio, photo_url, last_used_at, created_at").
+		Select("id, user_id, phone, status, proxy_id, tg_user_id, username, first_name, last_name, bio, photo_url, last_used_at, created_at").
 		Offset(offset).
 		Limit(limit).
 		Order("created_at DESC").

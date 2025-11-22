@@ -1013,7 +1013,7 @@ func (s *batchService) exportProxies(ctx context.Context, userID uint64, req *Ex
 
 // CSV转换辅助方法（简化实现）
 func (s *batchService) convertAccountsToCSV(accounts []*models.AccountSummary) string {
-	header := "ID,Phone,Status,Health Score,Last Check At\n"
+	header := "ID,Phone,Status,Last Check At,Last Used At\n"
 	var rows []string
 	rows = append(rows, header)
 
@@ -1025,12 +1025,19 @@ func (s *batchService) convertAccountsToCSV(accounts []*models.AccountSummary) s
 			lastCheckDate = ""
 		}
 
-		row := fmt.Sprintf("%d,%s,%s,%.2f,%s\n",
+		var lastUsedDate string
+		if account.LastUsedAt != nil {
+			lastUsedDate = account.LastUsedAt.Format("2006-01-02")
+		} else {
+			lastUsedDate = ""
+		}
+
+		row := fmt.Sprintf("%d,%s,%s,%s,%s\n",
 			account.ID,
 			account.Phone,
 			string(account.Status),
-			account.HealthScore,
-			lastCheckDate)
+			lastCheckDate,
+			lastUsedDate)
 		rows = append(rows, row)
 	}
 

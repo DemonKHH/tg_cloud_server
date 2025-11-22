@@ -434,6 +434,32 @@ func (ts *TaskScheduler) executeTask(task *models.Task) {
 				zap.String("account_id", accountIDStr),
 				zap.Duration("duration", accountDuration))
 			accountResult["status"] = "success"
+
+			// 记录每个目标的详细结果（如果有）
+			if targetResults, ok := accountResult["target_results"].(map[string]interface{}); ok && len(targetResults) > 0 {
+				for targetName, targetResult := range targetResults {
+					if resultMap, ok := targetResult.(map[string]interface{}); ok {
+						status := "unknown"
+						if s, ok := resultMap["status"].(string); ok {
+							status = s
+						}
+
+						var message string
+						if status == "success" {
+							message = fmt.Sprintf("账号 %d 成功发送给 %s", accountID, targetName)
+						} else {
+							errorMsg := "未知错误"
+							if e, ok := resultMap["error"].(string); ok {
+								errorMsg = e
+							}
+							message = fmt.Sprintf("账号 %d 发送给 %s 失败: %s", accountID, targetName, errorMsg)
+						}
+
+						ts.createTaskLog(task.ID, &accountID, fmt.Sprintf("target_%s", status), message, resultMap)
+					}
+				}
+			}
+
 			// 记录执行成功日志
 			ts.createTaskLog(task.ID, &accountID, "execution_success", fmt.Sprintf("账号 %d 执行成功 (耗时: %s)", accountID, accountDuration), accountResult)
 			successCount++

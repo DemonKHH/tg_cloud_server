@@ -145,6 +145,10 @@ func (t *PrivateMessageTask) Execute(ctx context.Context, api *tg.Client) error 
 		return fmt.Errorf("invalid or empty message configuration")
 	}
 
+	// 添加调试日志
+	fmt.Printf("[PrivateMessageTask] Task ID: %d, Targets: %d, Message length: %d\n",
+		t.task.ID, len(targets), len(message))
+
 	// 获取发送间隔 (防止频繁发送被限制)
 	intervalSec := 2 // 默认2秒间隔
 	if interval, exists := config["interval_seconds"]; exists {
@@ -157,6 +161,7 @@ func (t *PrivateMessageTask) Execute(ctx context.Context, api *tg.Client) error 
 	failedCount := 0
 	var errors []string
 	var sentTargets []string
+	targetResults := make(map[string]interface{}) // 记录每个目标的详细结果
 
 	// 发送私信给每个目标用户
 	for i, target := range targets {
@@ -167,19 +172,45 @@ func (t *PrivateMessageTask) Execute(ctx context.Context, api *tg.Client) error 
 
 		username, ok := target.(string)
 		if !ok {
-			errors = append(errors, fmt.Sprintf("invalid target format: %v", target))
+			errorMsg := fmt.Sprintf("invalid target format: %v", target)
+			errors = append(errors, errorMsg)
+			targetResults[fmt.Sprintf("target_%d", i+1)] = map[string]interface{}{
+				"target": target,
+				"status": "failed",
+				"error":  errorMsg,
+			}
 			failedCount++
 			continue
 		}
 
+		// 添加调试日志
+		fmt.Printf("[PrivateMessageTask] Sending to %s (%d/%d)\n", username, i+1, len(targets))
+
+		// 记录发送开始时间
+		sendStartTime := time.Now()
+
 		// 尝试通过用户名解析
 		err := t.sendPrivateMessage(ctx, api, username, message)
+		sendDuration := time.Since(sendStartTime)
+
 		if err != nil {
-			errors = append(errors, fmt.Sprintf("failed to send to %s: %v", username, err))
+			fmt.Printf("[PrivateMessageTask] Failed to send to %s: %v\n", username, err)
+			errorMsg := fmt.Sprintf("failed to send to %s: %v", username, err)
+			errors = append(errors, errorMsg)
+			targetResults[username] = map[string]interface{}{
+				"status":   "failed",
+				"error":    err.Error(),
+				"duration": sendDuration.String(),
+			}
 			failedCount++
 		} else {
+			fmt.Printf("[PrivateMessageTask] Successfully sent to %s\n", username)
 			sentCount++
 			sentTargets = append(sentTargets, username)
+			targetResults[username] = map[string]interface{}{
+				"status":   "success",
+				"duration": sendDuration.String(),
+			}
 		}
 	}
 
@@ -192,9 +223,14 @@ func (t *PrivateMessageTask) Execute(ctx context.Context, api *tg.Client) error 
 	t.task.Result["failed_count"] = failedCount
 	t.task.Result["errors"] = errors
 	t.task.Result["sent_targets"] = sentTargets
+	t.task.Result["target_results"] = targetResults // 添加每个目标的详细结果
 	t.task.Result["total_targets"] = len(targets)
 	t.task.Result["success_rate"] = float64(sentCount) / float64(len(targets))
 	t.task.Result["send_time"] = time.Now().Unix()
+
+	// 添加调试日志
+	fmt.Printf("[PrivateMessageTask] Execution completed: sent=%d, failed=%d, total=%d\n",
+		sentCount, failedCount, len(targets))
 
 	return nil
 }

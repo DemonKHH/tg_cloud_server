@@ -107,6 +107,7 @@ func main() {
 		cfg.Telegram.APIHash,
 		cfg.Telegram.ConnectionPool.IdleTimeout,
 		accountRepo,
+		proxyRepo,
 	)
 	logger.Info("Connection pool initialized",
 		zap.Int("api_id", cfg.Telegram.APIID),

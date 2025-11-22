@@ -78,10 +78,11 @@ type ConnectionPool struct {
 	appID         int
 	appHash       string
 	accountRepo   repository.AccountRepository
+	proxyRepo     repository.ProxyRepository
 }
 
 // NewConnectionPool 创建新的连接池
-func NewConnectionPool(appID int, appHash string, maxIdle time.Duration, accountRepo repository.AccountRepository) *ConnectionPool {
+func NewConnectionPool(appID int, appHash string, maxIdle time.Duration, accountRepo repository.AccountRepository, proxyRepo repository.ProxyRepository) *ConnectionPool {
 	cp := &ConnectionPool{
 		connections: make(map[string]*ManagedConnection),
 		configs:     make(map[string]*ClientConfig),
@@ -90,6 +91,7 @@ func NewConnectionPool(appID int, appHash string, maxIdle time.Duration, account
 		appID:       appID,
 		appHash:     appHash,
 		accountRepo: accountRepo,
+		proxyRepo:   proxyRepo,
 	}
 
 	// 启动清理定时器
@@ -485,12 +487,28 @@ func (cp *ConnectionPool) loadAccountConfig(accountID string) (*ClientConfig, er
 		SessionData: sessionData, // 使用解码后的JSON数据
 	}
 
-	// 如果账号绑定了代理，添加代理配置
+	// 如果账号绑定了代理，加载代理配置
 	if account.ProxyID != nil && *account.ProxyID > 0 {
-		// 这里需要获取代理信息，暂时留空，后续可以添加
-		cp.logger.Debug("Account has proxy binding",
-			zap.String("account_id", accountID),
-			zap.Uint64("proxy_id", *account.ProxyID))
+		proxy, err := cp.proxyRepo.GetByID(*account.ProxyID)
+		if err != nil {
+			cp.logger.Warn("Failed to load proxy configuration",
+				zap.String("account_id", accountID),
+				zap.Uint64("proxy_id", *account.ProxyID),
+				zap.Error(err))
+		} else if proxy != nil {
+			config.ProxyConfig = &ProxyConfig{
+				Protocol: string(proxy.Protocol),
+				IP:       proxy.IP,
+				Port:     proxy.Port,
+				Username: proxy.Username,
+				Password: proxy.Password,
+			}
+			cp.logger.Info("Proxy configuration loaded for account",
+				zap.String("account_id", accountID),
+				zap.Uint64("proxy_id", *account.ProxyID),
+				zap.String("proxy_ip", proxy.IP),
+				zap.Int("proxy_port", proxy.Port))
+		}
 	}
 
 	// 缓存配置

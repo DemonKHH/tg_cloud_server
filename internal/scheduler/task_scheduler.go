@@ -174,7 +174,7 @@ func (ts *TaskScheduler) GetAccountAvailability(accountID string) (*models.Accou
 		return nil, err
 	}
 
-	queueSize := ts.getQueueSize(accountID)
+	queueSize := ts.getQueueSize()
 	isTaskRunning := ts.connectionPool.IsAccountBusy(accountID)
 	connectionStatus := ts.connectionPool.GetConnectionStatus(accountID)
 
@@ -208,7 +208,7 @@ func (ts *TaskScheduler) ValidateAccountForTask(accountID string, taskType model
 		IsValid:     true,
 		Warnings:    []string{},
 		Errors:      []string{},
-		QueueSize:   ts.getQueueSize(accountID),
+		QueueSize:   ts.getQueueSize(),
 		HealthScore: account.HealthScore,
 	}
 
@@ -665,8 +665,7 @@ func (ts *TaskScheduler) getAccountInfo(accountID string) (*models.TGAccount, er
 }
 
 // getQueueSize 获取队列大小
-func (ts *TaskScheduler) getQueueSize(accountID string) int {
-	// 现在队列不再按账号分组，返回总队列大小
+func (ts *TaskScheduler) getQueueSize() int {
 	ts.mu.RLock()
 	size := len(ts.taskQueue)
 	ts.mu.RUnlock()
@@ -709,7 +708,7 @@ func (ts *TaskScheduler) GetQueueStatus(accountID string) *models.QueueInfo {
 	// 这里应该查询数据库获取更完整的统计信息
 	return &models.QueueInfo{
 		AccountID:         accountIDUint,
-		PendingTasks:      int64(ts.getQueueSize(accountID)),
+		PendingTasks:      int64(ts.getQueueSize()),
 		RunningTasks:      0, // 需要实现
 		EstimatedWaitTime: 0, // 需要实现
 	}

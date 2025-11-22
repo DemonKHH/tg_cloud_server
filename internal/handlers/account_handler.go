@@ -93,6 +93,7 @@ func (h *AccountHandler) CreateAccount(c *gin.Context) {
 // @Param page query int false "页码" default(1)
 // @Param limit query int false "每页数量" default(20)
 // @Param status query string false "账号状态过滤"
+// @Param search query string false "搜索关键词（手机号或备注）"
 // @Success 200 {object} models.PaginationResponse "账号列表"
 // @Failure 401 {object} map[string]string "未授权"
 // @Failure 500 {object} map[string]string "服务器错误"
@@ -107,11 +108,13 @@ func (h *AccountHandler) GetAccounts(c *gin.Context) {
 	page := h.getIntParam(c, "page", 1)
 	limit := h.getIntParam(c, "limit", 20)
 	status := c.Query("status")
+	search := c.Query("search")
 
 	// 构建过滤器
 	filter := &services.AccountFilter{
 		UserID: userID,
 		Status: status,
+		Search: search,
 		Page:   page,
 		Limit:  limit,
 	}

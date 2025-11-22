@@ -120,8 +120,11 @@ type AccountSummary struct {
 	Phone       string        `json:"phone"`
 	Status      AccountStatus `json:"status"`
 	HealthScore float64       `json:"health_score"`
-	LastCheckAt *time.Time    `json:"last_check_at"`
-	TaskCount   int64         `json:"task_count"`
+	ProxyID     *uint64       `json:"proxy_id,omitempty"`
+	LastUsedAt  *time.Time    `json:"last_used_at,omitempty"`
+	LastCheckAt *time.Time    `json:"last_check_at,omitempty"`
+	CreatedAt   time.Time     `json:"created_at"`
+	TaskCount   int64         `json:"task_count,omitempty"`
 	ProxyName   string        `json:"proxy_name,omitempty"`
 }
 

@@ -680,7 +680,7 @@ export default function AccountsPage() {
               <div className="relative flex-1 max-w-md">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
-                  placeholder="搜索手机号或备注..."
+                  placeholder="搜索手机号..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   className="pl-9 input-modern"
@@ -843,6 +843,7 @@ export default function AccountsPage() {
                         <Checkbox
                           checked={accounts.length > 0 && selectedAccountIds.length === accounts.length}
                           onCheckedChange={toggleSelectAll}
+                          className="border-2 border-primary data-[state=checked]:bg-primary data-[state=checked]:border-primary"
                         />
                       </TableHead>
                       <TableHead className="w-[180px] font-semibold">账号信息</TableHead>
@@ -928,6 +929,7 @@ export default function AccountsPage() {
                           <Checkbox
                             checked={selectedAccountIds.includes(String(record.id))}
                             onCheckedChange={() => toggleSelectOne(String(record.id))}
+                            className="border-2 border-primary/60 data-[state=checked]:bg-primary data-[state=checked]:border-primary hover:border-primary"
                           />
                         </TableCell>
                         <TableCell className="py-4">

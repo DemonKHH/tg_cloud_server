@@ -38,6 +38,7 @@ func NewAccountService(accountRepo repository.AccountRepository, proxyRepo repos
 type AccountFilter struct {
 	UserID uint64
 	Status string
+	Search string
 	Page   int
 	Limit  int
 }
@@ -92,7 +93,7 @@ func (s *AccountService) CreateAccount(userID uint64, req *models.CreateAccountR
 
 // GetAccounts 获取账号列表
 func (s *AccountService) GetAccounts(filter *AccountFilter) ([]*models.AccountSummary, int64, error) {
-	return s.accountRepo.GetAccountSummaries(filter.UserID, filter.Page, filter.Limit)
+	return s.accountRepo.GetAccountSummaries(filter.UserID, filter.Page, filter.Limit, filter.Search)
 }
 
 // GetAccount 获取账号详情

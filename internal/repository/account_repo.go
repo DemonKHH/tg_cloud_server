@@ -24,7 +24,7 @@ type AccountRepository interface {
 	CountByUserID(userID uint64) (int64, error)
 	CountActiveByUserID(userID uint64) (int64, error)
 	GetAccountsNeedingHealthCheck() ([]*models.TGAccount, error)
-	GetAccountSummaries(userID uint64, page, limit int) ([]*models.AccountSummary, int64, error)
+	GetAccountSummaries(userID uint64, page, limit int, search string) ([]*models.AccountSummary, int64, error)
 	GetAll() ([]*models.TGAccount, error)
 	UpdateSessionData(accountID uint64, sessionData []byte) error
 }
@@ -243,21 +243,28 @@ func (r *accountRepository) GetAccountsWithFilters(filters map[string]interface{
 }
 
 // GetAccountSummaries 获取账号摘要列表（分页）
-func (r *accountRepository) GetAccountSummaries(userID uint64, page, limit int) ([]*models.AccountSummary, int64, error) {
+func (r *accountRepository) GetAccountSummaries(userID uint64, page, limit int, search string) ([]*models.AccountSummary, int64, error) {
 	var summaries []*models.AccountSummary
 	var total int64
 
 	offset := (page - 1) * limit
 
+	// 构建查询
+	query := r.db.Model(&models.TGAccount{}).Where("user_id = ?", userID)
+
+	// 添加搜索条件（仅搜索手机号）
+	if search != "" {
+		query = query.Where("phone LIKE ?", "%"+search+"%")
+	}
+
 	// 获取总数
-	if err := r.db.Model(&models.TGAccount{}).Where("user_id = ?", userID).Count(&total).Error; err != nil {
+	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
 
 	// 获取摘要数据
-	err := r.db.Model(&models.TGAccount{}).
-		Select("id, user_id, phone, status, health_score, last_used_at, created_at").
-		Where("user_id = ?", userID).
+	err := query.
+		Select("id, user_id, phone, status, health_score, proxy_id, last_used_at, created_at").
 		Offset(offset).
 		Limit(limit).
 		Order("created_at DESC").

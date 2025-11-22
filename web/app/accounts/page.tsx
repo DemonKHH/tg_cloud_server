@@ -803,7 +803,8 @@ export default function AccountsPage() {
                           className="border-2 border-primary data-[state=checked]:bg-primary data-[state=checked]:border-primary"
                         />
                       </TableHead>
-                      <TableHead className="w-[180px] font-semibold">账号信息</TableHead>
+                      <TableHead className="w-[200px] font-semibold">账号信息</TableHead>
+                      <TableHead className="w-[180px] font-semibold">Telegram 信息</TableHead>
                       <TableHead className="w-[120px] font-semibold">状态</TableHead>
                       <TableHead className="w-[150px] font-semibold">健康度</TableHead>
                       <TableHead className="w-[100px] font-semibold">代理</TableHead>
@@ -826,6 +827,12 @@ export default function AccountsPage() {
                               <div className="h-4 w-28 bg-muted rounded" />
                               <div className="h-3 w-20 bg-muted rounded" />
                             </div>
+                          </div>
+                        </TableCell>
+                        <TableCell className="py-4">
+                          <div className="space-y-2">
+                            <div className="h-4 w-24 bg-muted rounded" />
+                            <div className="h-3 w-20 bg-muted rounded" />
                           </div>
                         </TableCell>
                         <TableCell className="py-4">
@@ -855,7 +862,7 @@ export default function AccountsPage() {
                     ))
                   ) : accounts.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={7} className="h-64">
+                      <TableCell colSpan={8} className="h-64">
                         <div className="flex flex-col items-center justify-center">
                           <Users className="h-12 w-12 text-muted-foreground/50 mb-4" />
                           <p className="text-lg font-medium text-muted-foreground mb-2">暂无账号数据</p>
@@ -903,22 +910,51 @@ export default function AccountsPage() {
                               {(record.first_name && record.first_name.length > 0) ? record.first_name.charAt(0).toUpperCase() : record.phone.slice(-2)}
                             </div>
                             <div className="space-y-1 min-w-0 flex-1">
-                              {/* 显示名称或手机号 */}
-                              <div className="flex items-center gap-2">
-                                <div className="font-semibold text-sm truncate">
-                                  {(record.first_name && record.first_name.length > 0) ? record.first_name : record.phone}
-                                  {(record.last_name && record.last_name.length > 0) && ` ${record.last_name}`}
-                                </div>
-                                {(record.username && record.username.length > 0) && (
-                                  <span className="text-xs text-muted-foreground">@{record.username}</span>
-                                )}
+                              {/* 显示手机号 */}
+                              <div className="font-semibold text-sm truncate">
+                                {record.phone}
                               </div>
-                              {/* 显示手机号（如果有名字）或备注 */}
-                              {((record.first_name && record.first_name.length > 0) || (record.username && record.username.length > 0)) && (
-                                <div className="text-xs text-muted-foreground truncate">{record.phone}</div>
-                              )}
+                              {/* 显示创建时间 */}
+                              <div className="text-xs text-muted-foreground">
+                                {new Date(record.created_at).toLocaleDateString('zh-CN')}
+                              </div>
                             </div>
                           </div>
+                        </TableCell>
+                        <TableCell className="py-4">
+                          {(record.tg_user_id || record.username || record.first_name) ? (
+                            <div className="space-y-1 min-w-0">
+                              {/* 显示名称 */}
+                              {(record.first_name || record.last_name) && (
+                                <div className="font-medium text-sm truncate">
+                                  {record.first_name || ''}{record.last_name ? ` ${record.last_name}` : ''}
+                                </div>
+                              )}
+                              {/* 显示用户名 */}
+                              {record.username && (
+                                <div className="text-xs text-blue-600 dark:text-blue-400 truncate">
+                                  @{record.username}
+                                </div>
+                              )}
+                              {/* 显示 TG ID */}
+                              {record.tg_user_id && (
+                                <div className="text-xs text-muted-foreground">
+                                  ID: {record.tg_user_id}
+                                </div>
+                              )}
+                              {/* 显示简介（如果有） */}
+                              {record.bio && (
+                                <div className="text-xs text-muted-foreground line-clamp-1" title={record.bio}>
+                                  {record.bio}
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                              <AlertCircle className="h-3.5 w-3.5" />
+                              <span>未同步</span>
+                            </div>
+                          )}
                         </TableCell>
                         <TableCell className="py-4">
                           <Badge

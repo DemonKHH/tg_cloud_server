@@ -97,15 +97,22 @@ type TaskFilter struct {
 
 // CreateTask 创建任务
 func (s *TaskService) CreateTask(userID uint64, req *models.CreateTaskRequest) (*models.Task, error) {
-	// 验证账号是否属于用户
-	account, err := s.accountRepo.GetByUserIDAndID(userID, req.AccountID)
-	if err != nil {
-		return nil, fmt.Errorf("account not found or not owned by user: %w", err)
+	// 验证请求
+	if err := req.Validate(); err != nil {
+		return nil, err
 	}
 
-	// 检查账号状态
-	if !account.IsAvailable() {
-		return nil, fmt.Errorf("account is not available, status: %s", account.Status)
+	// 验证所有账号是否属于用户且可用
+	for _, accountID := range req.AccountIDs {
+		account, err := s.accountRepo.GetByUserIDAndID(userID, accountID)
+		if err != nil {
+			return nil, fmt.Errorf("account %d not found or not owned by user: %w", accountID, err)
+		}
+
+		// 检查账号状态
+		if !account.IsAvailable() {
+			return nil, fmt.Errorf("account %d is not available, status: %s", accountID, account.Status)
+		}
 	}
 
 	// 确保 Config 不为 nil，如果是 nil 则初始化为空 map
@@ -115,14 +122,16 @@ func (s *TaskService) CreateTask(userID uint64, req *models.CreateTaskRequest) (
 	}
 
 	task := &models.Task{
-		UserID:    userID,
-		AccountID: req.AccountID,
-		TaskType:  req.TaskType,
-		Status:    models.TaskStatusPending,
-		Priority:  req.Priority,
-		Config:    config,
-		Result:    make(models.TaskResult), // 确保 Result 也不为 nil
+		UserID:   userID,
+		TaskType: req.TaskType,
+		Status:   models.TaskStatusPending,
+		Priority: req.Priority,
+		Config:   config,
+		Result:   make(models.TaskResult), // 确保 Result 也不为 nil
 	}
+
+	// 设置账号ID列表
+	task.SetAccountIDList(req.AccountIDs)
 
 	if req.ScheduleAt != nil {
 		task.ScheduledAt = req.ScheduleAt
@@ -132,7 +141,7 @@ func (s *TaskService) CreateTask(userID uint64, req *models.CreateTaskRequest) (
 		// 记录错误日志到任务日志和错误日志
 		logger.LogTask(zapcore.ErrorLevel, "Failed to create task",
 			zap.Uint64("user_id", userID),
-			zap.Uint64("account_id", req.AccountID),
+			zap.Any("account_ids", req.AccountIDs),
 			zap.String("task_type", string(req.TaskType)),
 			zap.Int("priority", req.Priority),
 			zap.Any("config", req.Config),
@@ -145,7 +154,8 @@ func (s *TaskService) CreateTask(userID uint64, req *models.CreateTaskRequest) (
 		zap.Uint64("user_id", userID),
 		zap.Uint64("task_id", task.ID),
 		zap.String("task_type", string(task.TaskType)),
-		zap.Uint64("account_id", task.AccountID),
+		zap.Any("account_ids", req.AccountIDs),
+		zap.Int("account_count", len(req.AccountIDs)),
 		zap.Int("priority", task.Priority),
 		zap.Time("created_at", task.CreatedAt))
 
@@ -273,7 +283,7 @@ func (s *TaskService) CancelTask(userID, taskID uint64) error {
 		zap.Uint64("user_id", userID),
 		zap.Uint64("task_id", taskID),
 		zap.String("task_type", string(task.TaskType)),
-		zap.Uint64("account_id", task.AccountID),
+		zap.Any("account_ids", task.GetAccountIDList()),
 		zap.Time("cancelled_at", *task.CompletedAt))
 
 	return nil
@@ -362,7 +372,7 @@ func (s *TaskService) RetryTask(userID, taskID uint64) (*models.Task, error) {
 		zap.Uint64("user_id", userID),
 		zap.Uint64("task_id", taskID),
 		zap.String("task_type", string(task.TaskType)),
-		zap.Uint64("account_id", task.AccountID),
+		zap.Any("account_ids", task.GetAccountIDList()),
 		zap.String("new_status", string(task.Status)))
 
 	return task, nil

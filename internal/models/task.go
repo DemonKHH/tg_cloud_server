@@ -3,6 +3,9 @@ package models
 import (
 	"database/sql/driver"
 	"encoding/json"
+	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -36,7 +39,7 @@ const (
 type Task struct {
 	ID          uint64     `json:"id" gorm:"primaryKey;autoIncrement"`
 	UserID      uint64     `json:"user_id" gorm:"not null;index"`
-	AccountID   uint64     `json:"account_id" gorm:"not null;index"` // 用户指定的执行账号
+	AccountIDs  string     `json:"account_ids" gorm:"type:text;not null"` // 账号ID列表（逗号分隔，如 "1,2,3"）
 	TaskType    TaskType   `json:"task_type" gorm:"type:enum('check','private_message','broadcast','verify_code','group_chat');not null"`
 	Status      TaskStatus `json:"status" gorm:"type:enum('pending','queued','running','completed','failed','cancelled');default:'pending'"`
 	Priority    int        `json:"priority" gorm:"default:5"` // 优先级 1-10
@@ -49,9 +52,54 @@ type Task struct {
 	UpdatedAt   time.Time  `json:"updated_at"`
 
 	// 关联关系
-	User    User      `json:"user" gorm:"foreignKey:UserID"`
-	Account TGAccount `json:"account" gorm:"foreignKey:AccountID"`
-	Logs    []TaskLog `json:"logs" gorm:"foreignKey:TaskID"`
+	User User      `json:"user" gorm:"foreignKey:UserID"`
+	Logs []TaskLog `json:"logs" gorm:"foreignKey:TaskID"`
+}
+
+// GetAccountIDList 获取账号ID列表
+func (t *Task) GetAccountIDList() []uint64 {
+	if t.AccountIDs == "" {
+		return []uint64{}
+	}
+
+	ids := []uint64{}
+	parts := strings.Split(t.AccountIDs, ",")
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		id, err := strconv.ParseUint(part, 10, 64)
+		if err == nil {
+			ids = append(ids, id)
+		}
+	}
+
+	return ids
+}
+
+// SetAccountIDList 设置账号ID列表
+func (t *Task) SetAccountIDList(ids []uint64) {
+	if len(ids) == 0 {
+		t.AccountIDs = ""
+		return
+	}
+
+	// 将所有账号ID转换为逗号分隔的字符串
+	strIDs := make([]string, len(ids))
+	for i, id := range ids {
+		strIDs[i] = strconv.FormatUint(id, 10)
+	}
+	t.AccountIDs = strings.Join(strIDs, ",")
+}
+
+// GetFirstAccountID 获取第一个账号ID（用于显示）
+func (t *Task) GetFirstAccountID() uint64 {
+	ids := t.GetAccountIDList()
+	if len(ids) > 0 {
+		return ids[0]
+	}
+	return 0
 }
 
 // TableName 指定表名
@@ -82,7 +130,7 @@ func (tc *TaskConfig) Scan(value interface{}) error {
 
 // Value 实现 driver.Valuer 接口
 func (tc TaskConfig) Value() (driver.Value, error) {
-	if tc == nil || len(tc) == 0 {
+	if len(tc) == 0 {
 		return []byte("{}"), nil
 	}
 	return json.Marshal(tc)
@@ -105,7 +153,7 @@ func (tr *TaskResult) Scan(value interface{}) error {
 
 // Value 实现 driver.Valuer 接口
 func (tr TaskResult) Value() (driver.Value, error) {
-	if tr == nil || len(tr) == 0 {
+	if len(tr) == 0 {
 		return []byte("{}"), nil
 	}
 	return json.Marshal(tr)
@@ -182,12 +230,20 @@ func (TaskLog) TableName() string {
 
 // CreateTaskRequest 创建任务请求
 type CreateTaskRequest struct {
-	AccountID  uint64     `json:"account_id" binding:"required"`
+	AccountIDs []uint64   `json:"account_ids" binding:"required,min=1"` // 账号ID列表
 	TaskType   TaskType   `json:"task_type" binding:"required"`
 	Config     TaskConfig `json:"task_config"`
 	Priority   int        `json:"priority,omitempty"`
 	ScheduleAt *time.Time `json:"schedule_at,omitempty"`
 	AutoStart  bool       `json:"auto_start"` // 是否自动开始执行，默认false
+}
+
+// Validate 验证请求
+func (r *CreateTaskRequest) Validate() error {
+	if len(r.AccountIDs) == 0 {
+		return fmt.Errorf("至少需要指定一个账号")
+	}
+	return nil
 }
 
 // TaskSummary 任务摘要信息

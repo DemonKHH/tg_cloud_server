@@ -74,7 +74,6 @@ type TGAccount struct {
 	// 关联关系
 	User    User     `json:"user" gorm:"foreignKey:UserID"`
 	ProxyIP *ProxyIP `json:"proxy_ip" gorm:"foreignKey:ProxyID"`
-	Tasks   []Task   `json:"tasks" gorm:"foreignKey:AccountID"`
 }
 
 // TableName 指定表名

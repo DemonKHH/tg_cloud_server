@@ -18,24 +18,16 @@ import (
 
 // TaskScheduler 任务调度器
 type TaskScheduler struct {
-	accountQueues  map[string]*TaskQueue        // 账号任务队列 (accountID -> queue)
-	accountStatus  *sync.Map                    // 账号状态池
+	taskQueue      []*models.Task               // 任务队列
+	runningTasks   map[uint64]bool              // 正在运行的任务 (taskID -> true)
 	connectionPool *telegram.ConnectionPool     // 连接池引用
 	accountRepo    repository.AccountRepository // 账号仓库
 	taskRepo       repository.TaskRepository    // 任务仓库
-	// riskEngine 暂时移除风控引擎，后续实现
-	logger *zap.Logger
-	mu     sync.RWMutex
-	ctx    context.Context
-	cancel context.CancelFunc
-}
-
-// TaskQueue 任务队列
-type TaskQueue struct {
-	accountID  string
-	tasks      []*models.Task
-	mu         sync.Mutex
-	processing bool
+	logger         *zap.Logger
+	mu             sync.RWMutex
+	ctx            context.Context
+	cancel         context.CancelFunc
+	maxConcurrent  int // 最大并发任务数
 }
 
 // NewTaskScheduler 创建新的任务调度器
@@ -47,14 +39,15 @@ func NewTaskScheduler(
 	ctx, cancel := context.WithCancel(context.Background())
 
 	ts := &TaskScheduler{
-		accountQueues:  make(map[string]*TaskQueue),
-		accountStatus:  &sync.Map{},
+		taskQueue:      make([]*models.Task, 0),
+		runningTasks:   make(map[uint64]bool),
 		connectionPool: connectionPool,
 		accountRepo:    accountRepo,
 		taskRepo:       taskRepo,
 		logger:         logger.Get().Named("task_scheduler"),
 		ctx:            ctx,
 		cancel:         cancel,
+		maxConcurrent:  10, // 默认最多10个并发任务
 	}
 
 	// 启动调度循环
@@ -75,20 +68,12 @@ func (ts *TaskScheduler) Stop() {
 
 	for time.Now().Before(deadline) {
 		ts.mu.RLock()
-		hasRunningTasks := false
-
-		for _, queue := range ts.accountQueues {
-			queue.mu.Lock()
-			if queue.processing {
-				hasRunningTasks = true
-			}
-			queue.mu.Unlock()
-
-			if hasRunningTasks {
-				break
-			}
-		}
+		hasRunningTasks := len(ts.runningTasks) > 0
 		ts.mu.RUnlock()
+
+		if !hasRunningTasks {
+			break
+		}
 
 		if !hasRunningTasks {
 			break
@@ -106,14 +91,22 @@ func (ts *TaskScheduler) SubmitTask(task *models.Task) error {
 		return fmt.Errorf("task cannot be nil")
 	}
 
-	accountID := fmt.Sprintf("%d", task.AccountID)
+	// 验证任务有账号
+	accountIDs := task.GetAccountIDList()
+	if len(accountIDs) == 0 {
+		return fmt.Errorf("task has no accounts assigned")
+	}
 
-	// 验证账号可用性
-	if err := ts.ValidateAccount(accountID); err != nil {
-		ts.logger.Warn("Account validation failed",
-			zap.String("account_id", accountID),
-			zap.Error(err))
-		return fmt.Errorf("account validation failed: %w", err)
+	// 验证所有账号可用性
+	for _, accountID := range accountIDs {
+		accountIDStr := fmt.Sprintf("%d", accountID)
+		if err := ts.ValidateAccount(accountIDStr); err != nil {
+			ts.logger.Warn("Account validation failed",
+				zap.String("account_id", accountIDStr),
+				zap.Uint64("task_id", task.ID),
+				zap.Error(err))
+			// 继续验证其他账号
+		}
 	}
 
 	// 更新数据库中的任务状态（在添加到队列之前）
@@ -124,20 +117,18 @@ func (ts *TaskScheduler) SubmitTask(task *models.Task) error {
 		return fmt.Errorf("failed to update task status: %w", err)
 	}
 
-	// 获取或创建队列
-	queue := ts.getOrCreateQueue(accountID)
-
-	// 添加任务到队列（原子操作）
-	queue.mu.Lock()
+	// 添加任务到队列
+	ts.mu.Lock()
 	task.Status = models.TaskStatusQueued
-	queue.tasks = append(queue.tasks, task)
-	queueSize := len(queue.tasks)
-	queue.mu.Unlock()
+	ts.taskQueue = append(ts.taskQueue, task)
+	queueSize := len(ts.taskQueue)
+	ts.mu.Unlock()
 
 	// 使用专门的任务日志记录器
 	logger.LogTask(zapcore.InfoLevel, "Task submitted to queue",
 		zap.Uint64("task_id", task.ID),
-		zap.String("account_id", accountID),
+		zap.Any("account_ids", accountIDs),
+		zap.Int("account_count", len(accountIDs)),
 		zap.String("task_type", string(task.TaskType)),
 		zap.Int("priority", task.Priority),
 		zap.Int("queue_size", queueSize),
@@ -252,25 +243,6 @@ func (ts *TaskScheduler) ValidateAccountForTask(accountID string, taskType model
 	return result, nil
 }
 
-// getOrCreateQueue 获取或创建队列
-func (ts *TaskScheduler) getOrCreateQueue(accountID string) *TaskQueue {
-	ts.mu.Lock()
-	defer ts.mu.Unlock()
-
-	if queue, exists := ts.accountQueues[accountID]; exists {
-		return queue
-	}
-
-	queue := &TaskQueue{
-		accountID: accountID,
-		tasks:     make([]*models.Task, 0),
-	}
-	ts.accountQueues[accountID] = queue
-
-	ts.logger.Debug("Created new task queue", zap.String("account_id", accountID))
-	return queue
-}
-
 // schedulingLoop 调度循环
 func (ts *TaskScheduler) schedulingLoop() {
 	ticker := time.NewTicker(1 * time.Second)
@@ -286,51 +258,39 @@ func (ts *TaskScheduler) schedulingLoop() {
 	}
 }
 
-// processQueues 处理所有队列
+// processQueues 处理任务队列
 func (ts *TaskScheduler) processQueues() {
-	ts.mu.RLock()
-	queues := make([]*TaskQueue, 0, len(ts.accountQueues))
-	for _, queue := range ts.accountQueues {
-		queues = append(queues, queue)
-	}
-	ts.mu.RUnlock()
+	ts.mu.Lock()
 
-	for _, queue := range queues {
-		ts.processQueue(queue)
-	}
-}
-
-// processQueue 处理单个队列
-func (ts *TaskScheduler) processQueue(queue *TaskQueue) {
-	queue.mu.Lock()
-
-	// 如果正在处理或队列为空，跳过
-	if queue.processing || len(queue.tasks) == 0 {
-		queue.mu.Unlock()
+	// 检查是否达到最大并发数
+	if len(ts.runningTasks) >= ts.maxConcurrent {
+		ts.mu.Unlock()
 		return
 	}
 
-	// 检查账号是否忙碌
-	if ts.connectionPool.IsAccountBusy(queue.accountID) {
-		queue.mu.Unlock()
+	// 检查队列是否为空
+	if len(ts.taskQueue) == 0 {
+		ts.mu.Unlock()
 		return
 	}
 
-	// 获取下一个任务
-	task := queue.tasks[0]
-	queue.tasks = queue.tasks[1:]
-	queue.processing = true
+	// 获取下一个任务（按优先级排序，优先级高的先执行）
+	// 简单实现：取第一个任务
+	task := ts.taskQueue[0]
+	ts.taskQueue = ts.taskQueue[1:]
 
-	// 解锁后再启动异步任务，避免长时间持锁
-	queue.mu.Unlock()
+	// 标记任务为运行中
+	ts.runningTasks[task.ID] = true
+
+	ts.mu.Unlock()
 
 	// 异步执行任务
 	go func() {
 		defer func() {
-			// 安全地重置处理状态
-			queue.mu.Lock()
-			queue.processing = false
-			queue.mu.Unlock()
+			// 从运行列表中移除
+			ts.mu.Lock()
+			delete(ts.runningTasks, task.ID)
+			ts.mu.Unlock()
 
 			// 处理panic
 			if r := recover(); r != nil {
@@ -349,7 +309,8 @@ func (ts *TaskScheduler) processQueue(queue *TaskQueue) {
 
 // executeTask 执行任务
 func (ts *TaskScheduler) executeTask(task *models.Task) {
-	accountID := fmt.Sprintf("%d", task.AccountID)
+	// 获取账号ID列表
+	accountIDs := task.GetAccountIDList()
 
 	// 更新任务状态为运行中
 	task.Status = models.TaskStatusRunning
@@ -358,7 +319,8 @@ func (ts *TaskScheduler) executeTask(task *models.Task) {
 
 	logger.LogTask(zapcore.InfoLevel, "Starting task execution",
 		zap.Uint64("task_id", task.ID),
-		zap.String("account_id", accountID),
+		zap.Any("account_ids", accountIDs),
+		zap.Int("account_count", len(accountIDs)),
 		zap.String("task_type", string(task.TaskType)),
 		zap.Int("priority", task.Priority),
 		zap.Time("started_at", startTime))
@@ -372,45 +334,118 @@ func (ts *TaskScheduler) executeTask(task *models.Task) {
 			zap.Error(err))
 	}
 
-	// 执行风控检查
-	if err := ts.performRiskControlCheck(task, accountID); err != nil {
-		ts.logger.Warn("Risk control check failed, task rejected",
+	// 初始化结果记录
+	if task.Result == nil {
+		task.Result = make(models.TaskResult)
+	}
+	task.Result["account_results"] = make(map[string]interface{})
+	accountResults := task.Result["account_results"].(map[string]interface{})
+
+	// 依次使用每个账号执行任务
+	successCount := 0
+	failCount := 0
+	var lastError error
+
+	for i, accountID := range accountIDs {
+		accountIDStr := fmt.Sprintf("%d", accountID)
+
+		logger.LogTask(zapcore.InfoLevel, "Executing task with account",
 			zap.Uint64("task_id", task.ID),
-			zap.String("account_id", accountID),
-			zap.Error(err))
-		ts.completeTaskWithError(task, fmt.Errorf("risk control check failed: %w", err))
-		return
+			zap.String("account_id", accountIDStr),
+			zap.Int("account_index", i+1),
+			zap.Int("total_accounts", len(accountIDs)))
+
+		// 执行风控检查
+		if err := ts.performRiskControlCheck(task, accountIDStr); err != nil {
+			ts.logger.Warn("Risk control check failed for account",
+				zap.Uint64("task_id", task.ID),
+				zap.String("account_id", accountIDStr),
+				zap.Error(err))
+			accountResults[accountIDStr] = map[string]interface{}{
+				"status": "failed",
+				"error":  fmt.Sprintf("risk control check failed: %v", err),
+			}
+			failCount++
+			lastError = err
+			continue
+		}
+
+		// 创建任务执行器
+		taskExecutor, err := ts.createTaskExecutor(task)
+		if err != nil {
+			ts.logger.Error("Failed to create task executor for account",
+				zap.Uint64("task_id", task.ID),
+				zap.String("account_id", accountIDStr),
+				zap.Error(err))
+			accountResults[accountIDStr] = map[string]interface{}{
+				"status": "failed",
+				"error":  fmt.Sprintf("failed to create executor: %v", err),
+			}
+			failCount++
+			lastError = err
+			continue
+		}
+
+		// 执行任务
+		accountStartTime := time.Now()
+		err = ts.connectionPool.ExecuteTask(accountIDStr, taskExecutor)
+		accountDuration := time.Since(accountStartTime)
+
+		if err != nil {
+			logger.LogTask(zapcore.ErrorLevel, "Task execution failed for account",
+				zap.Uint64("task_id", task.ID),
+				zap.String("account_id", accountIDStr),
+				zap.Duration("duration", accountDuration),
+				zap.Error(err))
+			accountResults[accountIDStr] = map[string]interface{}{
+				"status":   "failed",
+				"error":    err.Error(),
+				"duration": accountDuration.String(),
+			}
+			failCount++
+			lastError = err
+		} else {
+			logger.LogTask(zapcore.InfoLevel, "Task execution succeeded for account",
+				zap.Uint64("task_id", task.ID),
+				zap.String("account_id", accountIDStr),
+				zap.Duration("duration", accountDuration))
+			accountResults[accountIDStr] = map[string]interface{}{
+				"status":   "success",
+				"duration": accountDuration.String(),
+			}
+			successCount++
+		}
 	}
 
-	// 创建任务执行器
-	taskExecutor, err := ts.createTaskExecutor(task)
-	if err != nil {
-		ts.logger.Error("Failed to create task executor",
-			zap.Uint64("task_id", task.ID),
-			zap.Error(err))
-		ts.completeTaskWithError(task, err)
-		return
-	}
-
-	// 执行任务
-	err = ts.connectionPool.ExecuteTask(accountID, taskExecutor)
+	// 更新任务结果
+	task.Result["success_count"] = successCount
+	task.Result["fail_count"] = failCount
+	task.Result["total_accounts"] = len(accountIDs)
 
 	// 完成任务
-	if err != nil {
-		duration := time.Since(startTime)
-		logger.LogTask(zapcore.ErrorLevel, "Task execution failed",
+	duration := time.Since(startTime)
+	if successCount == 0 {
+		// 所有账号都失败
+		logger.LogTask(zapcore.ErrorLevel, "Task execution failed for all accounts",
 			zap.Uint64("task_id", task.ID),
-			zap.String("account_id", accountID),
-			zap.String("task_type", string(task.TaskType)),
+			zap.Int("total_accounts", len(accountIDs)),
 			zap.Duration("duration", duration),
-			zap.Error(err))
-		ts.completeTaskWithError(task, err)
-	} else {
-		duration := time.Since(startTime)
-		logger.LogTask(zapcore.InfoLevel, "Task execution completed successfully",
+			zap.Error(lastError))
+		ts.completeTaskWithError(task, fmt.Errorf("all %d accounts failed, last error: %w", len(accountIDs), lastError))
+	} else if failCount > 0 {
+		// 部分成功
+		logger.LogTask(zapcore.WarnLevel, "Task execution partially succeeded",
 			zap.Uint64("task_id", task.ID),
-			zap.String("account_id", accountID),
-			zap.String("task_type", string(task.TaskType)),
+			zap.Int("success_count", successCount),
+			zap.Int("fail_count", failCount),
+			zap.Int("total_accounts", len(accountIDs)),
+			zap.Duration("duration", duration))
+		ts.completeTaskWithSuccess(task)
+	} else {
+		// 全部成功
+		logger.LogTask(zapcore.InfoLevel, "Task execution completed successfully for all accounts",
+			zap.Uint64("task_id", task.ID),
+			zap.Int("total_accounts", len(accountIDs)),
 			zap.Duration("duration", duration))
 		ts.completeTaskWithSuccess(task)
 	}
@@ -573,18 +608,10 @@ func (ts *TaskScheduler) getAccountInfo(accountID string) (*models.TGAccount, er
 
 // getQueueSize 获取队列大小
 func (ts *TaskScheduler) getQueueSize(accountID string) int {
+	// 现在队列不再按账号分组，返回总队列大小
 	ts.mu.RLock()
-	queue, exists := ts.accountQueues[accountID]
+	size := len(ts.taskQueue)
 	ts.mu.RUnlock()
-
-	if !exists {
-		return 0
-	}
-
-	queue.mu.Lock()
-	size := len(queue.tasks)
-	queue.mu.Unlock()
-
 	return size
 }
 

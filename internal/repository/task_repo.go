@@ -197,10 +197,19 @@ func (r *taskRepository) GetTasksByStatus(status models.TaskStatus) ([]*models.T
 	return tasks, err
 }
 
-// GetTasksByAccountID 根据账号ID获取任务
+// GetTasksByAccountID 根据账号ID获取任务（搜索 account_ids 字段）
 func (r *taskRepository) GetTasksByAccountID(accountID uint64, statuses []string) ([]*models.Task, error) {
 	var tasks []*models.Task
-	query := r.db.Where("account_id = ?", accountID)
+	// 搜索 account_ids 字段中包含该账号ID的任务
+	// 使用 LIKE 查询，匹配 "accountID" 或 "accountID," 或 ",accountID," 或 ",accountID"
+	accountIDStr := fmt.Sprintf("%d", accountID)
+	query := r.db.Where(
+		"account_ids = ? OR account_ids LIKE ? OR account_ids LIKE ? OR account_ids LIKE ?",
+		accountIDStr,           // 只有一个账号
+		accountIDStr+",%",      // 第一个账号
+		"%,"+accountIDStr+",%", // 中间的账号
+		"%,"+accountIDStr,      // 最后一个账号
+	)
 
 	if len(statuses) > 0 {
 		query = query.Where("status IN ?", statuses)
@@ -280,26 +289,38 @@ func (r *taskRepository) GetTaskStatsByUserID(userID uint64, startTime, endTime 
 	return &stats, nil
 }
 
-// GetQueueInfoByAccountID 获取账号队列信息
+// GetQueueInfoByAccountID 获取账号队列信息（搜索包含该账号的任务）
 func (r *taskRepository) GetQueueInfoByAccountID(accountID uint64) (*models.QueueInfo, error) {
 	var info models.QueueInfo
 
+	// 构建账号ID搜索条件
+	accountIDStr := fmt.Sprintf("%d", accountID)
+	accountCondition := "account_ids = ? OR account_ids LIKE ? OR account_ids LIKE ? OR account_ids LIKE ?"
+	accountParams := []interface{}{
+		accountIDStr,
+		accountIDStr + ",%",
+		"%," + accountIDStr + ",%",
+		"%," + accountIDStr,
+	}
+
 	// 待处理任务数
 	r.db.Model(&models.Task{}).
-		Where("account_id = ? AND status = ?", accountID, models.TaskStatusPending).
+		Where(accountCondition, accountParams...).
+		Where("status = ?", models.TaskStatusPending).
 		Count(&info.PendingTasks)
 
 	// 运行中任务数
 	r.db.Model(&models.Task{}).
-		Where("account_id = ? AND status = ?", accountID, models.TaskStatusRunning).
+		Where(accountCondition, accountParams...).
+		Where("status = ?", models.TaskStatusRunning).
 		Count(&info.RunningTasks)
 
 	// 预计等待时间（基于平均执行时间估算）
 	var avgDuration float64
 	r.db.Model(&models.Task{}).
 		Select("AVG(TIMESTAMPDIFF(SECOND, started_at, completed_at))").
-		Where("account_id = ? AND status = ? AND started_at IS NOT NULL AND completed_at IS NOT NULL",
-			accountID, models.TaskStatusCompleted).
+		Where(accountCondition, accountParams...).
+		Where("status = ? AND started_at IS NOT NULL AND completed_at IS NOT NULL", models.TaskStatusCompleted).
 		Scan(&avgDuration)
 
 	info.EstimatedWaitTime = int64(avgDuration * float64(info.PendingTasks))

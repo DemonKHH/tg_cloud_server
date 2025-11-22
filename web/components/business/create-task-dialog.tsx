@@ -220,40 +220,26 @@ export function CreateTaskDialog({
     if (!config) return
 
     setLoading(true)
-    let successCount = 0
-    let failCount = 0
 
     try {
-      // Batch create tasks
-      // Since there is no batch create API, we loop
-      // Ideally we should use Promise.all but to avoid rate limits or overwhelming server, maybe sequential or chunks?
-      // Let's try Promise.all for now, assuming user won't select 1000 accounts at once.
-
-      const promises = accountIds.map(accountId => {
-        const requestData = {
-          account_id: parseInt(accountId),
-          task_type: form.task_type,
-          priority: parseInt(form.priority) || 5,
-          auto_start: form.auto_start,
-          task_config: config,
-        }
-        return taskAPI.create(requestData)
-          .then(() => { successCount++ })
-          .catch((err) => {
-            console.error(`Failed to create task for account ${accountId}`, err)
-            failCount++
-          })
-      })
-
-      await Promise.all(promises)
-
-      if (successCount > 0) {
-        toast.success(`成功创建 ${successCount} 个任务${failCount > 0 ? `，失败 ${failCount} 个` : ''}`)
-        onOpenChange(false)
-        onSuccess?.()
-      } else {
-        toast.error("创建任务失败")
+      // 创建单个任务，使用多个账号
+      const requestData = {
+        account_ids: accountIds.map(id => parseInt(id)),
+        task_type: form.task_type,
+        priority: parseInt(form.priority) || 5,
+        auto_start: form.auto_start,
+        task_config: config,
       }
+
+      await taskAPI.create(requestData)
+
+      if (accountIds.length === 1) {
+        toast.success("任务创建成功")
+      } else {
+        toast.success(`任务创建成功，将使用 ${accountIds.length} 个账号依次执行`)
+      }
+      onOpenChange(false)
+      onSuccess?.()
     } catch (error) {
       console.error("Batch create error:", error)
       toast.error("创建任务过程中发生错误")

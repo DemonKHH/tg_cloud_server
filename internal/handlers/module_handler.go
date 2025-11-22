@@ -53,7 +53,7 @@ func (h *ModuleHandler) AccountCheck(c *gin.Context) {
 
 	h.logger.Info("Account check task created",
 		zap.Uint64("task_id", task.ID),
-		zap.Uint64("account_id", task.AccountID))
+		zap.Any("account_ids", task.GetAccountIDList()))
 
 	response.SuccessWithMessage(c, "账号检查任务创建成功", task)
 }
@@ -107,7 +107,7 @@ func (h *ModuleHandler) PrivateMessage(c *gin.Context) {
 
 	h.logger.Info("Private message task created",
 		zap.Uint64("task_id", task.ID),
-		zap.Uint64("account_id", task.AccountID),
+		zap.Any("account_ids", task.GetAccountIDList()),
 		zap.Int("target_count", len(req.Targets)))
 
 	response.SuccessWithMessage(c, "私信任务创建成功", task)
@@ -168,7 +168,7 @@ func (h *ModuleHandler) Broadcast(c *gin.Context) {
 	totalTargets := len(req.Groups) + len(req.Channels)
 	h.logger.Info("Broadcast task created",
 		zap.Uint64("task_id", task.ID),
-		zap.Uint64("account_id", task.AccountID),
+		zap.Any("account_ids", task.GetAccountIDList()),
 		zap.Int("total_targets", totalTargets))
 
 	response.SuccessWithMessage(c, "群发任务创建成功", task)
@@ -194,7 +194,7 @@ func (h *ModuleHandler) VerifyCode(c *gin.Context) {
 		return
 	}
 
-	h.logger.Warn("Using deprecated verify code API", 
+	h.logger.Warn("Using deprecated verify code API",
 		zap.Uint64("account_id", req.AccountID),
 		zap.String("suggestion", "Please use /api/v1/verify-code/generate instead"))
 
@@ -253,7 +253,7 @@ func (h *ModuleHandler) GroupChat(c *gin.Context) {
 
 	h.logger.Info("Group chat task created",
 		zap.Uint64("task_id", task.ID),
-		zap.Uint64("account_id", task.AccountID),
+		zap.Any("account_ids", task.GetAccountIDList()),
 		zap.Int64("group_id", req.GroupID))
 
 	response.SuccessWithMessage(c, "AI炒群任务创建成功", task)
@@ -307,10 +307,10 @@ func (h *ModuleHandler) createModuleTask(c *gin.Context, taskType models.TaskTyp
 
 	// 创建任务请求
 	createReq := &models.CreateTaskRequest{
-		AccountID: accountID,
-		TaskType:  taskType,
-		Config:    taskConfig,
-		Priority:  5, // 默认优先级
+		AccountIDs: []uint64{accountID},
+		TaskType:   taskType,
+		Config:     taskConfig,
+		Priority:   5, // 默认优先级
 	}
 
 	// 创建任务

@@ -14,13 +14,6 @@ import {
 } from "@/components/ui/dialog"
 import { Plus, MoreVertical, CheckCircle2, XCircle, AlertCircle, Upload, FileArchive, Search } from "lucide-react"
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -593,15 +586,17 @@ export default function AccountsPage() {
           >
             <Card className="relative overflow-hidden border-none shadow-sm bg-gradient-to-br from-purple-50 to-purple-100/50 dark:from-purple-950/50 dark:to-purple-900/30">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium text-purple-900 dark:text-purple-100">活跃代理</CardTitle>
+                <CardTitle className="text-sm font-medium text-purple-900 dark:text-purple-100">已同步信息</CardTitle>
                 <div className="h-10 w-10 rounded-full bg-purple-500/10 flex items-center justify-center">
-                  <Activity className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+                  <CheckCircle2 className="h-5 w-5 text-purple-600 dark:text-purple-400" />
                 </div>
               </CardHeader>
               <CardContent>
-                <div className="text-3xl font-bold text-purple-900 dark:text-purple-100">{proxies.length}</div>
+                <div className="text-3xl font-bold text-purple-900 dark:text-purple-100">
+                  {accounts.filter(a => (a.username && a.username.length > 0) || (a.first_name && a.first_name.length > 0)).length}
+                </div>
                 <p className="text-xs text-purple-700/70 dark:text-purple-300/70 mt-1">
-                  当前可用的代理服务器
+                  已同步 Telegram 信息的账号
                 </p>
               </CardContent>
               <div className="absolute -right-4 -bottom-4 h-24 w-24 rounded-full bg-purple-500/5" />
@@ -896,20 +891,31 @@ export default function AccountsPage() {
                         </TableCell>
                         <TableCell className="py-4">
                           <div className="flex items-center gap-3">
+                            {/* 头像 */}
                             <div className={cn(
-                              "h-10 w-10 rounded-full flex items-center justify-center text-sm font-semibold",
+                              "h-10 w-10 rounded-full flex items-center justify-center text-sm font-semibold flex-shrink-0",
                               record.status === 'normal' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
                               record.status === 'warning' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' :
                               record.status === 'restricted' ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' :
                               record.status === 'dead' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
                               'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
                             )}>
-                              {record.phone.slice(-2)}
+                              {(record.first_name && record.first_name.length > 0) ? record.first_name.charAt(0).toUpperCase() : record.phone.slice(-2)}
                             </div>
-                            <div className="space-y-1">
-                              <div className="font-semibold text-sm">{record.phone}</div>
-                              {record.note && (
-                                <div className="text-xs text-muted-foreground line-clamp-1">{record.note}</div>
+                            <div className="space-y-1 min-w-0 flex-1">
+                              {/* 显示名称或手机号 */}
+                              <div className="flex items-center gap-2">
+                                <div className="font-semibold text-sm truncate">
+                                  {(record.first_name && record.first_name.length > 0) ? record.first_name : record.phone}
+                                  {(record.last_name && record.last_name.length > 0) && ` ${record.last_name}`}
+                                </div>
+                                {(record.username && record.username.length > 0) && (
+                                  <span className="text-xs text-muted-foreground">@{record.username}</span>
+                                )}
+                              </div>
+                              {/* 显示手机号（如果有名字）或备注 */}
+                              {((record.first_name && record.first_name.length > 0) || (record.username && record.username.length > 0)) && (
+                                <div className="text-xs text-muted-foreground truncate">{record.phone}</div>
                               )}
                             </div>
                           </div>
@@ -1108,10 +1114,42 @@ export default function AccountsPage() {
             <DialogHeader>
               <DialogTitle className="text-2xl">编辑账号</DialogTitle>
               <DialogDescription>
-                更新账号信息。Session数据通常不允许修改。
+                更新账号信息。Telegram 信息由系统自动同步。
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
+              {/* Telegram 信息展示 */}
+              {((editingAccount?.username && editingAccount.username.length > 0) || (editingAccount?.first_name && editingAccount.first_name.length > 0)) && (
+                <div className="bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-950/30 dark:to-purple-950/30 rounded-xl p-4 border border-blue-200/50 dark:border-blue-800/50">
+                  <div className="flex items-start gap-3">
+                    <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0 text-lg font-bold text-primary">
+                      {(editingAccount?.first_name && editingAccount.first_name.length > 0) ? editingAccount.first_name.charAt(0).toUpperCase() : 'T'}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-semibold text-sm mb-1">
+                        {(editingAccount?.first_name && editingAccount.first_name.length > 0) ? editingAccount.first_name : 'Telegram 用户'}
+                        {(editingAccount?.last_name && editingAccount.last_name.length > 0) && ` ${editingAccount.last_name}`}
+                      </div>
+                      {(editingAccount?.username && editingAccount.username.length > 0) && (
+                        <div className="text-xs text-blue-600 dark:text-blue-400 mb-1">
+                          @{editingAccount.username}
+                        </div>
+                      )}
+                      {(editingAccount?.bio && editingAccount.bio.length > 0) && (
+                        <div className="text-xs text-muted-foreground line-clamp-2 mt-2">
+                          {editingAccount.bio}
+                        </div>
+                      )}
+                      {editingAccount?.tg_user_id && (
+                        <div className="text-xs text-muted-foreground mt-1">
+                          ID: {editingAccount.tg_user_id}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+              
               <div className="space-y-2">
                 <Label htmlFor="edit-phone" className="text-sm font-medium">手机号</Label>
                 <Input

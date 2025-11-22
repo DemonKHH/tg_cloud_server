@@ -57,10 +57,19 @@ type TGAccount struct {
 	ProxyID     *uint64       `json:"proxy_id" gorm:"index"`
 	Status      AccountStatus `json:"status" gorm:"type:enum('new','normal','warning','restricted','dead','cooling','maintenance');default:'new'"`
 	HealthScore float64       `json:"health_score" gorm:"type:decimal(3,2);default:1.00"`
-	LastCheckAt *time.Time    `json:"last_check_at"`
-	LastUsedAt  *time.Time    `json:"last_used_at"`
-	CreatedAt   time.Time     `json:"created_at"`
-	UpdatedAt   time.Time     `json:"updated_at"`
+
+	// Telegram 账号信息（从 Telegram 获取并存储）
+	TgUserID  *int64  `json:"tg_user_id" gorm:"index"`        // Telegram 用户ID
+	Username  *string `json:"username" gorm:"size:100;index"` // Telegram 用户名
+	FirstName *string `json:"first_name" gorm:"size:100"`     // 名字
+	LastName  *string `json:"last_name" gorm:"size:100"`      // 姓氏
+	Bio       *string `json:"bio" gorm:"type:text"`           // 个人简介
+	PhotoURL  *string `json:"photo_url" gorm:"size:500"`      // 头像URL
+
+	LastCheckAt *time.Time `json:"last_check_at"`
+	LastUsedAt  *time.Time `json:"last_used_at"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
 
 	// 关联关系
 	User    User     `json:"user" gorm:"foreignKey:UserID"`
@@ -121,11 +130,20 @@ type AccountSummary struct {
 	Status      AccountStatus `json:"status"`
 	HealthScore float64       `json:"health_score"`
 	ProxyID     *uint64       `json:"proxy_id,omitempty"`
-	LastUsedAt  *time.Time    `json:"last_used_at,omitempty"`
-	LastCheckAt *time.Time    `json:"last_check_at,omitempty"`
-	CreatedAt   time.Time     `json:"created_at"`
-	TaskCount   int64         `json:"task_count,omitempty"`
-	ProxyName   string        `json:"proxy_name,omitempty"`
+
+	// Telegram 信息（始终返回，即使为空）
+	TgUserID  *int64  `json:"tg_user_id"`
+	Username  *string `json:"username"`
+	FirstName *string `json:"first_name"`
+	LastName  *string `json:"last_name"`
+	Bio       *string `json:"bio"`
+	PhotoURL  *string `json:"photo_url"`
+
+	LastUsedAt  *time.Time `json:"last_used_at,omitempty"`
+	LastCheckAt *time.Time `json:"last_check_at,omitempty"`
+	CreatedAt   time.Time  `json:"created_at"`
+	TaskCount   int64      `json:"task_count,omitempty"`
+	ProxyName   string     `json:"proxy_name,omitempty"`
 }
 
 // AccountAvailability 账号可用性信息
@@ -224,4 +242,14 @@ type UpdateTaskRequest struct {
 	Config     TaskConfig  `json:"config"`
 	Result     TaskResult  `json:"result"`
 	ScheduleAt *time.Time  `json:"schedule_at,omitempty"`
+}
+
+// TelegramAccountInfo Telegram 账号信息（用于更新）
+type TelegramAccountInfo struct {
+	TgUserID  *int64  `json:"tg_user_id,omitempty"`
+	Username  *string `json:"username,omitempty"`
+	FirstName *string `json:"first_name,omitempty"`
+	LastName  *string `json:"last_name,omitempty"`
+	Bio       *string `json:"bio,omitempty"`
+	PhotoURL  *string `json:"photo_url,omitempty"`
 }

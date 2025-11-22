@@ -262,9 +262,9 @@ func (r *accountRepository) GetAccountSummaries(userID uint64, page, limit int, 
 		return nil, 0, err
 	}
 
-	// 获取摘要数据
+	// 获取摘要数据（包含 Telegram 信息）
 	err := query.
-		Select("id, user_id, phone, status, health_score, proxy_id, last_used_at, created_at").
+		Select("id, user_id, phone, status, health_score, proxy_id, tg_user_id, username, first_name, last_name, bio, photo_url, last_used_at, created_at").
 		Offset(offset).
 		Limit(limit).
 		Order("created_at DESC").

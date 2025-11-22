@@ -12,7 +12,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import { Plus, MoreVertical, CheckCircle2, XCircle, AlertCircle, Upload, FileArchive, Search, Filter } from "lucide-react"
+import { Plus, MoreVertical, CheckCircle2, XCircle, AlertCircle, Upload, FileArchive, Search } from "lucide-react"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -40,11 +40,22 @@ import {
 } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Pencil, Trash2, Activity, Link2 } from "lucide-react"
+import { Pencil, Trash2, Activity, Link2, MessageSquare, Megaphone, Users, ShieldCheck, ChevronDown } from "lucide-react"
 import { usePagination } from "@/hooks/use-pagination"
-import { PageHeader } from "@/components/common/page-header"
 import { FilterBar } from "@/components/common/filter-bar"
 import { motion } from "framer-motion"
+import { Checkbox } from "@/components/ui/checkbox"
+import { CreateTaskDialog } from "@/components/business/create-task-dialog"
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet"
+import { taskAPI } from "@/lib/api"
+import { ListTodo } from "lucide-react"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 
 export default function AccountsPage() {
   const {
@@ -58,43 +69,87 @@ export default function AccountsPage() {
     refresh,
   } = usePagination({
     fetchFn: accountAPI.list,
+    pageSize: 50, // 每页50个
   })
-  
+
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [selectedProxy, setSelectedProxy] = useState<string>("")
   const [proxies, setProxies] = useState<any[]>([])
   const [loadingProxies, setLoadingProxies] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  
+
   // 编辑账号相关状态
   const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [editingAccount, setEditingAccount] = useState<any>(null)
   const [editForm, setEditForm] = useState({ note: "", phone: "", session_data: "" })
-  
+
   // 绑定代理相关状态
   const [bindProxyDialogOpen, setBindProxyDialogOpen] = useState(false)
   const [bindingAccount, setBindingAccount] = useState<any>(null)
   const [selectedBindProxy, setSelectedBindProxy] = useState<string>("")
-  
+
   // 手动添加账号相关状态
   const [addDialogOpen, setAddDialogOpen] = useState(false)
   const [addForm, setAddForm] = useState({ phone: "", session_data: "", note: "", proxy_id: "" })
-  
+
   // 健康检查相关状态
   const [healthChecking, setHealthChecking] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (uploadDialogOpen) {
-      loadProxies()
+  // 批量操作相关状态
+  const [selectedAccountIds, setSelectedAccountIds] = useState<string[]>([])
+  const [createTaskDialogOpen, setCreateTaskDialogOpen] = useState(false)
+  const [initialTaskType, setInitialTaskType] = useState<string>("")
+
+  // 任务监控相关状态
+  const [taskMonitorOpen, setTaskMonitorOpen] = useState(false)
+  const [recentTasks, setRecentTasks] = useState<any[]>([])
+  const [loadingTasks, setLoadingTasks] = useState(false)
+
+  // 全选/取消全选
+  const toggleSelectAll = () => {
+    if (selectedAccountIds.length === accounts.length) {
+      setSelectedAccountIds([])
+    } else {
+      setSelectedAccountIds(accounts.map(a => String(a.id)))
     }
-  }, [uploadDialogOpen])
+  }
+
+  // 选择/取消选择单个
+  const toggleSelectOne = (id: string) => {
+    if (selectedAccountIds.includes(id)) {
+      setSelectedAccountIds(selectedAccountIds.filter(i => i !== id))
+    } else {
+      setSelectedAccountIds([...selectedAccountIds, id])
+    }
+  }
+
+  // 加载最近任务
+  const loadRecentTasks = async () => {
+    try {
+      setLoadingTasks(true)
+      const res = await taskAPI.list({ page: 1, limit: 20 })
+      if (res.data) {
+        setRecentTasks((res.data as any).items || [])
+      }
+    } catch (e) {
+      console.error("加载任务失败", e)
+    } finally {
+      setLoadingTasks(false)
+    }
+  }
 
   useEffect(() => {
-    if (bindProxyDialogOpen || editDialogOpen) {
-      loadProxies()
+    loadProxies()
+  }, [])
+
+  useEffect(() => {
+    if (taskMonitorOpen) {
+      loadRecentTasks()
+      const timer = setInterval(loadRecentTasks, 5000)
+      return () => clearInterval(timer)
     }
-  }, [bindProxyDialogOpen, editDialogOpen])
+  }, [taskMonitorOpen])
 
   const loadProxies = async () => {
     try {
@@ -184,7 +239,7 @@ export default function AccountsPage() {
 
   const handleSaveEdit = async () => {
     if (!editingAccount) return
-    
+
     try {
       await accountAPI.update(String(editingAccount.id), {
         note: editForm.note,
@@ -289,7 +344,7 @@ export default function AccountsPage() {
 
     // 验证文件类型
     const fileName = file.name.toLowerCase()
-    const isValidType = 
+    const isValidType =
       fileName.endsWith('.zip') ||
       fileName.endsWith('.session') ||
       fileName.includes('tdata')
@@ -307,11 +362,11 @@ export default function AccountsPage() {
 
     try {
       setUploading(true)
-      
+
       // 如果选择了代理，传递代理ID
       const proxyId = selectedProxy ? parseInt(selectedProxy) : undefined
       const response = await accountAPI.uploadFiles(file, proxyId)
-      
+
       if (response.data) {
         const data = response.data as any
         const created = data.created || 0
@@ -320,7 +375,7 @@ export default function AccountsPage() {
 
         if (created > 0) {
           toast.success(`成功创建 ${created} 个账号${failed > 0 ? `，失败 ${failed} 个` : ''}`)
-          
+
           // 如果有错误信息，显示详细信息（最多显示前3个）
           if (failed > 0 && data.errors && data.errors.length > 0) {
             const errorMsg = data.errors.slice(0, 3).join('; ')
@@ -331,13 +386,13 @@ export default function AccountsPage() {
             }
             console.warn("创建账号时的错误：", data.errors)
           }
-          
+
           setUploadDialogOpen(false)
           setSelectedProxy("") // 重置代理选择
           refresh() // 重新加载账号列表
         } else {
           // 所有账号都创建失败
-          const errorMsg = data.errors?.length > 0 
+          const errorMsg = data.errors?.length > 0
             ? data.errors.slice(0, 3).join('; ')
             : '未知错误'
           toast.error(`未能创建任何账号。${errorMsg}${data.errors?.length > 3 ? '...' : ''}`)
@@ -365,419 +420,846 @@ export default function AccountsPage() {
     <MainLayout>
       <div className="space-y-6">
         {/* Page Header */}
-        <PageHeader
-          title="账号管理"
-          description="管理和监控您的TG账号"
-          actions={
-            <>
-              <Dialog open={uploadDialogOpen} onOpenChange={setUploadDialogOpen}>
-                <DialogTrigger asChild>
-                  <Button variant="outline">
-                    <Upload className="h-4 w-4 mr-2" />
-                    上传账号文件
-                  </Button>
-                </DialogTrigger>
-              <DialogContent className="sm:max-w-[500px]">
-                <DialogHeader>
-                  <DialogTitle>上传账号文件</DialogTitle>
-                  <DialogDescription>
-                    支持上传 .zip、.session 文件或 tdata 文件夹。系统将自动解析 Session/TData 格式并转换为 SessionString。
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="space-y-4 py-4">
-                  {/* 文件上传区域 */}
-                  <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-8 text-center">
-                    <FileArchive className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-                    <p className="text-sm text-muted-foreground mb-2 font-medium">
-                      支持的文件格式：
-                    </p>
-                    <ul className="text-xs text-muted-foreground space-y-1 mb-4 text-left max-w-xs mx-auto">
-                      <li>• .zip 压缩包（可包含多个账号文件）</li>
-                      <li>• .session 文件（Pyrogram 格式）</li>
-                      <li>• tdata 文件夹（Telegram Desktop 格式）</li>
-                      <li>• gotd/td 格式 session 文件</li>
-                    </ul>
-                    <Input
-                      ref={fileInputRef}
-                      type="file"
-                      className="hidden"
-                      id="account-file-upload"
-                      accept=".zip,.session"
-                      onChange={handleFileUpload}
-                      disabled={uploading}
-                    />
-                    <Button
-                      variant="outline"
-                      onClick={() => fileInputRef.current?.click()}
-                      disabled={uploading}
-                    >
-                      {uploading ? "上传中..." : "选择文件"}
-                    </Button>
-                    {uploading && (
-                      <p className="text-sm text-muted-foreground mt-2">
-                        正在解析文件并转换格式，请稍候...
-                      </p>
-                    )}
-                  </div>
-
-                  {/* 代理选择（可选） */}
-                  <div className="space-y-2">
-                    <Label htmlFor="proxy-select">选择代理（可选）</Label>
-                    <Select
-                      value={selectedProxy || "none"}
-                      onValueChange={(value) => setSelectedProxy(value === "none" ? "" : value)}
-                      disabled={uploading || loadingProxies}
-                    >
-                      <SelectTrigger id="proxy-select">
-                        <SelectValue placeholder={loadingProxies ? "加载中..." : "不绑定代理"} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">不绑定代理</SelectItem>
-                        {proxies.map((proxy) => (
-                          <SelectItem key={proxy.id} value={String(proxy.id)}>
-                            {proxy.host}:{proxy.port} {proxy.username && `(${proxy.username})`}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    {proxies.length === 0 && !loadingProxies && (
-                      <p className="text-xs text-muted-foreground">
-                        暂无可用代理，可以在代理管理中添加
-                      </p>
-                    )}
-                  </div>
-
-                  {/* 提示信息 */}
-                  <div className="bg-muted/50 rounded-lg p-3 text-xs text-muted-foreground">
-                    <p className="font-medium mb-1">提示：</p>
-                    <ul className="space-y-1 list-disc list-inside">
-                      <li>系统会自动识别文件格式并转换为 SessionString</li>
-                      <li>如果文件包含手机号信息，会自动提取</li>
-                      <li>单个文件最大支持 100MB</li>
-                    </ul>
-                  </div>
-                </div>
-              </DialogContent>
-            </Dialog>
-              <Button onClick={handleAddAccount}>
-                <Plus className="h-4 w-4 mr-2" />
-                手动添加
-              </Button>
-            </>
-          }
-        />
-
-        {/* Filters */}
-        <FilterBar
-          search={search}
-          onSearchChange={setSearch}
-          searchPlaceholder="搜索手机号或备注..."
-          filters={
-            <Button variant="outline">
-              <Filter className="h-4 w-4 mr-2" />
-              筛选
+        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight gradient-text">账号管理</h1>
+            <p className="text-muted-foreground mt-1">管理和监控您的 Telegram 账号</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" onClick={() => setTaskMonitorOpen(true)} className="btn-modern">
+              <ListTodo className="h-4 w-4 mr-2" />
+              任务监控
             </Button>
-          }
-        />
-
-        {/* 账号数据表 */}
-        <div className="rounded-md border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-[200px]">账号信息</TableHead>
-                <TableHead className="w-[120px]">状态</TableHead>
-                <TableHead className="w-[150px]">健康度</TableHead>
-                <TableHead className="w-[100px]">代理</TableHead>
-                <TableHead className="w-[120px]">最后使用</TableHead>
-                <TableHead className="w-[180px]">操作</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {loading ? (
-                // 加载状态
-                Array.from({ length: 5 }).map((_, index) => (
-                  <TableRow key={index}>
-                    <TableCell><div className="h-4 bg-muted rounded animate-pulse" /></TableCell>
-                    <TableCell><div className="h-4 bg-muted rounded animate-pulse" /></TableCell>
-                    <TableCell><div className="h-4 bg-muted rounded animate-pulse" /></TableCell>
-                    <TableCell><div className="h-4 bg-muted rounded animate-pulse" /></TableCell>
-                    <TableCell><div className="h-4 bg-muted rounded animate-pulse" /></TableCell>
-                    <TableCell><div className="h-4 bg-muted rounded animate-pulse" /></TableCell>
-                  </TableRow>
-                ))
-              ) : accounts.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={6} className="h-24 text-center">
-                    暂无账号数据
-                  </TableCell>
-                </TableRow>
-              ) : (
-                accounts.map((record) => (
-                  <TableRow key={record.id}>
-                    <TableCell>
-                      <div className="space-y-1">
-                        <div className="font-medium">{record.phone}</div>
-                        {record.note && (
-                          <div className="text-sm text-muted-foreground">{record.note}</div>
+            <Dialog open={uploadDialogOpen} onOpenChange={setUploadDialogOpen}>
+              <DialogTrigger asChild>
+                <Button variant="outline" className="btn-modern">
+                  <Upload className="h-4 w-4 mr-2" />
+                  上传账号文件
+                </Button>
+              </DialogTrigger>
+                <DialogContent className="sm:max-w-[500px]">
+                  <DialogHeader>
+                    <DialogTitle className="text-2xl">上传账号文件</DialogTitle>
+                    <DialogDescription>
+                      支持上传 .zip、.session 文件或 tdata 文件夹。系统将自动解析 Session/TData 格式并转换为 SessionString。
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-4 py-4">
+                    {/* 文件上传区域 */}
+                    <div className="relative border-2 border-dashed border-muted-foreground/25 rounded-xl p-8 text-center hover:border-primary/50 transition-colors bg-gradient-to-br from-muted/30 to-muted/10">
+                      <div className="absolute top-4 right-4">
+                        <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
+                          <Upload className="h-4 w-4 text-primary" />
+                        </div>
+                      </div>
+                      <FileArchive className="h-16 w-16 mx-auto mb-4 text-primary/60" />
+                      <p className="text-sm font-semibold mb-3">
+                        支持的文件格式
+                      </p>
+                      <div className="bg-background/50 rounded-lg p-4 mb-4">
+                        <ul className="text-xs text-muted-foreground space-y-2 text-left max-w-xs mx-auto">
+                          <li className="flex items-center gap-2">
+                            <div className="h-1.5 w-1.5 rounded-full bg-primary" />
+                            .zip 压缩包（可包含多个账号文件）
+                          </li>
+                          <li className="flex items-center gap-2">
+                            <div className="h-1.5 w-1.5 rounded-full bg-primary" />
+                            .session 文件（Pyrogram 格式）
+                          </li>
+                          <li className="flex items-center gap-2">
+                            <div className="h-1.5 w-1.5 rounded-full bg-primary" />
+                            tdata 文件夹（Telegram Desktop 格式）
+                          </li>
+                          <li className="flex items-center gap-2">
+                            <div className="h-1.5 w-1.5 rounded-full bg-primary" />
+                            gotd/td 格式 session 文件
+                          </li>
+                        </ul>
+                      </div>
+                      <Input
+                        ref={fileInputRef}
+                        type="file"
+                        className="hidden"
+                        id="account-file-upload"
+                        accept=".zip,.session"
+                        onChange={handleFileUpload}
+                        disabled={uploading}
+                      />
+                      <Button
+                        variant={uploading ? "outline" : "default"}
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={uploading}
+                        className="btn-modern"
+                      >
+                        {uploading ? (
+                          <>
+                            <Activity className="h-4 w-4 mr-2 animate-spin" />
+                            上传中...
+                          </>
+                        ) : (
+                          <>
+                            <Upload className="h-4 w-4 mr-2" />
+                            选择文件
+                          </>
                         )}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        {getStatusIcon(record.status)}
-                        <Badge
-                          variant={record.status === 'normal' ? 'default' : record.status === 'dead' || record.status === 'restricted' ? 'destructive' : 'secondary'}
-                          className={cn("text-xs", getStatusColor(record.status))}
+                      </Button>
+                      {uploading && (
+                        <motion.p 
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          className="text-sm text-muted-foreground mt-3"
                         >
-                          {getStatusText(record.status)}
-                        </Badge>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-3">
-                        <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden max-w-16">
-                          <motion.div
-                            initial={{ width: 0 }}
-                            animate={{ width: `${(record.health_score || 0) * 100}%` }}
-                            transition={{ duration: 0.8, ease: "easeOut" }}
-                            className={cn(
-                              "h-full transition-colors",
-                              (record.health_score || 0) >= 0.8 ? 'bg-green-500' :
-                              (record.health_score || 0) >= 0.6 ? 'bg-yellow-500' : 'bg-red-500'
-                            )}
-                          />
+                          正在解析文件并转换格式，请稍候...
+                        </motion.p>
+                      )}
+                    </div>
+
+                    {/* 代理选择（可选） */}
+                    <div className="space-y-2">
+                      <Label htmlFor="proxy-select">选择代理（可选）</Label>
+                      <Select
+                        value={selectedProxy || "none"}
+                        onValueChange={(value) => setSelectedProxy(value === "none" ? "" : value)}
+                        disabled={uploading || loadingProxies}
+                      >
+                        <SelectTrigger id="proxy-select">
+                          <SelectValue placeholder={loadingProxies ? "加载中..." : "不绑定代理"} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">不绑定代理</SelectItem>
+                          {proxies.map((proxy) => (
+                            <SelectItem key={proxy.id} value={String(proxy.id)}>
+                              {proxy.host}:{proxy.port} {proxy.username && `(${proxy.username})`}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {proxies.length === 0 && !loadingProxies && (
+                        <p className="text-xs text-muted-foreground">
+                          暂无可用代理，可以在代理管理中添加
+                        </p>
+                      )}
+                    </div>
+
+                    {/* 提示信息 */}
+                    <div className="bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-950/30 dark:to-purple-950/30 rounded-xl p-4 border border-blue-200/50 dark:border-blue-800/50">
+                      <div className="flex items-start gap-3">
+                        <div className="h-8 w-8 rounded-full bg-blue-500/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                          <AlertCircle className="h-4 w-4 text-blue-600 dark:text-blue-400" />
                         </div>
-                        <span className="text-sm font-medium min-w-12">
-                          {((record.health_score || 0) * 100).toFixed(0)}%
-                        </span>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={record.proxy_id ? 'default' : 'secondary'} className="text-xs">
-                        {record.proxy_id ? '已绑定' : '未绑定'}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <div className="text-sm text-muted-foreground">
-                        {record.last_used_at ? new Date(record.last_used_at).toLocaleDateString() : '从未使用'}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <TooltipProvider>
-                        <div className="flex items-center gap-1">
-                          {/* 编辑账号 */}
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8 hover:bg-blue-50 text-blue-600 hover:text-blue-700"
-                                onClick={() => handleEditAccount(record)}
-                              >
-                                <Pencil className="h-4 w-4" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent side="top">
-                              <p className="text-xs">编辑账号信息</p>
-                            </TooltipContent>
-                          </Tooltip>
-
-                          {/* 检查健康 */}
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className={cn(
-                                  "h-8 w-8",
-                                  healthChecking === record.id
-                                    ? "opacity-50 cursor-not-allowed text-muted-foreground"
-                                    : "hover:bg-green-50 text-green-600 hover:text-green-700"
-                                )}
-                                disabled={healthChecking === record.id}
-                                onClick={() => handleCheckHealth(record)}
-                              >
-                                <Activity className="h-4 w-4" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent side="top">
-                              <p className="text-xs">
-                                {healthChecking === record.id ? "检查中..." : "检查账号健康"}
-                              </p>
-                            </TooltipContent>
-                          </Tooltip>
-
-                          {/* 绑定代理 */}
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8 hover:bg-purple-50 text-purple-600 hover:text-purple-700"
-                                onClick={() => handleBindProxy(record)}
-                              >
-                                <Link2 className="h-4 w-4" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent side="top">
-                              <p className="text-xs">绑定代理服务器</p>
-                            </TooltipContent>
-                          </Tooltip>
-
-                          {/* 删除账号 */}
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8 hover:bg-red-50 text-red-600 hover:text-red-700"
-                                onClick={() => handleDeleteAccount(record)}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent side="top">
-                              <p className="text-xs">删除账号 (不可恢复)</p>
-                            </TooltipContent>
-                          </Tooltip>
+                        <div className="flex-1">
+                          <p className="font-semibold text-sm mb-2 text-blue-900 dark:text-blue-100">温馨提示</p>
+                          <ul className="space-y-1.5 text-xs text-blue-700/80 dark:text-blue-300/80">
+                            <li className="flex items-start gap-2">
+                              <CheckCircle2 className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
+                              <span>系统会自动识别文件格式并转换为 SessionString</span>
+                            </li>
+                            <li className="flex items-start gap-2">
+                              <CheckCircle2 className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
+                              <span>如果文件包含手机号信息，会自动提取</span>
+                            </li>
+                            <li className="flex items-start gap-2">
+                              <CheckCircle2 className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
+                              <span>单个文件最大支持 100MB</span>
+                            </li>
+                          </ul>
                         </div>
-                      </TooltipProvider>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
+                      </div>
+                    </div>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            <Button onClick={handleAddAccount} className="btn-modern">
+              <Plus className="h-4 w-4 mr-2" />
+              手动添加
+            </Button>
+          </div>
         </div>
 
-        {/* 分页 */}
-        <div className="flex items-center justify-between">
-          <div className="text-sm text-muted-foreground">
-            共 {total} 个账号，当前第 {page} 页
-          </div>
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page === 1}
+        {/* Stats Cards */}
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3 }}
+          >
+            <Card className="relative overflow-hidden border-none shadow-sm bg-gradient-to-br from-blue-50 to-blue-100/50 dark:from-blue-950/50 dark:to-blue-900/30">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium text-blue-900 dark:text-blue-100">总账号数</CardTitle>
+                <div className="h-10 w-10 rounded-full bg-blue-500/10 flex items-center justify-center">
+                  <Users className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="text-3xl font-bold text-blue-900 dark:text-blue-100">{total}</div>
+                <p className="text-xs text-blue-700/70 dark:text-blue-300/70 mt-1">
+                  当前系统中的所有账号
+                </p>
+              </CardContent>
+              <div className="absolute -right-4 -bottom-4 h-24 w-24 rounded-full bg-blue-500/5" />
+            </Card>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, delay: 0.1 }}
+          >
+            <Card className="relative overflow-hidden border-none shadow-sm bg-gradient-to-br from-green-50 to-green-100/50 dark:from-green-950/50 dark:to-green-900/30">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium text-green-900 dark:text-green-100">正常账号</CardTitle>
+                <div className="h-10 w-10 rounded-full bg-green-500/10 flex items-center justify-center">
+                  <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400" />
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="text-3xl font-bold text-green-900 dark:text-green-100">
+                  {accounts.filter(a => a.status === 'normal').length}
+                </div>
+                <p className="text-xs text-green-700/70 dark:text-green-300/70 mt-1">
+                  健康状态良好的账号
+                </p>
+              </CardContent>
+              <div className="absolute -right-4 -bottom-4 h-24 w-24 rounded-full bg-green-500/5" />
+            </Card>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, delay: 0.2 }}
+          >
+            <Card className="relative overflow-hidden border-none shadow-sm bg-gradient-to-br from-purple-50 to-purple-100/50 dark:from-purple-950/50 dark:to-purple-900/30">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium text-purple-900 dark:text-purple-100">活跃代理</CardTitle>
+                <div className="h-10 w-10 rounded-full bg-purple-500/10 flex items-center justify-center">
+                  <Activity className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="text-3xl font-bold text-purple-900 dark:text-purple-100">{proxies.length}</div>
+                <p className="text-xs text-purple-700/70 dark:text-purple-300/70 mt-1">
+                  当前可用的代理服务器
+                </p>
+              </CardContent>
+              <div className="absolute -right-4 -bottom-4 h-24 w-24 rounded-full bg-purple-500/5" />
+            </Card>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, delay: 0.3 }}
+          >
+            <Card className="relative overflow-hidden border-none shadow-sm bg-gradient-to-br from-orange-50 to-orange-100/50 dark:from-orange-950/50 dark:to-orange-900/30">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium text-orange-900 dark:text-orange-100">平均健康度</CardTitle>
+                <div className="h-10 w-10 rounded-full bg-orange-500/10 flex items-center justify-center">
+                  <Activity className="h-5 w-5 text-orange-600 dark:text-orange-400" />
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="text-3xl font-bold text-orange-900 dark:text-orange-100">
+                  {accounts.length > 0 
+                    ? ((accounts.reduce((sum, a) => sum + (a.health_score || 0), 0) / accounts.length) * 100).toFixed(0)
+                    : 0}%
+                </div>
+                <p className="text-xs text-orange-700/70 dark:text-orange-300/70 mt-1">
+                  所有账号的平均健康度
+                </p>
+              </CardContent>
+              <div className="absolute -right-4 -bottom-4 h-24 w-24 rounded-full bg-orange-500/5" />
+            </Card>
+          </motion.div>
+        </div>
+
+        {/* Search Bar */}
+        <Card className="border-none shadow-sm">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1 max-w-md">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="搜索手机号或备注..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="pl-9 input-modern"
+                />
+              </div>
+              {search && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setSearch("")}
+                  className="text-muted-foreground hover:text-foreground"
+                >
+                  <XCircle className="h-4 w-4 mr-1" />
+                  清除
+                </Button>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Account Cards Grid */}
+        <div className="space-y-4">
+          {/* Batch Actions Bar */}
+          {selectedAccountIds.length > 0 && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 20 }}
+              className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-background/95 backdrop-blur-lg border shadow-2xl rounded-full px-6 py-3 flex items-center gap-4"
             >
-              上一页
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setPage((p) => p + 1)}
-              disabled={page * 20 >= total}
-            >
-              下一页
-            </Button>
-          </div>
+              <div className="flex items-center gap-2 border-r pr-4 mr-2">
+                <div className="bg-primary text-primary-foreground text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center">
+                  {selectedAccountIds.length}
+                </div>
+                <span className="text-sm font-medium text-muted-foreground">
+                  已选择
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <TooltipProvider delayDuration={0}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="rounded-full hover:bg-primary/10 hover:text-primary"
+                        onClick={() => {
+                          setInitialTaskType("check")
+                          setCreateTaskDialogOpen(true)
+                        }}
+                      >
+                        <Activity className="h-5 w-5" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>检查健康</p>
+                    </TooltipContent>
+                  </Tooltip>
+
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="rounded-full hover:bg-primary/10 hover:text-primary"
+                        onClick={() => {
+                          setInitialTaskType("private_message")
+                          setCreateTaskDialogOpen(true)
+                        }}
+                      >
+                        <MessageSquare className="h-5 w-5" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>发送私信</p>
+                    </TooltipContent>
+                  </Tooltip>
+
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="rounded-full hover:bg-primary/10 hover:text-primary"
+                        onClick={() => {
+                          setInitialTaskType("broadcast")
+                          setCreateTaskDialogOpen(true)
+                        }}
+                      >
+                        <Megaphone className="h-5 w-5" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>群发消息</p>
+                    </TooltipContent>
+                  </Tooltip>
+
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="rounded-full hover:bg-primary/10 hover:text-primary"
+                        onClick={() => {
+                          setInitialTaskType("group_chat")
+                          setCreateTaskDialogOpen(true)
+                        }}
+                      >
+                        <Users className="h-5 w-5" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>AI炒群</p>
+                    </TooltipContent>
+                  </Tooltip>
+
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="rounded-full hover:bg-primary/10 hover:text-primary"
+                        onClick={() => {
+                          setInitialTaskType("verify_code")
+                          setCreateTaskDialogOpen(true)
+                        }}
+                      >
+                        <ShieldCheck className="h-5 w-5" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>接收验证码</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+
+                <div className="w-px h-6 bg-border mx-2" />
+
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="text-muted-foreground hover:text-foreground rounded-full px-3"
+                  onClick={() => setSelectedAccountIds([])}
+                >
+                  取消
+                </Button>
+              </div>
+            </motion.div>
+          )}
+
+          {/* 账号表格 */}
+          <Card className="border-none shadow-md overflow-hidden">
+            <CardContent className="p-0">
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-muted/50 hover:bg-muted/50 border-b-2">
+                      <TableHead className="w-[50px] h-12">
+                        <Checkbox
+                          checked={accounts.length > 0 && selectedAccountIds.length === accounts.length}
+                          onCheckedChange={toggleSelectAll}
+                        />
+                      </TableHead>
+                      <TableHead className="w-[180px] font-semibold">账号信息</TableHead>
+                      <TableHead className="w-[120px] font-semibold">状态</TableHead>
+                      <TableHead className="w-[150px] font-semibold">健康度</TableHead>
+                      <TableHead className="w-[100px] font-semibold">代理</TableHead>
+                      <TableHead className="w-[140px] font-semibold">最后使用</TableHead>
+                      <TableHead className="w-[200px] text-right font-semibold">操作</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                <TableBody>
+                  {loading ? (
+                    // 加载状态 - 美化的骨架屏
+                    Array.from({ length: 10 }).map((_, index) => (
+                      <TableRow key={index} className="animate-pulse">
+                        <TableCell className="py-4">
+                          <div className="h-5 w-5 bg-muted rounded" />
+                        </TableCell>
+                        <TableCell className="py-4">
+                          <div className="flex items-center gap-3">
+                            <div className="h-10 w-10 bg-muted rounded-full" />
+                            <div className="space-y-2">
+                              <div className="h-4 w-28 bg-muted rounded" />
+                              <div className="h-3 w-20 bg-muted rounded" />
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell className="py-4">
+                          <div className="h-6 w-16 bg-muted rounded-full" />
+                        </TableCell>
+                        <TableCell className="py-4">
+                          <div className="flex items-center gap-3">
+                            <div className="h-2.5 w-20 bg-muted rounded-full" />
+                            <div className="h-4 w-12 bg-muted rounded" />
+                          </div>
+                        </TableCell>
+                        <TableCell className="py-4">
+                          <div className="h-6 w-16 bg-muted rounded-full" />
+                        </TableCell>
+                        <TableCell className="py-4">
+                          <div className="h-4 w-20 bg-muted rounded" />
+                        </TableCell>
+                        <TableCell className="py-4">
+                          <div className="flex items-center justify-end gap-1">
+                            <div className="h-9 w-9 bg-muted rounded-lg" />
+                            <div className="h-9 w-9 bg-muted rounded-lg" />
+                            <div className="h-9 w-9 bg-muted rounded-lg" />
+                            <div className="h-9 w-9 bg-muted rounded-lg" />
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  ) : accounts.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={7} className="h-64">
+                        <div className="flex flex-col items-center justify-center">
+                          <Users className="h-12 w-12 text-muted-foreground/50 mb-4" />
+                          <p className="text-lg font-medium text-muted-foreground mb-2">暂无账号数据</p>
+                          <p className="text-sm text-muted-foreground mb-6">开始添加您的第一个 Telegram 账号</p>
+                          <div className="flex gap-2">
+                            <Button onClick={handleAddAccount}>
+                              <Plus className="h-4 w-4 mr-2" />
+                              手动添加
+                            </Button>
+                            <Button variant="outline" onClick={() => setUploadDialogOpen(true)}>
+                              <Upload className="h-4 w-4 mr-2" />
+                              上传文件
+                            </Button>
+                          </div>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    accounts.map((record, index) => (
+                      <TableRow 
+                        key={record.id} 
+                        className={cn(
+                          "group transition-colors hover:bg-muted/50",
+                          selectedAccountIds.includes(String(record.id)) && "bg-primary/5"
+                        )}
+                      >
+                        <TableCell className="py-4">
+                          <Checkbox
+                            checked={selectedAccountIds.includes(String(record.id))}
+                            onCheckedChange={() => toggleSelectOne(String(record.id))}
+                          />
+                        </TableCell>
+                        <TableCell className="py-4">
+                          <div className="flex items-center gap-3">
+                            <div className={cn(
+                              "h-10 w-10 rounded-full flex items-center justify-center text-sm font-semibold",
+                              record.status === 'normal' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
+                              record.status === 'warning' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' :
+                              record.status === 'restricted' ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' :
+                              record.status === 'dead' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
+                              'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                            )}>
+                              {record.phone.slice(-2)}
+                            </div>
+                            <div className="space-y-1">
+                              <div className="font-semibold text-sm">{record.phone}</div>
+                              {record.note && (
+                                <div className="text-xs text-muted-foreground line-clamp-1">{record.note}</div>
+                              )}
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell className="py-4">
+                          <Badge
+                            variant={record.status === 'normal' ? 'default' : record.status === 'dead' || record.status === 'restricted' ? 'destructive' : 'secondary'}
+                            className={cn("text-xs font-medium", getStatusColor(record.status))}
+                          >
+                            {getStatusIcon(record.status)}
+                            <span className="ml-1.5">{getStatusText(record.status)}</span>
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="py-4">
+                          <div className="flex items-center gap-3">
+                            <div className="flex-1 h-2.5 bg-muted rounded-full overflow-hidden max-w-[90px] shadow-inner">
+                              <motion.div
+                                initial={{ width: 0 }}
+                                animate={{ width: `${(record.health_score || 0) * 100}%` }}
+                                transition={{ duration: 0.8, ease: "easeOut", delay: index * 0.02 }}
+                                className={cn(
+                                  "h-full transition-all",
+                                  (record.health_score || 0) >= 0.8 ? 'bg-gradient-to-r from-green-500 to-green-600' :
+                                  (record.health_score || 0) >= 0.6 ? 'bg-gradient-to-r from-yellow-500 to-yellow-600' : 
+                                  'bg-gradient-to-r from-red-500 to-red-600'
+                                )}
+                              />
+                            </div>
+                            <span className={cn(
+                              "text-sm font-bold min-w-[45px]",
+                              (record.health_score || 0) >= 0.8 ? 'text-green-600 dark:text-green-400' :
+                              (record.health_score || 0) >= 0.6 ? 'text-yellow-600 dark:text-yellow-400' : 
+                              'text-red-600 dark:text-red-400'
+                            )}>
+                              {((record.health_score || 0) * 100).toFixed(0)}%
+                            </span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="py-4">
+                          <Badge 
+                            variant={record.proxy_id ? 'default' : 'outline'} 
+                            className={cn(
+                              "text-xs font-medium",
+                              record.proxy_id && "bg-purple-100 text-purple-700 border-purple-200 dark:bg-purple-900/30 dark:text-purple-400 dark:border-purple-800"
+                            )}
+                          >
+                            <div className={cn(
+                              "h-1.5 w-1.5 rounded-full mr-1.5",
+                              record.proxy_id ? "bg-purple-500" : "bg-gray-400"
+                            )} />
+                            {record.proxy_id ? '已绑定' : '未绑定'}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="py-4">
+                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                            <Activity className="h-3.5 w-3.5" />
+                            <span>
+                              {record.last_used_at ? new Date(record.last_used_at).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' }) : '从未'}
+                            </span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="py-4">
+                          <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <TooltipProvider>
+                              {/* 编辑账号 */}
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-9 w-9 rounded-lg hover:bg-blue-50 text-blue-600 hover:text-blue-700 dark:hover:bg-blue-950 transition-all hover:scale-105"
+                                    onClick={() => handleEditAccount(record)}
+                                  >
+                                    <Pencil className="h-4 w-4" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent side="top">
+                                  <p className="text-xs">编辑账号</p>
+                                </TooltipContent>
+                              </Tooltip>
+
+                              {/* 检查健康 */}
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className={cn(
+                                      "h-9 w-9 rounded-lg transition-all",
+                                      healthChecking === record.id
+                                        ? "opacity-50 cursor-not-allowed text-muted-foreground"
+                                        : "hover:bg-green-50 text-green-600 hover:text-green-700 dark:hover:bg-green-950 hover:scale-105"
+                                    )}
+                                    disabled={healthChecking === record.id}
+                                    onClick={() => handleCheckHealth(record)}
+                                  >
+                                    <Activity className={cn("h-4 w-4", healthChecking === record.id && "animate-spin")} />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent side="top">
+                                  <p className="text-xs">
+                                    {healthChecking === record.id ? "检查中..." : "健康检查"}
+                                  </p>
+                                </TooltipContent>
+                              </Tooltip>
+
+                              {/* 绑定代理 */}
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-9 w-9 rounded-lg hover:bg-purple-50 text-purple-600 hover:text-purple-700 dark:hover:bg-purple-950 transition-all hover:scale-105"
+                                    onClick={() => handleBindProxy(record)}
+                                  >
+                                    <Link2 className="h-4 w-4" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent side="top">
+                                  <p className="text-xs">绑定代理</p>
+                                </TooltipContent>
+                              </Tooltip>
+
+                              {/* 删除账号 */}
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-9 w-9 rounded-lg hover:bg-red-50 text-red-600 hover:text-red-700 dark:hover:bg-red-950 transition-all hover:scale-105"
+                                    onClick={() => handleDeleteAccount(record)}
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent side="top">
+                                  <p className="text-xs">删除账号</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+              </div>
+
+              {/* 分页 */}
+              <div className="flex items-center justify-between px-6 py-4 border-t bg-muted/30">
+                <div className="flex items-center gap-4">
+                  <div className="text-sm font-medium text-foreground">
+                    共 <span className="text-primary font-bold">{total}</span> 个账号
+                  </div>
+                  <div className="h-4 w-px bg-border" />
+                  <div className="text-sm text-muted-foreground">
+                    第 {page} 页 · 每页 50 条
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    disabled={page === 1}
+                    className="btn-modern h-9 px-4"
+                  >
+                    <ChevronDown className="h-4 w-4 mr-1 rotate-90" />
+                    上一页
+                  </Button>
+                  <div className="flex items-center gap-1 px-2">
+                    <span className="text-sm font-medium">{page}</span>
+                    <span className="text-sm text-muted-foreground">/</span>
+                    <span className="text-sm text-muted-foreground">{Math.ceil(total / 50)}</span>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPage((p) => p + 1)}
+                    disabled={page * 50 >= total}
+                    className="btn-modern h-9 px-4"
+                  >
+                    下一页
+                    <ChevronDown className="h-4 w-4 ml-1 -rotate-90" />
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </div>
 
         {/* 编辑账号对话框 */}
         <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
           <DialogContent className="sm:max-w-[500px]">
             <DialogHeader>
-              <DialogTitle>编辑账号</DialogTitle>
+              <DialogTitle className="text-2xl">编辑账号</DialogTitle>
               <DialogDescription>
                 更新账号信息。Session数据通常不允许修改。
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
               <div className="space-y-2">
-                <Label htmlFor="edit-phone">手机号</Label>
+                <Label htmlFor="edit-phone" className="text-sm font-medium">手机号</Label>
                 <Input
                   id="edit-phone"
                   value={editForm.phone}
                   onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
                   disabled
-                  className="bg-muted"
+                  className="bg-muted/50 input-modern"
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="edit-note">备注</Label>
+                <Label htmlFor="edit-note" className="text-sm font-medium">备注</Label>
                 <Textarea
                   id="edit-note"
                   value={editForm.note}
                   onChange={(e) => setEditForm({ ...editForm, note: e.target.value })}
                   placeholder="输入备注信息..."
                   rows={3}
+                  className="input-modern resize-none"
                 />
               </div>
             </div>
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
+            <div className="flex justify-end gap-2 pt-4 border-t">
+              <Button variant="outline" onClick={() => setEditDialogOpen(false)} className="btn-modern">
                 取消
               </Button>
-              <Button onClick={handleSaveEdit}>保存</Button>
+              <Button onClick={handleSaveEdit} className="btn-modern">保存</Button>
             </div>
           </DialogContent>
         </Dialog>
 
         {/* 绑定代理对话框 */}
         <Dialog open={bindProxyDialogOpen} onOpenChange={setBindProxyDialogOpen}>
-          <DialogContent className="sm:max-w-[400px]">
+          <DialogContent className="sm:max-w-[450px]">
             <DialogHeader>
-              <DialogTitle>绑定代理</DialogTitle>
+              <DialogTitle className="text-2xl">绑定代理</DialogTitle>
               <DialogDescription>
-                为账号 {bindingAccount?.phone} 绑定或解绑代理
+                为账号 <span className="font-semibold text-foreground">{bindingAccount?.phone}</span> 绑定或解绑代理
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
               <div className="space-y-2">
-                <Label htmlFor="bind-proxy-select">选择代理</Label>
+                <Label htmlFor="bind-proxy-select" className="text-sm font-medium">选择代理</Label>
                 <Select
                   value={selectedBindProxy || "none"}
                   onValueChange={(value) => setSelectedBindProxy(value === "none" ? "" : value)}
                   disabled={loadingProxies}
                 >
-                  <SelectTrigger id="bind-proxy-select">
+                  <SelectTrigger id="bind-proxy-select" className="input-modern">
                     <SelectValue placeholder={loadingProxies ? "加载中..." : "不绑定代理"} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">不绑定代理（解绑）</SelectItem>
+                    <SelectItem value="none">
+                      <div className="flex items-center gap-2">
+                        <XCircle className="h-4 w-4 text-muted-foreground" />
+                        不绑定代理（解绑）
+                      </div>
+                    </SelectItem>
                     {proxies.map((proxy) => (
                       <SelectItem key={proxy.id} value={String(proxy.id)}>
-                        {proxy.host}:{proxy.port} {proxy.username && `(${proxy.username})`}
+                        <div className="flex items-center gap-2">
+                          <Link2 className="h-4 w-4 text-primary" />
+                          {proxy.host}:{proxy.port} {proxy.username && `(${proxy.username})`}
+                        </div>
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+                {proxies.length === 0 && !loadingProxies && (
+                  <p className="text-xs text-muted-foreground flex items-center gap-1.5 mt-2">
+                    <AlertCircle className="h-3.5 w-3.5" />
+                    暂无可用代理，可以在代理管理中添加
+                  </p>
+                )}
               </div>
             </div>
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setBindProxyDialogOpen(false)}>
+            <div className="flex justify-end gap-2 pt-4 border-t">
+              <Button variant="outline" onClick={() => setBindProxyDialogOpen(false)} className="btn-modern">
                 取消
               </Button>
-              <Button onClick={handleSaveBindProxy}>确认</Button>
+              <Button onClick={handleSaveBindProxy} className="btn-modern">确认</Button>
             </div>
           </DialogContent>
         </Dialog>
 
         {/* 手动添加账号对话框 */}
         <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
-          <DialogContent className="sm:max-w-[600px]">
+          <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>手动添加账号</DialogTitle>
+              <DialogTitle className="text-2xl">手动添加账号</DialogTitle>
               <DialogDescription>
-                手动输入账号信息添加新的TG账号
+                手动输入账号信息添加新的 Telegram 账号
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
               <div className="space-y-2">
-                <Label htmlFor="add-phone">手机号 *</Label>
+                <Label htmlFor="add-phone" className="text-sm font-medium flex items-center gap-1">
+                  手机号 <span className="text-red-500">*</span>
+                </Label>
                 <Input
                   id="add-phone"
                   value={addForm.phone}
                   onChange={(e) => setAddForm({ ...addForm, phone: e.target.value })}
                   placeholder="+1234567890"
                   required
+                  className="input-modern"
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="add-session">Session数据 *</Label>
+                <Label htmlFor="add-session" className="text-sm font-medium flex items-center gap-1">
+                  Session数据 <span className="text-red-500">*</span>
+                </Label>
                 <Textarea
                   id="add-session"
                   value={addForm.session_data}
@@ -785,49 +1267,140 @@ export default function AccountsPage() {
                   placeholder="粘贴SessionString..."
                   rows={6}
                   required
-                  className="font-mono text-xs"
+                  className="font-mono text-xs input-modern resize-none"
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="add-note">备注（可选）</Label>
+                <Label htmlFor="add-note" className="text-sm font-medium">备注（可选）</Label>
                 <Input
                   id="add-note"
                   value={addForm.note}
                   onChange={(e) => setAddForm({ ...addForm, note: e.target.value })}
                   placeholder="输入备注信息..."
+                  className="input-modern"
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="add-proxy-select">代理（可选）</Label>
-                <Select
-                  value={addForm.proxy_id || "none"}
-                  onValueChange={(value) => setAddForm({ ...addForm, proxy_id: value === "none" ? "" : value })}
-                  disabled={loadingProxies}
-                >
-                  <SelectTrigger id="add-proxy-select">
-                    <SelectValue placeholder={loadingProxies ? "加载中..." : "不绑定代理"} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">不绑定代理</SelectItem>
-                    {proxies.map((proxy) => (
-                      <SelectItem key={proxy.id} value={String(proxy.id)}>
-                        {proxy.host}:{proxy.port} {proxy.username && `(${proxy.username})`}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Label htmlFor="add-proxy" className="text-sm font-medium">代理ID（可选）</Label>
+                <Input
+                  id="add-proxy"
+                  value={addForm.proxy_id}
+                  onChange={(e) => setAddForm({ ...addForm, proxy_id: e.target.value })}
+                  placeholder="输入代理ID..."
+                  className="input-modern"
+                />
               </div>
             </div>
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setAddDialogOpen(false)}>
+            <div className="flex justify-end gap-2 pt-4 border-t">
+              <Button variant="outline" onClick={() => setAddDialogOpen(false)} className="btn-modern">
                 取消
               </Button>
-              <Button onClick={handleSaveAdd}>添加</Button>
+              <Button onClick={handleSaveAdd} className="btn-modern">
+                <Plus className="h-4 w-4 mr-2" />
+                添加账号
+              </Button>
             </div>
           </DialogContent>
         </Dialog>
-      </div>
-    </MainLayout>
+
+        <CreateTaskDialog
+          open={createTaskDialogOpen}
+          onOpenChange={setCreateTaskDialogOpen}
+          accountIds={selectedAccountIds}
+          initialTaskType={initialTaskType}
+          onSuccess={() => {
+            setSelectedAccountIds([])
+            setTaskMonitorOpen(true) // 创建成功后打开任务监控
+          }}
+        />
+
+        <Sheet open={taskMonitorOpen} onOpenChange={setTaskMonitorOpen}>
+          <SheetContent className="sm:max-w-[540px]">
+            <SheetHeader>
+              <SheetTitle className="text-2xl flex items-center gap-2">
+                <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+                  <ListTodo className="h-5 w-5 text-primary" />
+                </div>
+                任务监控
+              </SheetTitle>
+              <SheetDescription>
+                实时查看最近的任务执行情况
+              </SheetDescription>
+            </SheetHeader>
+            <div className="py-6 h-full">
+              <div className="h-[calc(100vh-140px)] overflow-y-auto pr-2">
+                <div className="space-y-3">
+                  {loadingTasks ? (
+                    <div className="flex flex-col items-center justify-center py-12">
+                      <Activity className="h-8 w-8 text-primary animate-spin mb-3" />
+                      <p className="text-sm text-muted-foreground">加载中...</p>
+                    </div>
+                  ) : recentTasks.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-12">
+                      <div className="h-16 w-16 rounded-full bg-muted flex items-center justify-center mb-4">
+                        <ListTodo className="h-8 w-8 text-muted-foreground" />
+                      </div>
+                      <p className="text-sm font-medium text-muted-foreground mb-1">暂无任务</p>
+                      <p className="text-xs text-muted-foreground">创建任务后将在此显示</p>
+                    </div>
+                  ) : (
+                    recentTasks.map((task, index) => (
+                      <motion.div
+                        key={task.id}
+                        initial={{ opacity: 0, x: 20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ duration: 0.2, delay: index * 0.05 }}
+                      >
+                        <Card className="overflow-hidden hover:shadow-md transition-shadow">
+                          <CardContent className="p-4">
+                            <div className="flex items-start justify-between mb-3">
+                              <div className="flex items-center gap-2">
+                                <div className={cn(
+                                  "h-8 w-8 rounded-full flex items-center justify-center",
+                                  task.status === 'completed' ? 'bg-green-500/10' :
+                                  task.status === 'running' ? 'bg-blue-500/10' :
+                                  task.status === 'failed' ? 'bg-red-500/10' : 'bg-gray-500/10'
+                                )}>
+                                  {task.status === 'completed' ? <CheckCircle2 className="h-4 w-4 text-green-600" /> :
+                                   task.status === 'running' ? <Activity className="h-4 w-4 text-blue-600 animate-spin" /> :
+                                   task.status === 'failed' ? <XCircle className="h-4 w-4 text-red-600" /> :
+                                   <AlertCircle className="h-4 w-4 text-gray-600" />}
+                                </div>
+                                <div>
+                                  <div className="font-semibold text-sm">#{task.id}</div>
+                                  <div className="text-xs text-muted-foreground">{task.task_type}</div>
+                                </div>
+                              </div>
+                              <Badge 
+                                variant={task.status === 'completed' ? 'default' : 
+                                        task.status === 'failed' ? 'destructive' : 'secondary'}
+                                className="text-xs"
+                              >
+                                {task.status}
+                              </Badge>
+                            </div>
+                            <div className="space-y-2 text-xs">
+                              <div className="flex items-center gap-2 text-muted-foreground">
+                                <Users className="h-3.5 w-3.5" />
+                                <span>账号: {task.account?.phone || task.account_id}</span>
+                              </div>
+                              <div className="flex items-center gap-2 text-muted-foreground">
+                                <Activity className="h-3.5 w-3.5" />
+                                <span>创建: {new Date(task.created_at).toLocaleString()}</span>
+                              </div>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      </motion.div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+          </SheetContent>
+        </Sheet>
+      </div >
+    </MainLayout >
   )
 }
 

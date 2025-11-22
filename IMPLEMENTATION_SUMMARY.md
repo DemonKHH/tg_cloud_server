@@ -1,189 +1,31 @@
-# ✅ 功能实现完成总结
+# Implementation Summary
 
-**实现时间**: 2024-12-19  
-**实现状态**: ✅ 全部完成
+## Unified Accounts and Tasks Interface
 
----
+### Changes
+- **Accounts Page (`web/app/accounts/page.tsx`)**:
+  - Added checkboxes for batch selection of accounts.
+  - Added a "Task Monitor" button to open a side sheet showing recent tasks.
+  - **Enhanced Batch Actions Bar**:
+    - Replaced the top bar with a **Floating Action Bar** at the bottom of the screen.
+    - Exposed all major task actions (Check Health, Private Message, Broadcast, AI Group Chat, Verify Code) as individual icon buttons with tooltips.
+    - Improved visual design with glassmorphism effect, rounded corners, and smooth animations.
+  - Integrated `CreateTaskDialog` for batch task creation.
+  - Integrated `Sheet` component for task monitoring.
 
-## 📋 已实现功能清单
+- **New Component (`web/components/business/create-task-dialog.tsx`)**:
+  - Created a dialog for creating tasks for multiple accounts.
+  - Supports all task types: Check, Private Message, Broadcast, Verify Code, Group Chat.
+  - Dynamic form fields based on selected task type.
+  - Accepts `initialTaskType` to pre-fill the task type from quick actions.
 
-### ✅ 1. 定时清理任务 - 日志清理
+### Benefits
+- **Streamlined Workflow**: Users can now select accounts and create tasks in one place.
+- **Convenient Operations**: All key actions are one click away in the floating bar.
+- **Better Visibility**: Task status can be monitored without navigating away from the accounts list.
+- **Batch Operations**: improved efficiency by allowing operations on multiple accounts at once.
+- **Modern UI**: The new floating bar provides a more modern and app-like experience.
 
-**位置**: `internal/cron/cron.go`
-
-**实现内容**:
-- ✅ 基于配置的日志保留期清理过期日志文件
-- ✅ 支持日志备份数量限制（MaxBackups）
-- ✅ 自动清理超过保留期的日志文件
-- ✅ 按修改时间排序，保留最新的日志文件
-- ✅ 详细的清理统计和日志记录
-
-**关键功能**:
-- 从配置文件读取日志路径和保留设置
-- 递归扫描日志目录
-- 按文件名模式匹配日志文件
-- 计算并报告释放的磁盘空间
-
----
-
-### ✅ 2. 定时清理任务 - 会话清理
-
-**位置**: `internal/cron/cron.go`
-
-**实现内容**:
-- ✅ 清理无效或损坏的session数据
-- ✅ 检测异常大的session数据（可能已损坏）
-- ✅ 标记长时间未使用的账号session
-- ✅ 基于LastUsedAt时间清理过期session
-
-**关键功能**:
-- 检查session数据大小（超过100KB视为无效）
-- 清理30天未使用的空session账号
-- 记录60天未使用的账号（用于监控）
-- 完整的统计和日志记录
-
----
-
-### ✅ 3. 账号连接状态自动检查
-
-**位置**: `internal/cron/cron.go`
-
-**实现内容**:
-- ✅ 检查连接池中所有账号的连接状态
-- ✅ 获取连接池统计信息
-- ✅ 检测断开的连接并记录警告
-- ✅ 自动更新活跃账号的LastUsedAt时间
-- ✅ 通过SetConnectionPool方法支持连接池注入
-
-**关键功能**:
-- 支持可选的连接池注入（不强制依赖）
-- 检查正常和警告状态的账号
-- 记录连接状态统计信息
-- 自动更新账号活跃时间
-
----
-
-### ✅ 4. WebSocket订阅逻辑
-
-**位置**: `internal/services/notification_service.go`
-
-**实现内容**:
-- ✅ 实现subscribe消息处理
-- ✅ 实现unsubscribe消息处理
-- ✅ 支持单个事件类型订阅
-- ✅ 支持多个事件类型批量订阅
-- ✅ 支持通配符订阅（如 "task.*"）
-- ✅ 基于订阅状态过滤发送的消息
-- ✅ 向后兼容（未订阅时接收所有消息）
-
-**关键功能**:
-- 在WSConnection中添加subscriptions字段管理订阅状态
-- 支持事件类型映射（NotificationType -> EventType）
-- 通配符匹配（订阅"task.*"可接收"task.completed"等）
-- 订阅/取消订阅确认消息
-- 错误处理和日志记录
-
-**消息格式**:
-```json
-// 订阅
-{
-  "type": "subscribe",
-  "events": ["task.*", "account.status_changed"]
-}
-
-// 取消订阅
-{
-  "type": "unsubscribe",
-  "events": ["task.*"]
-}
-```
-
----
-
-### ✅ 5. 任务调度器风控检查
-
-**位置**: `internal/scheduler/task_scheduler.go`
-
-**实现内容**:
-- ✅ 账号状态检查（IsAvailable）
-- ✅ 账号健康度检查（HealthScore >= 0.3）
-- ✅ 账号忙碌状态检查
-- ✅ 连接状态检查
-- ✅ 失败任务频率限制（1小时内超过3个失败任务则拒绝）
-- ✅ 冷却状态检查
-- ✅ 同类型任务队列限制（避免任务堆积）
-
-**关键功能**:
-- 在执行任务前进行完整的风控检查
-- 失败时标记任务为失败并记录原因
-- 详细的检查日志和错误信息
-- 基于实际业务规则的多层防护
-
-**检查项**:
-1. 账号可用性
-2. 健康度阈值（≥0.3）
-3. 账号是否忙碌
-4. 连接状态（必须是connected）
-5. 最近失败任务数（≤3个/小时）
-6. 冷却状态
-7. 同类型任务队列大小（≤5个）
-
----
-
-## 🔧 技术实现细节
-
-### CronService增强
-- 添加了`config`字段用于访问配置
-- 添加了`SetConnectionPool`方法支持可选连接池注入
-- 实现了完整的日志和会话清理逻辑
-- 实现了账号连接状态检查
-
-### WebSocket订阅系统
-- 使用`sync.RWMutex`保护订阅状态
-- 支持通配符匹配（`task.*`匹配所有task事件）
-- 向后兼容（未订阅时接收所有消息）
-- 完整的错误处理和确认消息
-
-### 风控检查系统
-- 多层防护机制
-- 基于实际业务规则
-- 详细的日志记录
-- 失败任务自动标记
-
----
-
-## 📊 完成度更新
-
-| 功能模块 | 之前 | 现在 | 状态 |
-|---------|------|------|------|
-| 定时清理任务 | ❌ 0% | ✅ 100% | 完成 |
-| 账号连接检查 | ❌ 0% | ✅ 100% | 完成 |
-| WebSocket订阅 | ❌ 0% | ✅ 100% | 完成 |
-| 任务调度器风控 | ❌ 0% | ✅ 100% | 完成 |
-
-**总体完成度**: **从 88% 提升到 95%**
-
----
-
-## 🎯 下一步建议
-
-虽然核心功能已全部实现，但以下功能仍可优化：
-
-### 可选增强功能
-1. **连接池自动重连** - 在连接检查中发现断开时自动触发重连
-2. **订阅事件类型验证** - 验证客户端订阅的事件类型是否有效
-3. **风控规则配置化** - 将风控阈值移到配置文件
-4. **更细粒度的订阅控制** - 支持按账号ID、任务ID等订阅特定资源
-
----
-
-## ✨ 总结
-
-所有优先级1的功能已成功实现：
-- ✅ 定时清理任务（日志、会话）
-- ✅ 账号连接状态检查
-- ✅ WebSocket订阅逻辑
-- ✅ 任务调度器风控检查
-
-所有代码已通过编译和linter检查，可以直接使用。
-
+### Next Steps
+- Consider deprecating the standalone `TasksPage` or repurposing it for more detailed history/analytics.
+- Add more batch operations (e.g., batch delete, batch bind proxy).

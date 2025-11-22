@@ -4,7 +4,7 @@ import { toast } from "sonner"
 import { MainLayout } from "@/components/layout/main-layout"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Plus, X, RefreshCw, CheckCircle2, Clock, PlayCircle, AlertCircle, Ban, FileText, MoreVertical, Pause, Play, Square, Trash2 } from "lucide-react"
+import { Plus, X, RefreshCw, CheckCircle2, Clock, PlayCircle, AlertCircle, Ban, FileText, MoreVertical, Pause, Play, Square, Trash2, Search, ChevronDown } from "lucide-react"
 import { taskAPI, accountAPI } from "@/lib/api"
 import { useState, useEffect } from "react"
 import { Badge } from "@/components/ui/badge"
@@ -42,8 +42,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Switch } from "@/components/ui/switch"
 import { cn } from "@/lib/utils"
 import { usePagination } from "@/hooks/use-pagination"
-import { PageHeader } from "@/components/common/page-header"
-import { FilterBar } from "@/components/common/filter-bar"
+import { Card, CardContent } from "@/components/ui/card"
 
 export default function TasksPage() {
   const {
@@ -621,65 +620,86 @@ export default function TasksPage() {
     <MainLayout>
       <div className="space-y-6">
         {/* Page Header */}
-        <PageHeader
-          title="任务管理"
-          description="查看和管理您的任务"
-          actions={
-            <>
-              <Button variant="outline" onClick={refresh}>
-                <RefreshCw className="h-4 w-4 mr-2" />
-                刷新
-              </Button>
-              <Button onClick={handleCreateTask}>
-                <Plus className="h-4 w-4 mr-2" />
-                创建任务
-              </Button>
-            </>
-          }
-        />
+        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight gradient-text">任务管理</h1>
+            <p className="text-muted-foreground mt-1">查看和管理您的任务执行情况</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" onClick={refresh} className="btn-modern">
+              <RefreshCw className="h-4 w-4 mr-2" />
+              刷新
+            </Button>
+            <Button onClick={handleCreateTask} className="btn-modern">
+              <Plus className="h-4 w-4 mr-2" />
+              创建任务
+            </Button>
+          </div>
+        </div>
 
-        {/* Filters */}
-        <FilterBar
-          search={search}
-          onSearchChange={setSearch}
-          searchPlaceholder="搜索任务ID或账号ID..."
-          filters={
-            <Select 
-              value={statusFilter || "all"} 
-              onValueChange={(value) => updateFilter("status", value === "all" ? "" : value)}
-            >
-              <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder="筛选状态" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">全部状态</SelectItem>
-                <SelectItem value="pending">待执行</SelectItem>
-                <SelectItem value="queued">已排队</SelectItem>
-                <SelectItem value="running">执行中</SelectItem>
-                <SelectItem value="paused">已暂停</SelectItem>
-                <SelectItem value="completed">已完成</SelectItem>
-                <SelectItem value="failed">失败</SelectItem>
-                <SelectItem value="cancelled">已取消</SelectItem>
-              </SelectContent>
-            </Select>
-          }
-        />
+        {/* Search and Filters */}
+        <Card className="border-none shadow-sm">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-4">
+              <div className="relative flex-1 max-w-md">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="搜索任务ID或账号..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="pl-9 input-modern"
+                />
+              </div>
+              {search && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setSearch("")}
+                  className="text-muted-foreground hover:text-foreground"
+                >
+                  <X className="h-4 w-4 mr-1" />
+                  清除
+                </Button>
+              )}
+              <Select 
+                value={statusFilter || "all"} 
+                onValueChange={(value) => updateFilter("status", value === "all" ? "" : value)}
+              >
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="筛选状态" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">全部状态</SelectItem>
+                  <SelectItem value="pending">待执行</SelectItem>
+                  <SelectItem value="queued">已排队</SelectItem>
+                  <SelectItem value="running">执行中</SelectItem>
+                  <SelectItem value="paused">已暂停</SelectItem>
+                  <SelectItem value="completed">已完成</SelectItem>
+                  <SelectItem value="failed">失败</SelectItem>
+                  <SelectItem value="cancelled">已取消</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </CardContent>
+        </Card>
 
         {/* 任务数据表 */}
-        <div className="rounded-md border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-[100px]">任务ID</TableHead>
-                <TableHead className="w-[150px]">任务类型</TableHead>
-                <TableHead className="w-[120px]">状态</TableHead>
-                <TableHead className="w-[120px]">账号</TableHead>
-                <TableHead className="w-[100px]">优先级</TableHead>
-                <TableHead className="w-[180px]">创建时间</TableHead>
-                <TableHead className="w-[180px]">完成时间</TableHead>
-                <TableHead className="w-[240px]">操作</TableHead>
-              </TableRow>
-            </TableHeader>
+        <Card className="border-none shadow-md overflow-hidden">
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-muted/50 hover:bg-muted/50 border-b-2">
+                    <TableHead className="w-[100px] h-12 font-semibold">任务ID</TableHead>
+                    <TableHead className="w-[150px] font-semibold">任务类型</TableHead>
+                    <TableHead className="w-[120px] font-semibold">状态</TableHead>
+                    <TableHead className="w-[120px] font-semibold">账号</TableHead>
+                    <TableHead className="w-[100px] font-semibold">优先级</TableHead>
+                    <TableHead className="w-[180px] font-semibold">创建时间</TableHead>
+                    <TableHead className="w-[180px] font-semibold">完成时间</TableHead>
+                    <TableHead className="w-[240px] text-right font-semibold">操作</TableHead>
+                  </TableRow>
+                </TableHeader>
             <TableBody>
               {loading ? (
                 // 加载状态
@@ -697,13 +717,21 @@ export default function TasksPage() {
                 ))
               ) : tasks.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="h-24 text-center">
-                    暂无任务数据
+                  <TableCell colSpan={8} className="h-64">
+                    <div className="flex flex-col items-center justify-center">
+                      <Clock className="h-12 w-12 text-muted-foreground/50 mb-4" />
+                      <p className="text-lg font-medium text-muted-foreground mb-2">暂无任务数据</p>
+                      <p className="text-sm text-muted-foreground mb-6">创建您的第一个任务</p>
+                      <Button onClick={handleCreateTask}>
+                        <Plus className="h-4 w-4 mr-2" />
+                        创建任务
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ) : (
                 tasks.map((record) => (
-                  <TableRow key={record.id}>
+                  <TableRow key={record.id} className="group transition-colors hover:bg-muted/50">
                     <TableCell>
                       <span className="font-mono text-sm">#{record.id}</span>
                     </TableCell>
@@ -831,32 +859,49 @@ export default function TasksPage() {
               )}
             </TableBody>
           </Table>
-        </div>
+            </div>
 
-        {/* 分页 */}
-        <div className="flex items-center justify-between">
-          <div className="text-sm text-muted-foreground">
-            共 {total} 个任务，当前第 {page} 页
-          </div>
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page === 1}
-            >
-              上一页
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setPage((p) => p + 1)}
-              disabled={page * 20 >= total}
-            >
-              下一页
-            </Button>
-          </div>
-        </div>
+            {/* 分页 */}
+            <div className="flex items-center justify-between px-6 py-4 border-t bg-muted/30">
+              <div className="flex items-center gap-4">
+                <div className="text-sm font-medium text-foreground">
+                  共 <span className="text-primary font-bold">{total}</span> 个任务
+                </div>
+                <div className="h-4 w-px bg-border" />
+                <div className="text-sm text-muted-foreground">
+                  第 {page} 页 · 每页 20 条
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={page === 1}
+                  className="btn-modern h-9 px-4"
+                >
+                  <ChevronDown className="h-4 w-4 mr-1 rotate-90" />
+                  上一页
+                </Button>
+                <div className="flex items-center gap-1 px-2">
+                  <span className="text-sm font-medium">{page}</span>
+                  <span className="text-sm text-muted-foreground">/</span>
+                  <span className="text-sm text-muted-foreground">{Math.ceil(total / 20)}</span>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage((p) => p + 1)}
+                  disabled={page * 20 >= total}
+                  className="btn-modern h-9 px-4"
+                >
+                  下一页
+                  <ChevronDown className="h-4 w-4 ml-1 -rotate-90" />
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
         {/* 创建任务对话框 */}
         <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>

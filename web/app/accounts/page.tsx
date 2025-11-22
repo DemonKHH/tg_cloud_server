@@ -46,15 +46,7 @@ import { FilterBar } from "@/components/common/filter-bar"
 import { motion } from "framer-motion"
 import { Checkbox } from "@/components/ui/checkbox"
 import { CreateTaskDialog } from "@/components/business/create-task-dialog"
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet"
-import { taskAPI } from "@/lib/api"
-import { ListTodo } from "lucide-react"
+
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 
 export default function AccountsPage() {
@@ -101,10 +93,7 @@ export default function AccountsPage() {
   const [createTaskDialogOpen, setCreateTaskDialogOpen] = useState(false)
   const [initialTaskType, setInitialTaskType] = useState<string>("")
 
-  // 任务监控相关状态
-  const [taskMonitorOpen, setTaskMonitorOpen] = useState(false)
-  const [recentTasks, setRecentTasks] = useState<any[]>([])
-  const [loadingTasks, setLoadingTasks] = useState(false)
+
 
   // 全选/取消全选
   const toggleSelectAll = () => {
@@ -124,32 +113,9 @@ export default function AccountsPage() {
     }
   }
 
-  // 加载最近任务
-  const loadRecentTasks = async () => {
-    try {
-      setLoadingTasks(true)
-      const res = await taskAPI.list({ page: 1, limit: 20 })
-      if (res.data) {
-        setRecentTasks((res.data as any).items || [])
-      }
-    } catch (e) {
-      console.error("加载任务失败", e)
-    } finally {
-      setLoadingTasks(false)
-    }
-  }
-
   useEffect(() => {
     loadProxies()
   }, [])
-
-  useEffect(() => {
-    if (taskMonitorOpen) {
-      loadRecentTasks()
-      const timer = setInterval(loadRecentTasks, 5000)
-      return () => clearInterval(timer)
-    }
-  }, [taskMonitorOpen])
 
   const loadProxies = async () => {
     try {
@@ -426,10 +392,6 @@ export default function AccountsPage() {
             <p className="text-muted-foreground mt-1">管理和监控您的 Telegram 账号</p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button variant="outline" onClick={() => setTaskMonitorOpen(true)} className="btn-modern">
-              <ListTodo className="h-4 w-4 mr-2" />
-              任务监控
-            </Button>
             <Dialog open={uploadDialogOpen} onOpenChange={setUploadDialogOpen}>
               <DialogTrigger asChild>
                 <Button variant="outline" className="btn-modern">
@@ -1312,95 +1274,9 @@ export default function AccountsPage() {
           initialTaskType={initialTaskType}
           onSuccess={() => {
             setSelectedAccountIds([])
-            setTaskMonitorOpen(true) // 创建成功后打开任务监控
+            toast.success("任务创建成功，请前往任务页面查看")
           }}
         />
-
-        <Sheet open={taskMonitorOpen} onOpenChange={setTaskMonitorOpen}>
-          <SheetContent className="sm:max-w-[540px]">
-            <SheetHeader>
-              <SheetTitle className="text-2xl flex items-center gap-2">
-                <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
-                  <ListTodo className="h-5 w-5 text-primary" />
-                </div>
-                任务监控
-              </SheetTitle>
-              <SheetDescription>
-                实时查看最近的任务执行情况
-              </SheetDescription>
-            </SheetHeader>
-            <div className="py-6 h-full">
-              <div className="h-[calc(100vh-140px)] overflow-y-auto pr-2">
-                <div className="space-y-3">
-                  {loadingTasks ? (
-                    <div className="flex flex-col items-center justify-center py-12">
-                      <Activity className="h-8 w-8 text-primary animate-spin mb-3" />
-                      <p className="text-sm text-muted-foreground">加载中...</p>
-                    </div>
-                  ) : recentTasks.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-12">
-                      <div className="h-16 w-16 rounded-full bg-muted flex items-center justify-center mb-4">
-                        <ListTodo className="h-8 w-8 text-muted-foreground" />
-                      </div>
-                      <p className="text-sm font-medium text-muted-foreground mb-1">暂无任务</p>
-                      <p className="text-xs text-muted-foreground">创建任务后将在此显示</p>
-                    </div>
-                  ) : (
-                    recentTasks.map((task, index) => (
-                      <motion.div
-                        key={task.id}
-                        initial={{ opacity: 0, x: 20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ duration: 0.2, delay: index * 0.05 }}
-                      >
-                        <Card className="overflow-hidden hover:shadow-md transition-shadow">
-                          <CardContent className="p-4">
-                            <div className="flex items-start justify-between mb-3">
-                              <div className="flex items-center gap-2">
-                                <div className={cn(
-                                  "h-8 w-8 rounded-full flex items-center justify-center",
-                                  task.status === 'completed' ? 'bg-green-500/10' :
-                                  task.status === 'running' ? 'bg-blue-500/10' :
-                                  task.status === 'failed' ? 'bg-red-500/10' : 'bg-gray-500/10'
-                                )}>
-                                  {task.status === 'completed' ? <CheckCircle2 className="h-4 w-4 text-green-600" /> :
-                                   task.status === 'running' ? <Activity className="h-4 w-4 text-blue-600 animate-spin" /> :
-                                   task.status === 'failed' ? <XCircle className="h-4 w-4 text-red-600" /> :
-                                   <AlertCircle className="h-4 w-4 text-gray-600" />}
-                                </div>
-                                <div>
-                                  <div className="font-semibold text-sm">#{task.id}</div>
-                                  <div className="text-xs text-muted-foreground">{task.task_type}</div>
-                                </div>
-                              </div>
-                              <Badge 
-                                variant={task.status === 'completed' ? 'default' : 
-                                        task.status === 'failed' ? 'destructive' : 'secondary'}
-                                className="text-xs"
-                              >
-                                {task.status}
-                              </Badge>
-                            </div>
-                            <div className="space-y-2 text-xs">
-                              <div className="flex items-center gap-2 text-muted-foreground">
-                                <Users className="h-3.5 w-3.5" />
-                                <span>账号: {task.account?.phone || task.account_id}</span>
-                              </div>
-                              <div className="flex items-center gap-2 text-muted-foreground">
-                                <Activity className="h-3.5 w-3.5" />
-                                <span>创建: {new Date(task.created_at).toLocaleString()}</span>
-                              </div>
-                            </div>
-                          </CardContent>
-                        </Card>
-                      </motion.div>
-                    ))
-                  )}
-                </div>
-              </div>
-            </div>
-          </SheetContent>
-        </Sheet>
       </div >
     </MainLayout >
   )

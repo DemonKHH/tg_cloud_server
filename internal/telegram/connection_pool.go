@@ -211,8 +211,8 @@ func (cp *ConnectionPool) maintainConnection(accountID string, conn *ManagedConn
 
 		conn.logger.Info("Connection established successfully")
 
-		// 连接成功后，获取并更新账号信息
-		go cp.updateAccountInfoFromTelegram(accountID, conn)
+		// 连接成功后，获取并更新账号信息（在同一个 Run 上下文中）
+		go cp.updateAccountInfoFromTelegram(accountID, conn, ctx)
 
 		// 保持连接直到取消
 		<-ctx.Done()
@@ -513,7 +513,8 @@ func (cp *ConnectionPool) GetStats() map[string]interface{} {
 }
 
 // updateAccountInfoFromTelegram 从 Telegram 获取并更新账号信息
-func (cp *ConnectionPool) updateAccountInfoFromTelegram(accountID string, conn *ManagedConnection) {
+// ctx 参数是从 maintainConnection 的 Run 回调中传入的，确保使用同一个连接上下文
+func (cp *ConnectionPool) updateAccountInfoFromTelegram(accountID string, conn *ManagedConnection, ctx context.Context) {
 	// 转换accountID为uint64
 	accountIDNum, err := strconv.ParseUint(accountID, 10, 64)
 	if err != nil {
@@ -521,108 +522,129 @@ func (cp *ConnectionPool) updateAccountInfoFromTelegram(accountID string, conn *
 		return
 	}
 
-	// 使用连接获取用户信息
-	err = conn.client.Run(context.Background(), func(ctx context.Context) error {
-		api := conn.client.API()
+	// 直接使用已建立的连接和 API 客户端，不再调用 Run()
+	api := conn.client.API()
 
-		// 获取当前用户信息
-		users, err := api.UsersGetUsers(ctx, []tg.InputUserClass{&tg.InputUserSelf{}})
-		if err != nil {
-			return fmt.Errorf("failed to get user info: %w", err)
-		}
-
-		if len(users) == 0 {
-			return fmt.Errorf("no user info returned")
-		}
-
-		// 提取用户信息
-		user, ok := users[0].(*tg.User)
-		if !ok {
-			return fmt.Errorf("unexpected user type")
-		}
-
-		// 准备更新数据
-		info := &models.TelegramAccountInfo{}
-
-		if user.ID != 0 {
-			userID := int64(user.ID)
-			info.TgUserID = &userID
-		}
-
-		if user.Username != "" {
-			info.Username = &user.Username
-		}
-
-		if user.FirstName != "" {
-			info.FirstName = &user.FirstName
-		}
-
-		if user.LastName != "" {
-			info.LastName = &user.LastName
-		}
-
-		// 获取完整用户信息（包括头像和简介）
-		fullUser, err := api.UsersGetFullUser(ctx, &tg.InputUserSelf{})
-		if err == nil {
-			if fullUser.FullUser.About != "" {
-				info.Bio = &fullUser.FullUser.About
-			}
-
-			// 获取头像URL（如果有）
-			if user.Photo != nil {
-				if photo, ok := user.Photo.(*tg.UserProfilePhoto); ok {
-					// 这里可以构建头像URL或保存photo ID
-					// 简单起见，我们保存photo ID
-					photoID := fmt.Sprintf("%d", photo.PhotoID)
-					info.PhotoURL = &photoID
-				}
-			}
-		}
-
-		// 更新到数据库
-		account, err := cp.accountRepo.GetByID(accountIDNum)
-		if err != nil {
-			return fmt.Errorf("failed to get account: %w", err)
-		}
-
-		// 更新字段
-		if info.TgUserID != nil {
-			account.TgUserID = info.TgUserID
-		}
-		if info.Username != nil {
-			account.Username = info.Username
-		}
-		if info.FirstName != nil {
-			account.FirstName = info.FirstName
-		}
-		if info.LastName != nil {
-			account.LastName = info.LastName
-		}
-		if info.Bio != nil {
-			account.Bio = info.Bio
-		}
-		if info.PhotoURL != nil {
-			account.PhotoURL = info.PhotoURL
-		}
-
-		// 保存到数据库
-		if err := cp.accountRepo.Update(account); err != nil {
-			return fmt.Errorf("failed to update account info: %w", err)
-		}
-
-		cp.logger.Info("Account info updated from Telegram",
-			zap.String("account_id", accountID),
-			zap.Any("username", info.Username),
-			zap.Any("first_name", info.FirstName))
-
-		return nil
-	})
-
+	// 获取当前用户信息
+	users, err := api.UsersGetUsers(ctx, []tg.InputUserClass{&tg.InputUserSelf{}})
 	if err != nil {
-		cp.logger.Warn("Failed to update account info from Telegram",
+		cp.logger.Warn("Failed to get user info from Telegram",
 			zap.String("account_id", accountID),
 			zap.Error(err))
+		return
 	}
+
+	if len(users) == 0 {
+		cp.logger.Warn("No user info returned from Telegram",
+			zap.String("account_id", accountID))
+		return
+	}
+
+	// 提取用户信息
+	user, ok := users[0].(*tg.User)
+	if !ok {
+		cp.logger.Warn("Unexpected user type from Telegram",
+			zap.String("account_id", accountID))
+		return
+	}
+
+	// 准备更新数据
+	info := &models.TelegramAccountInfo{}
+
+	if user.ID != 0 {
+		userID := int64(user.ID)
+		info.TgUserID = &userID
+	}
+
+	if user.Username != "" {
+		info.Username = &user.Username
+	}
+
+	if user.FirstName != "" {
+		info.FirstName = &user.FirstName
+	}
+
+	if user.LastName != "" {
+		info.LastName = &user.LastName
+	}
+
+	// 获取完整用户信息（包括头像和简介）
+	fullUser, err := api.UsersGetFullUser(ctx, &tg.InputUserSelf{})
+	if err == nil {
+		if fullUser.FullUser.About != "" {
+			info.Bio = &fullUser.FullUser.About
+		}
+
+		// 获取头像URL（如果有）
+		if user.Photo != nil {
+			if photo, ok := user.Photo.(*tg.UserProfilePhoto); ok {
+				// 这里可以构建头像URL或保存photo ID
+				// 简单起见，我们保存photo ID
+				photoID := fmt.Sprintf("%d", photo.PhotoID)
+				info.PhotoURL = &photoID
+			}
+		}
+	}
+
+	// 更新到数据库
+	account, err := cp.accountRepo.GetByID(accountIDNum)
+	if err != nil {
+		cp.logger.Error("Failed to get account from database",
+			zap.String("account_id", accountID),
+			zap.Error(err))
+		return
+	}
+
+	// 验证账号 ID 匹配，防止更新错误的账号
+	if account.ID != accountIDNum {
+		cp.logger.Error("Account ID mismatch! This should never happen!",
+			zap.String("expected_account_id", accountID),
+			zap.Uint64("actual_account_id", account.ID))
+		return
+	}
+
+	// 记录更新前的信息用于调试
+	cp.logger.Info("Updating account info",
+		zap.String("account_id", accountID),
+		zap.String("phone", account.Phone),
+		zap.Any("new_tg_user_id", info.TgUserID),
+		zap.Any("new_username", info.Username),
+		zap.Any("new_first_name", info.FirstName))
+
+	// 更新字段
+	if info.TgUserID != nil {
+		account.TgUserID = info.TgUserID
+	}
+	if info.Username != nil {
+		account.Username = info.Username
+	}
+	if info.FirstName != nil {
+		account.FirstName = info.FirstName
+	}
+	if info.LastName != nil {
+		account.LastName = info.LastName
+	}
+	if info.Bio != nil {
+		account.Bio = info.Bio
+	}
+	if info.PhotoURL != nil {
+		account.PhotoURL = info.PhotoURL
+	}
+
+	// 保存到数据库
+	if err := cp.accountRepo.Update(account); err != nil {
+		cp.logger.Error("Failed to update account info to database",
+			zap.String("account_id", accountID),
+			zap.Error(err))
+		return
+	}
+
+	cp.logger.Info("Account info updated from Telegram successfully",
+		zap.String("account_id", accountID),
+		zap.String("phone", account.Phone),
+		zap.Any("tg_user_id", info.TgUserID),
+		zap.Any("username", info.Username),
+		zap.Any("first_name", info.FirstName))
 }
 
 // Close 关闭连接池

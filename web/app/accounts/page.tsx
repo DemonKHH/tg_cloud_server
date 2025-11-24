@@ -394,138 +394,138 @@ export default function AccountsPage() {
                   上传账号文件
                 </Button>
               </DialogTrigger>
-                <DialogContent className="sm:max-w-[500px]">
-                  <DialogHeader>
-                    <DialogTitle className="text-2xl">上传账号文件</DialogTitle>
-                    <DialogDescription>
-                      支持上传 .zip、.session 文件或 tdata 文件夹。系统将自动解析 Session/TData 格式并转换为 SessionString。
-                    </DialogDescription>
-                  </DialogHeader>
-                  <div className="space-y-4 py-4">
-                    {/* 文件上传区域 */}
-                    <div className="relative border-2 border-dashed border-muted-foreground/25 rounded-xl p-8 text-center hover:border-primary/50 transition-colors bg-gradient-to-br from-muted/30 to-muted/10">
-                      <div className="absolute top-4 right-4">
-                        <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
-                          <Upload className="h-4 w-4 text-primary" />
-                        </div>
+              <DialogContent className="sm:max-w-[500px]">
+                <DialogHeader>
+                  <DialogTitle className="text-2xl">上传账号文件</DialogTitle>
+                  <DialogDescription>
+                    支持上传 .zip、.session 文件或 tdata 文件夹。系统将自动解析 Session/TData 格式并转换为 SessionString。
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4 py-4">
+                  {/* 文件上传区域 */}
+                  <div className="relative border-2 border-dashed border-muted-foreground/25 rounded-xl p-8 text-center hover:border-primary/50 transition-colors bg-gradient-to-br from-muted/30 to-muted/10">
+                    <div className="absolute top-4 right-4">
+                      <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
+                        <Upload className="h-4 w-4 text-primary" />
                       </div>
-                      <FileArchive className="h-16 w-16 mx-auto mb-4 text-primary/60" />
-                      <p className="text-sm font-semibold mb-3">
-                        支持的文件格式
+                    </div>
+                    <FileArchive className="h-16 w-16 mx-auto mb-4 text-primary/60" />
+                    <p className="text-sm font-semibold mb-3">
+                      支持的文件格式
+                    </p>
+                    <div className="bg-background/50 rounded-lg p-4 mb-4">
+                      <ul className="text-xs text-muted-foreground space-y-2 text-left max-w-xs mx-auto">
+                        <li className="flex items-center gap-2">
+                          <div className="h-1.5 w-1.5 rounded-full bg-primary" />
+                          .zip 压缩包（可包含多个账号文件）
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <div className="h-1.5 w-1.5 rounded-full bg-primary" />
+                          .session 文件（Pyrogram 格式）
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <div className="h-1.5 w-1.5 rounded-full bg-primary" />
+                          tdata 文件夹（Telegram Desktop 格式）
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <div className="h-1.5 w-1.5 rounded-full bg-primary" />
+                          gotd/td 格式 session 文件
+                        </li>
+                      </ul>
+                    </div>
+                    <Input
+                      ref={fileInputRef}
+                      type="file"
+                      className="hidden"
+                      id="account-file-upload"
+                      accept=".zip,.session"
+                      onChange={handleFileUpload}
+                      disabled={uploading}
+                    />
+                    <Button
+                      variant={uploading ? "outline" : "default"}
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={uploading}
+                      className="btn-modern"
+                    >
+                      {uploading ? (
+                        <>
+                          <Activity className="h-4 w-4 mr-2 animate-spin" />
+                          上传中...
+                        </>
+                      ) : (
+                        <>
+                          <Upload className="h-4 w-4 mr-2" />
+                          选择文件
+                        </>
+                      )}
+                    </Button>
+                    {uploading && (
+                      <motion.p
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        className="text-sm text-muted-foreground mt-3"
+                      >
+                        正在解析文件并转换格式，请稍候...
+                      </motion.p>
+                    )}
+                  </div>
+
+                  {/* 代理选择（可选） */}
+                  <div className="space-y-2">
+                    <Label htmlFor="proxy-select">选择代理（可选）</Label>
+                    <Select
+                      value={selectedProxy || "none"}
+                      onValueChange={(value) => setSelectedProxy(value === "none" ? "" : value)}
+                      disabled={uploading || loadingProxies}
+                    >
+                      <SelectTrigger id="proxy-select">
+                        <SelectValue placeholder={loadingProxies ? "加载中..." : "不绑定代理"} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">不绑定代理</SelectItem>
+                        {proxies.map((proxy) => (
+                          <SelectItem key={proxy.id} value={String(proxy.id)}>
+                            {proxy.host}:{proxy.port} {proxy.username && `(${proxy.username})`}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {proxies.length === 0 && !loadingProxies && (
+                      <p className="text-xs text-muted-foreground">
+                        暂无可用代理，可以在代理管理中添加
                       </p>
-                      <div className="bg-background/50 rounded-lg p-4 mb-4">
-                        <ul className="text-xs text-muted-foreground space-y-2 text-left max-w-xs mx-auto">
-                          <li className="flex items-center gap-2">
-                            <div className="h-1.5 w-1.5 rounded-full bg-primary" />
-                            .zip 压缩包（可包含多个账号文件）
+                    )}
+                  </div>
+
+                  {/* 提示信息 */}
+                  <div className="bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-950/30 dark:to-purple-950/30 rounded-xl p-4 border border-blue-200/50 dark:border-blue-800/50">
+                    <div className="flex items-start gap-3">
+                      <div className="h-8 w-8 rounded-full bg-blue-500/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <AlertCircle className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="font-semibold text-sm mb-2 text-blue-900 dark:text-blue-100">温馨提示</p>
+                        <ul className="space-y-1.5 text-xs text-blue-700/80 dark:text-blue-300/80">
+                          <li className="flex items-start gap-2">
+                            <CheckCircle2 className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
+                            <span>系统会自动识别文件格式并转换为 SessionString</span>
                           </li>
-                          <li className="flex items-center gap-2">
-                            <div className="h-1.5 w-1.5 rounded-full bg-primary" />
-                            .session 文件（Pyrogram 格式）
+                          <li className="flex items-start gap-2">
+                            <CheckCircle2 className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
+                            <span>如果文件包含手机号信息，会自动提取</span>
                           </li>
-                          <li className="flex items-center gap-2">
-                            <div className="h-1.5 w-1.5 rounded-full bg-primary" />
-                            tdata 文件夹（Telegram Desktop 格式）
-                          </li>
-                          <li className="flex items-center gap-2">
-                            <div className="h-1.5 w-1.5 rounded-full bg-primary" />
-                            gotd/td 格式 session 文件
+                          <li className="flex items-start gap-2">
+                            <CheckCircle2 className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
+                            <span>单个文件最大支持 100MB</span>
                           </li>
                         </ul>
                       </div>
-                      <Input
-                        ref={fileInputRef}
-                        type="file"
-                        className="hidden"
-                        id="account-file-upload"
-                        accept=".zip,.session"
-                        onChange={handleFileUpload}
-                        disabled={uploading}
-                      />
-                      <Button
-                        variant={uploading ? "outline" : "default"}
-                        onClick={() => fileInputRef.current?.click()}
-                        disabled={uploading}
-                        className="btn-modern"
-                      >
-                        {uploading ? (
-                          <>
-                            <Activity className="h-4 w-4 mr-2 animate-spin" />
-                            上传中...
-                          </>
-                        ) : (
-                          <>
-                            <Upload className="h-4 w-4 mr-2" />
-                            选择文件
-                          </>
-                        )}
-                      </Button>
-                      {uploading && (
-                        <motion.p 
-                          initial={{ opacity: 0 }}
-                          animate={{ opacity: 1 }}
-                          className="text-sm text-muted-foreground mt-3"
-                        >
-                          正在解析文件并转换格式，请稍候...
-                        </motion.p>
-                      )}
-                    </div>
-
-                    {/* 代理选择（可选） */}
-                    <div className="space-y-2">
-                      <Label htmlFor="proxy-select">选择代理（可选）</Label>
-                      <Select
-                        value={selectedProxy || "none"}
-                        onValueChange={(value) => setSelectedProxy(value === "none" ? "" : value)}
-                        disabled={uploading || loadingProxies}
-                      >
-                        <SelectTrigger id="proxy-select">
-                          <SelectValue placeholder={loadingProxies ? "加载中..." : "不绑定代理"} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">不绑定代理</SelectItem>
-                          {proxies.map((proxy) => (
-                            <SelectItem key={proxy.id} value={String(proxy.id)}>
-                              {proxy.host}:{proxy.port} {proxy.username && `(${proxy.username})`}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      {proxies.length === 0 && !loadingProxies && (
-                        <p className="text-xs text-muted-foreground">
-                          暂无可用代理，可以在代理管理中添加
-                        </p>
-                      )}
-                    </div>
-
-                    {/* 提示信息 */}
-                    <div className="bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-950/30 dark:to-purple-950/30 rounded-xl p-4 border border-blue-200/50 dark:border-blue-800/50">
-                      <div className="flex items-start gap-3">
-                        <div className="h-8 w-8 rounded-full bg-blue-500/10 flex items-center justify-center flex-shrink-0 mt-0.5">
-                          <AlertCircle className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                        </div>
-                        <div className="flex-1">
-                          <p className="font-semibold text-sm mb-2 text-blue-900 dark:text-blue-100">温馨提示</p>
-                          <ul className="space-y-1.5 text-xs text-blue-700/80 dark:text-blue-300/80">
-                            <li className="flex items-start gap-2">
-                              <CheckCircle2 className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
-                              <span>系统会自动识别文件格式并转换为 SessionString</span>
-                            </li>
-                            <li className="flex items-start gap-2">
-                              <CheckCircle2 className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
-                              <span>如果文件包含手机号信息，会自动提取</span>
-                            </li>
-                            <li className="flex items-start gap-2">
-                              <CheckCircle2 className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
-                              <span>单个文件最大支持 100MB</span>
-                            </li>
-                          </ul>
-                        </div>
-                      </div>
                     </div>
                   </div>
-                </DialogContent>
-              </Dialog>
+                </div>
+              </DialogContent>
+            </Dialog>
             <Button onClick={handleAddAccount} className="btn-modern">
               <Plus className="h-4 w-4 mr-2" />
               手动添加
@@ -806,295 +806,295 @@ export default function AccountsPage() {
                       <TableHead className="w-[200px] font-semibold">账号信息</TableHead>
                       <TableHead className="w-[180px] font-semibold">Telegram 信息</TableHead>
                       <TableHead className="w-[120px] font-semibold">状态</TableHead>
-                      <TableHead className="w-[150px] font-semibold">最后检查</TableHead>
+                      <TableHead className="w-[150px] font-semibold">连接状态</TableHead>
                       <TableHead className="w-[100px] font-semibold">代理</TableHead>
                       <TableHead className="w-[140px] font-semibold">最后使用</TableHead>
                       <TableHead className="w-[200px] text-right font-semibold">操作</TableHead>
                     </TableRow>
                   </TableHeader>
-                <TableBody>
-                  {loading ? (
-                    // 加载状态 - 美化的骨架屏
-                    Array.from({ length: 10 }).map((_, index) => (
-                      <TableRow key={index} className="animate-pulse">
-                        <TableCell className="py-4">
-                          <div className="h-5 w-5 bg-muted rounded" />
-                        </TableCell>
-                        <TableCell className="py-4">
-                          <div className="flex items-center gap-3">
-                            <div className="h-10 w-10 bg-muted rounded-full" />
+                  <TableBody>
+                    {loading ? (
+                      // 加载状态 - 美化的骨架屏
+                      Array.from({ length: 10 }).map((_, index) => (
+                        <TableRow key={index} className="animate-pulse">
+                          <TableCell className="py-4">
+                            <div className="h-5 w-5 bg-muted rounded" />
+                          </TableCell>
+                          <TableCell className="py-4">
+                            <div className="flex items-center gap-3">
+                              <div className="h-10 w-10 bg-muted rounded-full" />
+                              <div className="space-y-2">
+                                <div className="h-4 w-28 bg-muted rounded" />
+                                <div className="h-3 w-20 bg-muted rounded" />
+                              </div>
+                            </div>
+                          </TableCell>
+                          <TableCell className="py-4">
                             <div className="space-y-2">
-                              <div className="h-4 w-28 bg-muted rounded" />
+                              <div className="h-4 w-24 bg-muted rounded" />
                               <div className="h-3 w-20 bg-muted rounded" />
                             </div>
-                          </div>
-                        </TableCell>
-                        <TableCell className="py-4">
-                          <div className="space-y-2">
-                            <div className="h-4 w-24 bg-muted rounded" />
-                            <div className="h-3 w-20 bg-muted rounded" />
-                          </div>
-                        </TableCell>
-                        <TableCell className="py-4">
-                          <div className="h-6 w-16 bg-muted rounded-full" />
-                        </TableCell>
-                        <TableCell className="py-4">
-                          <div className="flex items-center gap-3">
-                            <div className="h-2.5 w-20 bg-muted rounded-full" />
-                            <div className="h-4 w-12 bg-muted rounded" />
-                          </div>
-                        </TableCell>
-                        <TableCell className="py-4">
-                          <div className="h-6 w-16 bg-muted rounded-full" />
-                        </TableCell>
-                        <TableCell className="py-4">
-                          <div className="h-4 w-20 bg-muted rounded" />
-                        </TableCell>
-                        <TableCell className="py-4">
-                          <div className="flex items-center justify-end gap-1">
-                            <div className="h-9 w-9 bg-muted rounded-lg" />
-                            <div className="h-9 w-9 bg-muted rounded-lg" />
-                            <div className="h-9 w-9 bg-muted rounded-lg" />
-                            <div className="h-9 w-9 bg-muted rounded-lg" />
+                          </TableCell>
+                          <TableCell className="py-4">
+                            <div className="h-6 w-16 bg-muted rounded-full" />
+                          </TableCell>
+                          <TableCell className="py-4">
+                            <div className="flex items-center gap-3">
+                              <div className="h-2.5 w-20 bg-muted rounded-full" />
+                              <div className="h-4 w-12 bg-muted rounded" />
+                            </div>
+                          </TableCell>
+                          <TableCell className="py-4">
+                            <div className="h-6 w-16 bg-muted rounded-full" />
+                          </TableCell>
+                          <TableCell className="py-4">
+                            <div className="h-4 w-20 bg-muted rounded" />
+                          </TableCell>
+                          <TableCell className="py-4">
+                            <div className="flex items-center justify-end gap-1">
+                              <div className="h-9 w-9 bg-muted rounded-lg" />
+                              <div className="h-9 w-9 bg-muted rounded-lg" />
+                              <div className="h-9 w-9 bg-muted rounded-lg" />
+                              <div className="h-9 w-9 bg-muted rounded-lg" />
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    ) : accounts.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={8} className="h-64">
+                          <div className="flex flex-col items-center justify-center">
+                            <Users className="h-12 w-12 text-muted-foreground/50 mb-4" />
+                            <p className="text-lg font-medium text-muted-foreground mb-2">暂无账号数据</p>
+                            <p className="text-sm text-muted-foreground mb-6">开始添加您的第一个 Telegram 账号</p>
+                            <div className="flex gap-2">
+                              <Button onClick={handleAddAccount}>
+                                <Plus className="h-4 w-4 mr-2" />
+                                手动添加
+                              </Button>
+                              <Button variant="outline" onClick={() => setUploadDialogOpen(true)}>
+                                <Upload className="h-4 w-4 mr-2" />
+                                上传文件
+                              </Button>
+                            </div>
                           </div>
                         </TableCell>
                       </TableRow>
-                    ))
-                  ) : accounts.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={8} className="h-64">
-                        <div className="flex flex-col items-center justify-center">
-                          <Users className="h-12 w-12 text-muted-foreground/50 mb-4" />
-                          <p className="text-lg font-medium text-muted-foreground mb-2">暂无账号数据</p>
-                          <p className="text-sm text-muted-foreground mb-6">开始添加您的第一个 Telegram 账号</p>
-                          <div className="flex gap-2">
-                            <Button onClick={handleAddAccount}>
-                              <Plus className="h-4 w-4 mr-2" />
-                              手动添加
-                            </Button>
-                            <Button variant="outline" onClick={() => setUploadDialogOpen(true)}>
-                              <Upload className="h-4 w-4 mr-2" />
-                              上传文件
-                            </Button>
-                          </div>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    accounts.map((record, index) => (
-                      <TableRow 
-                        key={record.id} 
-                        className={cn(
-                          "group transition-colors hover:bg-muted/50",
-                          selectedAccountIds.includes(String(record.id)) && "bg-primary/5"
-                        )}
-                      >
-                        <TableCell className="py-4">
-                          <Checkbox
-                            checked={selectedAccountIds.includes(String(record.id))}
-                            onCheckedChange={() => toggleSelectOne(String(record.id))}
-                            className="border-2 border-primary/60 data-[state=checked]:bg-primary data-[state=checked]:border-primary hover:border-primary"
-                          />
-                        </TableCell>
-                        <TableCell className="py-4">
-                          <div className="flex items-center gap-3">
-                            {/* 头像 */}
-                            <div className={cn(
-                              "h-10 w-10 rounded-full flex items-center justify-center text-sm font-semibold flex-shrink-0",
-                              record.status === 'normal' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
-                              record.status === 'warning' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' :
-                              record.status === 'restricted' ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' :
-                              record.status === 'dead' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
-                              'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
-                            )}>
-                              {(record.first_name && record.first_name.length > 0) ? record.first_name.charAt(0).toUpperCase() : record.phone.slice(-2)}
-                            </div>
-                            <div className="space-y-1 min-w-0 flex-1">
-                              {/* 显示手机号 */}
-                              <div className="font-semibold text-sm truncate">
-                                {record.phone}
-                              </div>
-                              {/* 显示创建时间 */}
-                              <div className="text-xs text-muted-foreground">
-                                {new Date(record.created_at).toLocaleDateString('zh-CN')}
-                              </div>
-                            </div>
-                          </div>
-                        </TableCell>
-                        <TableCell className="py-4">
-                          {(record.tg_user_id || record.username || record.first_name) ? (
-                            <div className="space-y-1 min-w-0">
-                              {/* 显示名称 */}
-                              {(record.first_name || record.last_name) && (
-                                <div className="font-medium text-sm truncate">
-                                  {record.first_name || ''}{record.last_name ? ` ${record.last_name}` : ''}
-                                </div>
-                              )}
-                              {/* 显示用户名 */}
-                              {record.username && (
-                                <div className="text-xs text-blue-600 dark:text-blue-400 truncate">
-                                  @{record.username}
-                                </div>
-                              )}
-                              {/* 显示 TG ID */}
-                              {record.tg_user_id && (
-                                <div className="text-xs text-muted-foreground">
-                                  ID: {record.tg_user_id}
-                                </div>
-                              )}
-                              {/* 显示简介（如果有） */}
-                              {record.bio && (
-                                <div className="text-xs text-muted-foreground line-clamp-1" title={record.bio}>
-                                  {record.bio}
-                                </div>
-                              )}
-                            </div>
-                          ) : (
-                            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                              <AlertCircle className="h-3.5 w-3.5" />
-                              <span>未同步</span>
-                            </div>
+                    ) : (
+                      accounts.map((record, index) => (
+                        <TableRow
+                          key={record.id}
+                          className={cn(
+                            "group transition-colors hover:bg-muted/50",
+                            selectedAccountIds.includes(String(record.id)) && "bg-primary/5"
                           )}
-                        </TableCell>
-                        <TableCell className="py-4">
-                          <Badge
-                            variant={record.status === 'normal' ? 'default' : record.status === 'dead' || record.status === 'restricted' ? 'destructive' : 'secondary'}
-                            className={cn("text-xs font-medium", getStatusColor(record.status))}
-                          >
-                            {getStatusIcon(record.status)}
-                            <span className="ml-1.5">{getStatusText(record.status)}</span>
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="py-4">
-                          <div className="flex items-center gap-2">
-                            <div className={cn(
-                              "h-2 w-2 rounded-full",
-                              record.status === 'normal' ? 'bg-green-500 animate-pulse' :
-                              record.status === 'warning' ? 'bg-yellow-500' :
-                              record.status === 'cooling' ? 'bg-blue-500' :
-                              record.status === 'restricted' ? 'bg-orange-500' :
-                              record.status === 'dead' ? 'bg-red-500' :
-                              'bg-gray-400'
-                            )} />
-                            <span className="text-sm text-muted-foreground">
-                              {record.status === 'normal' ? '已连接' :
-                               record.status === 'warning' ? '异常' :
-                               record.status === 'cooling' ? '冷却中' :
-                               record.status === 'restricted' ? '受限' :
-                               record.status === 'dead' ? '已死亡' :
-                               '未知'}
-                            </span>
-                          </div>
-                        </TableCell>
-                        <TableCell className="py-4">
-                          <Badge 
-                            variant={record.proxy_id ? 'default' : 'outline'} 
-                            className={cn(
-                              "text-xs font-medium",
-                              record.proxy_id && "bg-purple-100 text-purple-700 border-purple-200 dark:bg-purple-900/30 dark:text-purple-400 dark:border-purple-800"
+                        >
+                          <TableCell className="py-4">
+                            <Checkbox
+                              checked={selectedAccountIds.includes(String(record.id))}
+                              onCheckedChange={() => toggleSelectOne(String(record.id))}
+                              className="border-2 border-primary/60 data-[state=checked]:bg-primary data-[state=checked]:border-primary hover:border-primary"
+                            />
+                          </TableCell>
+                          <TableCell className="py-4">
+                            <div className="flex items-center gap-3">
+                              {/* 头像 */}
+                              <div className={cn(
+                                "h-10 w-10 rounded-full flex items-center justify-center text-sm font-semibold flex-shrink-0",
+                                record.status === 'normal' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
+                                  record.status === 'warning' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' :
+                                    record.status === 'restricted' ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' :
+                                      record.status === 'dead' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
+                                        'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                              )}>
+                                {(record.first_name && record.first_name.length > 0) ? record.first_name.charAt(0).toUpperCase() : record.phone.slice(-2)}
+                              </div>
+                              <div className="space-y-1 min-w-0 flex-1">
+                                {/* 显示手机号 */}
+                                <div className="font-semibold text-sm truncate">
+                                  {record.phone}
+                                </div>
+                                {/* 显示创建时间 */}
+                                <div className="text-xs text-muted-foreground">
+                                  {new Date(record.created_at).toLocaleDateString('zh-CN')}
+                                </div>
+                              </div>
+                            </div>
+                          </TableCell>
+                          <TableCell className="py-4">
+                            {(record.tg_user_id || record.username || record.first_name) ? (
+                              <div className="space-y-1 min-w-0">
+                                {/* 显示名称 */}
+                                {(record.first_name || record.last_name) && (
+                                  <div className="font-medium text-sm truncate">
+                                    {record.first_name || ''}{record.last_name ? ` ${record.last_name}` : ''}
+                                  </div>
+                                )}
+                                {/* 显示用户名 */}
+                                {record.username && (
+                                  <div className="text-xs text-blue-600 dark:text-blue-400 truncate">
+                                    @{record.username}
+                                  </div>
+                                )}
+                                {/* 显示 TG ID */}
+                                {record.tg_user_id && (
+                                  <div className="text-xs text-muted-foreground">
+                                    ID: {record.tg_user_id}
+                                  </div>
+                                )}
+                                {/* 显示简介（如果有） */}
+                                {record.bio && (
+                                  <div className="text-xs text-muted-foreground line-clamp-1" title={record.bio}>
+                                    {record.bio}
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                                <AlertCircle className="h-3.5 w-3.5" />
+                                <span>未同步</span>
+                              </div>
                             )}
-                          >
-                            <div className={cn(
-                              "h-1.5 w-1.5 rounded-full mr-1.5",
-                              record.proxy_id ? "bg-purple-500" : "bg-gray-400"
-                            )} />
-                            {record.proxy_id ? '已绑定' : '未绑定'}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="py-4">
-                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                            <Activity className="h-3.5 w-3.5" />
-                            <span>
-                              {record.last_used_at ? new Date(record.last_used_at).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' }) : '从未'}
-                            </span>
-                          </div>
-                        </TableCell>
-                        <TableCell className="py-4">
-                          <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <TooltipProvider>
-                              {/* 编辑账号 */}
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-9 w-9 rounded-lg hover:bg-blue-50 text-blue-600 hover:text-blue-700 dark:hover:bg-blue-950 transition-all hover:scale-105"
-                                    onClick={() => handleEditAccount(record)}
-                                  >
-                                    <Pencil className="h-4 w-4" />
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent side="top">
-                                  <p className="text-xs">编辑账号</p>
-                                </TooltipContent>
-                              </Tooltip>
+                          </TableCell>
+                          <TableCell className="py-4">
+                            <Badge
+                              variant={record.status === 'normal' ? 'default' : record.status === 'dead' || record.status === 'restricted' ? 'destructive' : 'secondary'}
+                              className={cn("text-xs font-medium", getStatusColor(record.status))}
+                            >
+                              {getStatusIcon(record.status)}
+                              <span className="ml-1.5">{getStatusText(record.status)}</span>
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="py-4">
+                            <div className="flex items-center gap-2">
+                              <div className={cn(
+                                "h-2 w-2 rounded-full",
+                                record.status === 'normal' ? 'bg-green-500 animate-pulse' :
+                                  record.status === 'warning' ? 'bg-yellow-500' :
+                                    record.status === 'cooling' ? 'bg-blue-500' :
+                                      record.status === 'restricted' ? 'bg-orange-500' :
+                                        record.status === 'dead' ? 'bg-red-500' :
+                                          'bg-gray-400'
+                              )} />
+                              <span className="text-sm text-muted-foreground">
+                                {record.status === 'normal' ? '已连接' :
+                                  record.status === 'warning' ? '异常' :
+                                    record.status === 'cooling' ? '冷却中' :
+                                      record.status === 'restricted' ? '受限' :
+                                        record.status === 'dead' ? '已死亡' :
+                                          '未知'}
+                              </span>
+                            </div>
+                          </TableCell>
+                          <TableCell className="py-4">
+                            <Badge
+                              variant={record.proxy_id ? 'default' : 'outline'}
+                              className={cn(
+                                "text-xs font-medium",
+                                record.proxy_id && "bg-purple-100 text-purple-700 border-purple-200 dark:bg-purple-900/30 dark:text-purple-400 dark:border-purple-800"
+                              )}
+                            >
+                              <div className={cn(
+                                "h-1.5 w-1.5 rounded-full mr-1.5",
+                                record.proxy_id ? "bg-purple-500" : "bg-gray-400"
+                              )} />
+                              {record.proxy_id ? '已绑定' : '未绑定'}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="py-4">
+                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                              <Activity className="h-3.5 w-3.5" />
+                              <span>
+                                {record.last_used_at ? new Date(record.last_used_at).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' }) : '从未'}
+                              </span>
+                            </div>
+                          </TableCell>
+                          <TableCell className="py-4">
+                            <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <TooltipProvider>
+                                {/* 编辑账号 */}
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-9 w-9 rounded-lg hover:bg-blue-50 text-blue-600 hover:text-blue-700 dark:hover:bg-blue-950 transition-all hover:scale-105"
+                                      onClick={() => handleEditAccount(record)}
+                                    >
+                                      <Pencil className="h-4 w-4" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="top">
+                                    <p className="text-xs">编辑账号</p>
+                                  </TooltipContent>
+                                </Tooltip>
 
-                              {/* 检查健康 */}
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className={cn(
-                                      "h-9 w-9 rounded-lg transition-all",
-                                      healthChecking === record.id
-                                        ? "opacity-50 cursor-not-allowed text-muted-foreground"
-                                        : "hover:bg-green-50 text-green-600 hover:text-green-700 dark:hover:bg-green-950 hover:scale-105"
-                                    )}
-                                    disabled={healthChecking === record.id}
-                                    onClick={() => handleCheckHealth(record)}
-                                  >
-                                    <Activity className={cn("h-4 w-4", healthChecking === record.id && "animate-spin")} />
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent side="top">
-                                  <p className="text-xs">
-                                    {healthChecking === record.id ? "检查中..." : "健康检查"}
-                                  </p>
-                                </TooltipContent>
-                              </Tooltip>
+                                {/* 检查健康 */}
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className={cn(
+                                        "h-9 w-9 rounded-lg transition-all",
+                                        healthChecking === record.id
+                                          ? "opacity-50 cursor-not-allowed text-muted-foreground"
+                                          : "hover:bg-green-50 text-green-600 hover:text-green-700 dark:hover:bg-green-950 hover:scale-105"
+                                      )}
+                                      disabled={healthChecking === record.id}
+                                      onClick={() => handleCheckHealth(record)}
+                                    >
+                                      <Activity className={cn("h-4 w-4", healthChecking === record.id && "animate-spin")} />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="top">
+                                    <p className="text-xs">
+                                      {healthChecking === record.id ? "检查中..." : "健康检查"}
+                                    </p>
+                                  </TooltipContent>
+                                </Tooltip>
 
-                              {/* 绑定代理 */}
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-9 w-9 rounded-lg hover:bg-purple-50 text-purple-600 hover:text-purple-700 dark:hover:bg-purple-950 transition-all hover:scale-105"
-                                    onClick={() => handleBindProxy(record)}
-                                  >
-                                    <Link2 className="h-4 w-4" />
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent side="top">
-                                  <p className="text-xs">绑定代理</p>
-                                </TooltipContent>
-                              </Tooltip>
+                                {/* 绑定代理 */}
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-9 w-9 rounded-lg hover:bg-purple-50 text-purple-600 hover:text-purple-700 dark:hover:bg-purple-950 transition-all hover:scale-105"
+                                      onClick={() => handleBindProxy(record)}
+                                    >
+                                      <Link2 className="h-4 w-4" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="top">
+                                    <p className="text-xs">绑定代理</p>
+                                  </TooltipContent>
+                                </Tooltip>
 
-                              {/* 删除账号 */}
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-9 w-9 rounded-lg hover:bg-red-50 text-red-600 hover:text-red-700 dark:hover:bg-red-950 transition-all hover:scale-105"
-                                    onClick={() => handleDeleteAccount(record)}
-                                  >
-                                    <Trash2 className="h-4 w-4" />
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent side="top">
-                                  <p className="text-xs">删除账号</p>
-                                </TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
+                                {/* 删除账号 */}
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-9 w-9 rounded-lg hover:bg-red-50 text-red-600 hover:text-red-700 dark:hover:bg-red-950 transition-all hover:scale-105"
+                                      onClick={() => handleDeleteAccount(record)}
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="top">
+                                    <p className="text-xs">删除账号</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
               </div>
 
               {/* 分页 */}
@@ -1181,7 +1181,7 @@ export default function AccountsPage() {
                   </div>
                 </div>
               )}
-              
+
               <div className="space-y-2">
                 <Label htmlFor="edit-phone" className="text-sm font-medium">手机号</Label>
                 <Input

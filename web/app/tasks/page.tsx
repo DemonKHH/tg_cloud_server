@@ -60,9 +60,9 @@ export default function TasksPage() {
     fetchFn: taskAPI.list,
     initialFilters: { status: "" },
   })
-  
+
   const statusFilter = filters.status || ""
-  
+
   // 创建任务相关状态
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
   const [createForm, setCreateForm] = useState({
@@ -92,12 +92,18 @@ export default function TasksPage() {
   })
   const [accounts, setAccounts] = useState<any[]>([])
   const [loadingAccounts, setLoadingAccounts] = useState(false)
-  
+
   // 查看日志相关状态
   const [logsDialogOpen, setLogsDialogOpen] = useState(false)
   const [viewingTask, setViewingTask] = useState<any>(null)
   const [logs, setLogs] = useState<any[]>([])
   const [loadingLogs, setLoadingLogs] = useState(false)
+
+  // 确认对话框状态
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false)
+  const [cancellingTask, setCancellingTask] = useState<any>(null)
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [deletingTask, setDeletingTask] = useState<any>(null)
 
   useEffect(() => {
     if (createDialogOpen) {
@@ -214,15 +220,22 @@ export default function TasksPage() {
   }
 
   // 取消任务
-  const handleCancelTask = async (task: any) => {
-    if (!confirm(`确定要取消任务 #${task.id} 吗？`)) {
-      return
-    }
+  // 取消任务 - 打开确认对话框
+  const handleCancelTask = (task: any) => {
+    setCancellingTask(task)
+    setCancelDialogOpen(true)
+  }
+
+  // 确认取消任务
+  const confirmCancelTask = async () => {
+    if (!cancellingTask) return
 
     try {
-      await taskAPI.cancel(String(task.id))
+      await taskAPI.cancel(String(cancellingTask.id))
       toast.success("任务已取消")
       refresh()
+      setCancelDialogOpen(false)
+      setCancellingTask(null)
     } catch (error: any) {
       console.error('取消任务失败:', error)
       const errorMessage = error?.response?.data?.msg || error.message || "取消任务失败"
@@ -231,15 +244,22 @@ export default function TasksPage() {
   }
 
   // 删除任务
-  const handleDeleteTask = async (task: any) => {
-    if (!confirm(`确定要删除任务 #${task.id} 吗？此操作不可恢复。`)) {
-      return
-    }
+  // 删除任务 - 打开确认对话框
+  const handleDeleteTask = (task: any) => {
+    setDeletingTask(task)
+    setDeleteDialogOpen(true)
+  }
+
+  // 确认删除任务
+  const confirmDeleteTask = async () => {
+    if (!deletingTask) return
 
     try {
-      await taskAPI.delete(String(task.id))
+      await taskAPI.delete(String(deletingTask.id))
       toast.success("任务已删除")
       refresh()
+      setDeleteDialogOpen(false)
+      setDeletingTask(null)
     } catch (error: any) {
       console.error('删除任务失败:', error)
       const errorMessage = error?.response?.data?.msg || error.message || "删除任务失败"
@@ -338,7 +358,7 @@ export default function TasksPage() {
   const getActionTooltip = (action: string, status: string) => {
     const statusText = getStatusText(status)
     const enabled = isActionEnabled(action, status)
-    
+
     switch (action) {
       case 'start':
         return enabled ? '启动任务' : `启动任务 - 只有待执行的任务才能启动（当前: ${statusText}）`
@@ -365,7 +385,7 @@ export default function TasksPage() {
   const renderActionButton = (action: string, record: any, icon: React.ReactNode, handler: () => void, colorClass?: string) => {
     const enabled = isActionEnabled(action, record.status)
     const tooltip = getActionTooltip(action, record.status)
-    
+
     return (
       <Tooltip key={action}>
         <TooltipTrigger asChild>
@@ -374,8 +394,8 @@ export default function TasksPage() {
             size="icon"
             className={cn(
               "h-8 w-8",
-              enabled 
-                ? colorClass || "hover:bg-primary/10 text-primary" 
+              enabled
+                ? colorClass || "hover:bg-primary/10 text-primary"
                 : "opacity-40 cursor-not-allowed text-muted-foreground"
             )}
             disabled={!enabled}
@@ -449,7 +469,7 @@ export default function TasksPage() {
   // 构建任务配置
   const buildTaskConfig = () => {
     const config: any = {}
-    
+
     switch (createForm.task_type) {
       case "check":
         // 账号检查配置 - 暂时不需要特殊配置，使用默认配置即可
@@ -458,7 +478,7 @@ export default function TasksPage() {
           config.timeout = createForm.check_timeout
         }
         break
-        
+
       case "private_message":
         if (!createForm.private_targets || !createForm.private_message) {
           toast.error("请填写目标用户和消息内容")
@@ -479,7 +499,7 @@ export default function TasksPage() {
           }
         }
         break
-        
+
       case "broadcast":
         if (!createForm.broadcast_message) {
           toast.error("请填写消息内容")
@@ -490,7 +510,7 @@ export default function TasksPage() {
           return null
         }
         config.message = createForm.broadcast_message
-        
+
         // 合并群组和频道ID到一个groups数组中
         const allGroups: any[] = []
         if (createForm.broadcast_groups) {
@@ -511,12 +531,12 @@ export default function TasksPage() {
             .filter(c => c !== null)
           allGroups.push(...channels)
         }
-        
+
         if (allGroups.length === 0) {
           toast.error("请至少填写一个有效的群组或频道ID")
           return null
         }
-        
+
         config.groups = allGroups
         if (createForm.broadcast_delay) {
           const delay = parseInt(createForm.broadcast_delay)
@@ -525,7 +545,7 @@ export default function TasksPage() {
           }
         }
         break
-        
+
       case "verify_code":
         // 验证码配置（所有字段都是可选的）
         if (createForm.verify_timeout) {
@@ -543,7 +563,7 @@ export default function TasksPage() {
           config.pattern = createForm.verify_pattern.trim()
         }
         break
-        
+
       case "group_chat":
         if (!createForm.group_chat_group_id) {
           toast.error("请填写群组ID")
@@ -574,12 +594,12 @@ export default function TasksPage() {
           }
         }
         break
-        
+
       default:
         toast.error("请选择有效的任务类型")
         return null
     }
-    
+
     return config
   }
 
@@ -661,8 +681,8 @@ export default function TasksPage() {
                   清除
                 </Button>
               )}
-              <Select 
-                value={statusFilter || "all"} 
+              <Select
+                value={statusFilter || "all"}
                 onValueChange={(value) => updateFilter("status", value === "all" ? "" : value)}
               >
                 <SelectTrigger className="w-[180px]">
@@ -700,165 +720,165 @@ export default function TasksPage() {
                     <TableHead className="w-[240px] text-right font-semibold">操作</TableHead>
                   </TableRow>
                 </TableHeader>
-            <TableBody>
-              {loading ? (
-                // 加载状态
-                Array.from({ length: 5 }).map((_, index) => (
-                  <TableRow key={index}>
-                    <TableCell><div className="h-4 bg-muted rounded animate-pulse" /></TableCell>
-                    <TableCell><div className="h-4 bg-muted rounded animate-pulse" /></TableCell>
-                    <TableCell><div className="h-4 bg-muted rounded animate-pulse" /></TableCell>
-                    <TableCell><div className="h-4 bg-muted rounded animate-pulse" /></TableCell>
-                    <TableCell><div className="h-4 bg-muted rounded animate-pulse" /></TableCell>
-                    <TableCell><div className="h-4 bg-muted rounded animate-pulse" /></TableCell>
-                    <TableCell><div className="h-4 bg-muted rounded animate-pulse" /></TableCell>
-                    <TableCell><div className="h-4 bg-muted rounded animate-pulse" /></TableCell>
-                  </TableRow>
-                ))
-              ) : tasks.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={8} className="h-64">
-                    <div className="flex flex-col items-center justify-center">
-                      <Clock className="h-12 w-12 text-muted-foreground/50 mb-4" />
-                      <p className="text-lg font-medium text-muted-foreground mb-2">暂无任务数据</p>
-                      <p className="text-sm text-muted-foreground mb-6">创建您的第一个任务</p>
-                      <Button onClick={handleCreateTask}>
-                        <Plus className="h-4 w-4 mr-2" />
-                        创建任务
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ) : (
-                tasks.map((record) => (
-                  <TableRow key={record.id} className="group transition-colors hover:bg-muted/50">
-                    <TableCell>
-                      <span className="font-mono text-sm">#{record.id}</span>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="secondary" className="text-xs">
-                        {getTaskTypeText(record.task_type)}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        {getStatusIcon(record.status)}
-                        <Badge
-                          variant={record.status === 'completed' ? 'default' : record.status === 'failed' ? 'destructive' : 'secondary'}
-                          className={cn("text-xs", getStatusColor(record.status))}
-                        >
-                          {getStatusText(record.status)}
-                        </Badge>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="text-sm">
-                        {record.account_phone || record.account?.phone || `ID: ${record.account_id}`}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <span className="text-sm">{record.priority}/10</span>
-                    </TableCell>
-                    <TableCell>
-                      <div className="text-sm text-muted-foreground">
-                        {new Date(record.created_at).toLocaleString()}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="text-sm text-muted-foreground">
-                        {record.completed_at ? new Date(record.completed_at).toLocaleString() : '-'}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <TooltipProvider>
-                        <div className="flex items-center gap-1">
-                          {/* 查看日志 - 始终可用 */}
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8 hover:bg-blue-50 text-blue-600 hover:text-blue-700"
-                                onClick={() => handleViewLogs(record)}
-                              >
-                                <FileText className="h-4 w-4" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent side="top">
-                              <p className="text-xs">查看任务日志</p>
-                            </TooltipContent>
-                          </Tooltip>
-
-                          {/* 启动任务 */}
-                          {renderActionButton(
-                            'start', 
-                            record, 
-                            <Play className="h-4 w-4" />, 
-                            () => handleStartTask(record),
-                            "hover:bg-green-50 text-green-600 hover:text-green-700"
-                          )}
-
-                          {/* 暂停任务 */}
-                          {renderActionButton(
-                            'pause', 
-                            record, 
-                            <Pause className="h-4 w-4" />, 
-                            () => handlePauseTask(record),
-                            "hover:bg-orange-50 text-orange-600 hover:text-orange-700"
-                          )}
-
-                          {/* 恢复任务 */}
-                          {renderActionButton(
-                            'resume', 
-                            record, 
-                            <PlayCircle className="h-4 w-4" />, 
-                            () => handleResumeTask(record),
-                            "hover:bg-emerald-50 text-emerald-600 hover:text-emerald-700"
-                          )}
-
-                          {/* 停止任务 */}
-                          {renderActionButton(
-                            'stop', 
-                            record, 
-                            <Square className="h-4 w-4" />, 
-                            () => handleStopTask(record),
-                            "hover:bg-red-50 text-red-600 hover:text-red-700"
-                          )}
-
-                          {/* 取消任务 */}
-                          {renderActionButton(
-                            'cancel', 
-                            record, 
-                            <X className="h-4 w-4" />, 
-                            () => handleCancelTask(record),
-                            "hover:bg-gray-50 text-gray-600 hover:text-gray-700"
-                          )}
-
-                          {/* 重试任务 */}
-                          {renderActionButton(
-                            'retry', 
-                            record, 
-                            <RefreshCw className="h-4 w-4" />, 
-                            () => handleRetryTask(record),
-                            "hover:bg-purple-50 text-purple-600 hover:text-purple-700"
-                          )}
-
-                          {/* 删除任务 */}
-                          {renderActionButton(
-                            'delete', 
-                            record, 
-                            <Trash2 className="h-4 w-4" />, 
-                            () => handleDeleteTask(record),
-                            "hover:bg-red-50 text-red-600 hover:text-red-700"
-                          )}
+                <TableBody>
+                  {loading ? (
+                    // 加载状态
+                    Array.from({ length: 5 }).map((_, index) => (
+                      <TableRow key={index}>
+                        <TableCell><div className="h-4 bg-muted rounded animate-pulse" /></TableCell>
+                        <TableCell><div className="h-4 bg-muted rounded animate-pulse" /></TableCell>
+                        <TableCell><div className="h-4 bg-muted rounded animate-pulse" /></TableCell>
+                        <TableCell><div className="h-4 bg-muted rounded animate-pulse" /></TableCell>
+                        <TableCell><div className="h-4 bg-muted rounded animate-pulse" /></TableCell>
+                        <TableCell><div className="h-4 bg-muted rounded animate-pulse" /></TableCell>
+                        <TableCell><div className="h-4 bg-muted rounded animate-pulse" /></TableCell>
+                        <TableCell><div className="h-4 bg-muted rounded animate-pulse" /></TableCell>
+                      </TableRow>
+                    ))
+                  ) : tasks.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={8} className="h-64">
+                        <div className="flex flex-col items-center justify-center">
+                          <Clock className="h-12 w-12 text-muted-foreground/50 mb-4" />
+                          <p className="text-lg font-medium text-muted-foreground mb-2">暂无任务数据</p>
+                          <p className="text-sm text-muted-foreground mb-6">创建您的第一个任务</p>
+                          <Button onClick={handleCreateTask}>
+                            <Plus className="h-4 w-4 mr-2" />
+                            创建任务
+                          </Button>
                         </div>
-                      </TooltipProvider>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    tasks.map((record) => (
+                      <TableRow key={record.id} className="group transition-colors hover:bg-muted/50">
+                        <TableCell>
+                          <span className="font-mono text-sm">#{record.id}</span>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="secondary" className="text-xs">
+                            {getTaskTypeText(record.task_type)}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            {getStatusIcon(record.status)}
+                            <Badge
+                              variant={record.status === 'completed' ? 'default' : record.status === 'failed' ? 'destructive' : 'secondary'}
+                              className={cn("text-xs", getStatusColor(record.status))}
+                            >
+                              {getStatusText(record.status)}
+                            </Badge>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="text-sm">
+                            {record.account_phone || record.account?.phone || `ID: ${record.account_id}`}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <span className="text-sm">{record.priority}/10</span>
+                        </TableCell>
+                        <TableCell>
+                          <div className="text-sm text-muted-foreground">
+                            {new Date(record.created_at).toLocaleString()}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="text-sm text-muted-foreground">
+                            {record.completed_at ? new Date(record.completed_at).toLocaleString() : '-'}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <TooltipProvider>
+                            <div className="flex items-center gap-1">
+                              {/* 查看日志 - 始终可用 */}
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 hover:bg-blue-50 text-blue-600 hover:text-blue-700"
+                                    onClick={() => handleViewLogs(record)}
+                                  >
+                                    <FileText className="h-4 w-4" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent side="top">
+                                  <p className="text-xs">查看任务日志</p>
+                                </TooltipContent>
+                              </Tooltip>
+
+                              {/* 启动任务 */}
+                              {renderActionButton(
+                                'start',
+                                record,
+                                <Play className="h-4 w-4" />,
+                                () => handleStartTask(record),
+                                "hover:bg-green-50 text-green-600 hover:text-green-700"
+                              )}
+
+                              {/* 暂停任务 */}
+                              {renderActionButton(
+                                'pause',
+                                record,
+                                <Pause className="h-4 w-4" />,
+                                () => handlePauseTask(record),
+                                "hover:bg-orange-50 text-orange-600 hover:text-orange-700"
+                              )}
+
+                              {/* 恢复任务 */}
+                              {renderActionButton(
+                                'resume',
+                                record,
+                                <PlayCircle className="h-4 w-4" />,
+                                () => handleResumeTask(record),
+                                "hover:bg-emerald-50 text-emerald-600 hover:text-emerald-700"
+                              )}
+
+                              {/* 停止任务 */}
+                              {renderActionButton(
+                                'stop',
+                                record,
+                                <Square className="h-4 w-4" />,
+                                () => handleStopTask(record),
+                                "hover:bg-red-50 text-red-600 hover:text-red-700"
+                              )}
+
+                              {/* 取消任务 */}
+                              {renderActionButton(
+                                'cancel',
+                                record,
+                                <X className="h-4 w-4" />,
+                                () => handleCancelTask(record),
+                                "hover:bg-gray-50 text-gray-600 hover:text-gray-700"
+                              )}
+
+                              {/* 重试任务 */}
+                              {renderActionButton(
+                                'retry',
+                                record,
+                                <RefreshCw className="h-4 w-4" />,
+                                () => handleRetryTask(record),
+                                "hover:bg-purple-50 text-purple-600 hover:text-purple-700"
+                              )}
+
+                              {/* 删除任务 */}
+                              {renderActionButton(
+                                'delete',
+                                record,
+                                <Trash2 className="h-4 w-4" />,
+                                () => handleDeleteTask(record),
+                                "hover:bg-red-50 text-red-600 hover:text-red-700"
+                              )}
+                            </div>
+                          </TooltipProvider>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
             </div>
 
             {/* 分页 */}
@@ -1201,6 +1221,64 @@ export default function TasksPage() {
                   </div>
                 ))
               )}
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* 取消任务确认对话框 */}
+        <Dialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
+          <DialogContent className="sm:max-w-[400px]">
+            <DialogHeader>
+              <DialogTitle className="text-xl text-yellow-600 flex items-center gap-2">
+                <AlertCircle className="h-5 w-5" />
+                确认取消任务
+              </DialogTitle>
+              <DialogDescription className="pt-2">
+                您确定要取消任务 <span className="font-semibold text-foreground">#{cancellingTask?.id}</span> 吗？
+              </DialogDescription>
+            </DialogHeader>
+            <div className="flex justify-end gap-2 pt-4">
+              <Button variant="outline" onClick={() => setCancelDialogOpen(false)} className="btn-modern">
+                暂不取消
+              </Button>
+              <Button
+                variant="default"
+                onClick={confirmCancelTask}
+                className="btn-modern bg-yellow-600 hover:bg-yellow-700 text-white"
+              >
+                确认取消
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* 删除任务确认对话框 */}
+        <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+          <DialogContent className="sm:max-w-[400px]">
+            <DialogHeader>
+              <DialogTitle className="text-xl text-red-600 flex items-center gap-2">
+                <Trash2 className="h-5 w-5" />
+                确认删除任务
+              </DialogTitle>
+              <DialogDescription className="pt-2">
+                您确定要删除任务 <span className="font-semibold text-foreground">#{deletingTask?.id}</span> 吗？
+                <br />
+                <span className="text-red-500 text-xs mt-2 block">
+                  此操作将永久删除该任务及其所有相关数据（包括日志），且不可恢复。
+                </span>
+              </DialogDescription>
+            </DialogHeader>
+            <div className="flex justify-end gap-2 pt-4">
+              <Button variant="outline" onClick={() => setDeleteDialogOpen(false)} className="btn-modern">
+                取消
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={confirmDeleteTask}
+                className="btn-modern bg-red-600 hover:bg-red-700"
+              >
+                确认删除
+              </Button>
             </div>
           </DialogContent>
         </Dialog>

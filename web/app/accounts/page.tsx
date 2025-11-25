@@ -212,15 +212,23 @@ export default function AccountsPage() {
     }
   }
 
+  // 删除账号相关状态
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [deletingAccount, setDeletingAccount] = useState<any>(null)
+
   // 删除账号
-  const handleDeleteAccount = async (account: any) => {
-    if (!confirm(`确定要删除账号 ${account.phone} 吗？此操作不可恢复。`)) {
-      return
-    }
+  const handleDeleteAccount = (account: any) => {
+    setDeletingAccount(account)
+    setDeleteDialogOpen(true)
+  }
+
+  const confirmDeleteAccount = async () => {
+    if (!deletingAccount) return
 
     try {
-      await accountAPI.delete(String(account.id))
+      await accountAPI.delete(String(deletingAccount.id))
       toast.success("账号删除成功")
+      setDeleteDialogOpen(false)
       refresh()
     } catch (error: any) {
       toast.error(error.message || "删除账号失败")
@@ -1364,6 +1372,37 @@ export default function AccountsPage() {
           </DialogContent>
         </Dialog>
 
+        {/* 删除确认对话框 */}
+        <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+          <DialogContent className="sm:max-w-[400px]">
+            <DialogHeader>
+              <DialogTitle className="text-xl text-red-600 flex items-center gap-2">
+                <AlertCircle className="h-5 w-5" />
+                确认删除账号
+              </DialogTitle>
+              <DialogDescription className="pt-2">
+                您确定要删除账号 <span className="font-semibold text-foreground">{deletingAccount?.phone}</span> 吗？
+                <br />
+                <span className="text-red-500 text-xs mt-2 block">
+                  此操作将永久删除该账号及其所有相关数据，且不可恢复。
+                </span>
+              </DialogDescription>
+            </DialogHeader>
+            <div className="flex justify-end gap-2 pt-4">
+              <Button variant="outline" onClick={() => setDeleteDialogOpen(false)} className="btn-modern">
+                取消
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={confirmDeleteAccount}
+                className="btn-modern bg-red-600 hover:bg-red-700"
+              >
+                确认删除
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
         <CreateTaskDialog
           open={createTaskDialogOpen}
           onOpenChange={setCreateTaskDialogOpen}
@@ -1374,8 +1413,8 @@ export default function AccountsPage() {
             toast.success("任务创建成功，请前往任务页面查看")
           }}
         />
-      </div >
-    </MainLayout >
+      </div>
+    </MainLayout>
   )
 }
 

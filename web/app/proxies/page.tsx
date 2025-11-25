@@ -58,9 +58,9 @@ export default function ProxiesPage() {
     fetchFn: proxyAPI.list,
     initialFilters: { status: "" },
   })
-  
+
   const statusFilter = filters.status || ""
-  
+
   // 添加/编辑代理相关状态
   const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [editingProxy, setEditingProxy] = useState<any>(null)
@@ -73,9 +73,14 @@ export default function ProxiesPage() {
     password: "",
     country: "",
   })
-  
+
+  // 测试代理相关状态
   // 测试代理相关状态
   const [testingProxy, setTestingProxy] = useState<string | null>(null)
+
+  // 删除确认对话框状态
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [deletingProxy, setDeletingProxy] = useState<any>(null)
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -198,15 +203,22 @@ export default function ProxiesPage() {
   }
 
   // 删除代理
-  const handleDeleteProxy = async (proxy: any) => {
-    if (!confirm(`确定要删除代理 ${proxy.host}:${proxy.port} 吗？`)) {
-      return
-    }
+  // 删除代理 - 打开确认对话框
+  const handleDeleteProxy = (proxy: any) => {
+    setDeletingProxy(proxy)
+    setDeleteDialogOpen(true)
+  }
+
+  // 确认删除代理
+  const confirmDeleteProxy = async () => {
+    if (!deletingProxy) return
 
     try {
-      await proxyAPI.delete(String(proxy.id))
+      await proxyAPI.delete(String(deletingProxy.id))
       toast.success("代理删除成功")
       refresh()
+      setDeleteDialogOpen(false)
+      setDeletingProxy(null)
     } catch (error: any) {
       toast.error(error.message || "删除代理失败")
     }
@@ -254,8 +266,8 @@ export default function ProxiesPage() {
           onSearchChange={setSearch}
           searchPlaceholder="搜索主机、IP..."
           filters={
-            <Select 
-              value={statusFilter || "all"} 
+            <Select
+              value={statusFilter || "all"}
               onValueChange={(value) => updateFilter("status", value === "all" ? "" : value)}
             >
               <SelectTrigger className="w-[180px]">
@@ -559,6 +571,37 @@ export default function ProxiesPage() {
               </Button>
               <Button onClick={handleSaveProxy}>
                 {editingProxy ? "更新" : "添加"}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* 删除确认对话框 */}
+        <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+          <DialogContent className="sm:max-w-[400px]">
+            <DialogHeader>
+              <DialogTitle className="text-xl text-red-600 flex items-center gap-2">
+                <AlertCircle className="h-5 w-5" />
+                确认删除代理
+              </DialogTitle>
+              <DialogDescription className="pt-2">
+                您确定要删除代理 <span className="font-semibold text-foreground">{deletingProxy?.ip}:{deletingProxy?.port}</span> 吗？
+                <br />
+                <span className="text-red-500 text-xs mt-2 block">
+                  此操作将永久删除该代理配置，且不可恢复。
+                </span>
+              </DialogDescription>
+            </DialogHeader>
+            <div className="flex justify-end gap-2 pt-4">
+              <Button variant="outline" onClick={() => setDeleteDialogOpen(false)} className="btn-modern">
+                取消
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={confirmDeleteProxy}
+                className="btn-modern bg-red-600 hover:bg-red-700"
+              >
+                确认删除
               </Button>
             </div>
           </DialogContent>

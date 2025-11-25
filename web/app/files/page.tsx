@@ -4,7 +4,7 @@ import { toast } from "sonner"
 import { MainLayout } from "@/components/layout/main-layout"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Upload, Download, Image, File, Trash2, MoreVertical, Eye, Link2 } from "lucide-react"
+import { Upload, Download, Image, File, Trash2, MoreVertical, Eye, Link2, AlertCircle } from "lucide-react"
 import { fileAPI } from "@/lib/api"
 import { useState, useRef } from "react"
 import { Badge } from "@/components/ui/badge"
@@ -51,20 +51,24 @@ export default function FilesPage() {
     fetchFn: fileAPI.list,
     initialFilters: { category: "" },
   })
-  
+
   const categoryFilter = filters.category || ""
   const [uploading, setUploading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  
+
   // 上传对话框状态
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false)
   const [uploadFile, setUploadFile] = useState<File | null>(null)
   const [uploadCategory, setUploadCategory] = useState("attachment")
-  
+
   // URL上传对话框状态
   const [urlDialogOpen, setUrlDialogOpen] = useState(false)
   const [uploadUrl, setUploadUrl] = useState("")
   const [urlCategory, setUrlCategory] = useState("attachment")
+
+  // 删除确认对话框状态
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [deletingFile, setDeletingFile] = useState<any>(null)
 
   const formatFileSize = (bytes: number) => {
     if (bytes === 0) return "0 B"
@@ -149,15 +153,22 @@ export default function FilesPage() {
   }
 
   // 删除文件
-  const handleDeleteFile = async (file: any) => {
-    if (!confirm(`确定要删除文件 ${file.original_name} 吗？`)) {
-      return
-    }
+  // 删除文件 - 打开确认对话框
+  const handleDeleteFile = (file: any) => {
+    setDeletingFile(file)
+    setDeleteDialogOpen(true)
+  }
+
+  // 确认删除文件
+  const confirmDeleteFile = async () => {
+    if (!deletingFile) return
 
     try {
-      await fileAPI.delete(String(file.id))
+      await fileAPI.delete(String(deletingFile.id))
       toast.success("文件删除成功")
       refresh()
+      setDeleteDialogOpen(false)
+      setDeletingFile(null)
     } catch (error: any) {
       toast.error(error.message || "删除文件失败")
     }
@@ -218,8 +229,8 @@ export default function FilesPage() {
           onSearchChange={setSearch}
           searchPlaceholder="搜索文件名..."
           filters={
-            <Select 
-              value={categoryFilter || "all"} 
+            <Select
+              value={categoryFilter || "all"}
               onValueChange={(value) => updateFilter("category", value === "all" ? "" : value)}
             >
               <SelectTrigger className="w-[180px]">
@@ -509,6 +520,37 @@ export default function FilesPage() {
               </Button>
               <Button onClick={handleUploadFromURL} disabled={!uploadUrl || uploading}>
                 {uploading ? "上传中..." : "上传"}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* 删除确认对话框 */}
+        <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+          <DialogContent className="sm:max-w-[400px]">
+            <DialogHeader>
+              <DialogTitle className="text-xl text-red-600 flex items-center gap-2">
+                <AlertCircle className="h-5 w-5" />
+                确认删除文件
+              </DialogTitle>
+              <DialogDescription className="pt-2">
+                您确定要删除文件 <span className="font-semibold text-foreground">{deletingFile?.original_name}</span> 吗？
+                <br />
+                <span className="text-red-500 text-xs mt-2 block">
+                  此操作将永久删除该文件，且不可恢复。
+                </span>
+              </DialogDescription>
+            </DialogHeader>
+            <div className="flex justify-end gap-2 pt-4">
+              <Button variant="outline" onClick={() => setDeleteDialogOpen(false)} className="btn-modern">
+                取消
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={confirmDeleteFile}
+                className="btn-modern bg-red-600 hover:bg-red-700"
+              >
+                确认删除
               </Button>
             </div>
           </DialogContent>

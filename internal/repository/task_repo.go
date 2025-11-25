@@ -86,19 +86,34 @@ func (r *taskRepository) UpdateTask(taskID uint64, updates map[string]interface{
 
 // Delete 删除任务
 func (r *taskRepository) Delete(id uint64) error {
-	return r.db.Delete(&models.Task{}, id).Error
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		// 先删除关联的日志
+		if err := tx.Where("task_id = ?", id).Delete(&models.TaskLog{}).Error; err != nil {
+			return err
+		}
+		// 再删除任务
+		return tx.Delete(&models.Task{}, id).Error
+	})
 }
 
 // DeleteByUserIDAndID 根据用户ID和任务ID删除任务（安全删除）
 func (r *taskRepository) DeleteByUserIDAndID(userID, taskID uint64) error {
-	result := r.db.Where("user_id = ? AND id = ?", userID, taskID).Delete(&models.Task{})
-	if result.Error != nil {
-		return result.Error
-	}
-	if result.RowsAffected == 0 {
-		return gorm.ErrRecordNotFound
-	}
-	return nil
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		// 先删除关联的日志
+		if err := tx.Where("task_id = ?", taskID).Delete(&models.TaskLog{}).Error; err != nil {
+			return err
+		}
+
+		// 再删除任务
+		result := tx.Where("user_id = ? AND id = ?", userID, taskID).Delete(&models.Task{})
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected == 0 {
+			return gorm.ErrRecordNotFound
+		}
+		return nil
+	})
 }
 
 // GetTaskSummaries 获取任务摘要列表
@@ -373,11 +388,39 @@ func (r *taskRepository) UpdateTasksStatus(taskIDs []uint64, status string) erro
 
 // DeleteCompletedTasksBefore 删除指定时间之前的已完成任务
 func (r *taskRepository) DeleteCompletedTasksBefore(userID uint64, cutoffTime time.Time) (int64, error) {
-	result := r.db.Where("user_id = ? AND status IN ? AND completed_at < ?",
-		userID,
-		[]string{string(models.TaskStatusCompleted), string(models.TaskStatusFailed), string(models.TaskStatusCancelled)},
-		cutoffTime).
-		Delete(&models.Task{})
+	var rowsAffected int64
+	err := r.db.Transaction(func(tx *gorm.DB) error {
+		// 1. 查找要删除的任务ID
+		var taskIDs []uint64
+		statuses := []string{
+			string(models.TaskStatusCompleted),
+			string(models.TaskStatusFailed),
+			string(models.TaskStatusCancelled),
+		}
 
-	return result.RowsAffected, result.Error
+		if err := tx.Model(&models.Task{}).
+			Where("user_id = ? AND status IN ? AND completed_at < ?", userID, statuses, cutoffTime).
+			Pluck("id", &taskIDs).Error; err != nil {
+			return err
+		}
+
+		if len(taskIDs) == 0 {
+			return nil
+		}
+
+		// 2. 删除关联的日志
+		if err := tx.Where("task_id IN ?", taskIDs).Delete(&models.TaskLog{}).Error; err != nil {
+			return err
+		}
+
+		// 3. 删除任务
+		result := tx.Where("id IN ?", taskIDs).Delete(&models.Task{})
+		if result.Error != nil {
+			return result.Error
+		}
+		rowsAffected = result.RowsAffected
+		return nil
+	})
+
+	return rowsAffected, err
 }

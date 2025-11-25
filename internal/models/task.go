@@ -20,6 +20,7 @@ const (
 	TaskTypeBroadcast TaskType = "broadcast"       // 群发消息
 	TaskTypeVerify    TaskType = "verify_code"     // 验证码接收
 	TaskTypeGroupChat TaskType = "group_chat"      // AI炒群
+	TaskTypeJoinGroup TaskType = "join_group"      // 批量加群
 )
 
 // TaskStatus 任务状态枚举

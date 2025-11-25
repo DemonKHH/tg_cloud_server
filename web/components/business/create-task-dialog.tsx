@@ -58,6 +58,8 @@ export function CreateTaskDialog({
     group_chat_group_id: "",
     group_chat_duration: "",
     group_chat_ai_config: "{}",
+    join_group_groups: "",
+    join_group_delay: "",
   })
 
   // Reset form when dialog opens
@@ -168,6 +170,33 @@ export function CreateTaskDialog({
 
 
 
+
+
+      case "join_group":
+        if (!form.join_group_groups) {
+          toast.error("请填写群组链接或用户名")
+          return null
+        }
+
+        const joinGroups = form.join_group_groups.split(",")
+          .map(g => g.trim())
+          .filter(g => g !== "")
+
+        if (joinGroups.length === 0) {
+          toast.error("请至少填写一个有效的群组")
+          return null
+        }
+
+        config.groups = joinGroups
+
+        if (form.join_group_delay) {
+          const delay = parseInt(form.join_group_delay)
+          if (!isNaN(delay) && delay > 0) {
+            config.interval_seconds = delay
+          }
+        }
+        break
+
       case "group_chat":
         if (!form.group_chat_group_id) {
           toast.error("请填写群组ID")
@@ -270,6 +299,7 @@ export function CreateTaskDialog({
                   <SelectItem value="check">账号检查</SelectItem>
                   <SelectItem value="private_message">私信发送</SelectItem>
                   <SelectItem value="broadcast">群发消息</SelectItem>
+                  <SelectItem value="join_group">批量加群</SelectItem>
                   <SelectItem value="group_chat">AI炒群</SelectItem>
                 </SelectContent>
               </Select>
@@ -405,6 +435,32 @@ export function CreateTaskDialog({
                     onChange={e => setForm({ ...form, group_chat_ai_config: e.target.value })}
                     placeholder="{}"
                     className="font-mono"
+                  />
+                </div>
+              </div>
+            )}
+
+            {form.task_type === "join_group" && (
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>群组 (链接/用户名，逗号分隔)</Label>
+                  <Textarea
+                    value={form.join_group_groups}
+                    onChange={e => setForm({ ...form, join_group_groups: e.target.value })}
+                    placeholder="https://t.me/group, @groupname, https://t.me/+invitehash"
+                    className="min-h-[100px]"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    支持公开群组链接、用户名以及私有群组邀请链接
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label>加入间隔 (秒)</Label>
+                  <Input
+                    type="number"
+                    value={form.join_group_delay}
+                    onChange={e => setForm({ ...form, join_group_delay: e.target.value })}
+                    placeholder="默认5秒"
                   />
                 </div>
               </div>

@@ -639,6 +639,8 @@ func (ts *TaskScheduler) createTaskExecutor(task *models.Task) (telegram.TaskInt
 		return telegram.NewVerifyCodeTask(task), nil
 	case models.TaskTypeGroupChat:
 		return telegram.NewGroupChatTask(task), nil
+	case models.TaskTypeJoinGroup:
+		return telegram.NewJoinGroupTask(task), nil
 	default:
 		return nil, fmt.Errorf("unsupported task type: %s", task.TaskType)
 	}

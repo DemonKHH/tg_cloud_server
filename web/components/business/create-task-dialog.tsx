@@ -153,20 +153,7 @@ export function CreateTaskDialog({
         }
         break
 
-      case "verify_code":
-        if (form.verify_timeout) {
-          const timeout = parseInt(form.verify_timeout)
-          if (!isNaN(timeout) && timeout > 0) {
-            config.timeout_seconds = timeout
-          }
-        }
-        if (form.verify_source && form.verify_source.trim()) {
-          config.senders = [form.verify_source.trim()]
-        }
-        if (form.verify_pattern && form.verify_pattern.trim()) {
-          config.pattern = form.verify_pattern.trim()
-        }
-        break
+
 
       case "group_chat":
         if (!form.group_chat_group_id) {
@@ -270,7 +257,6 @@ export function CreateTaskDialog({
                   <SelectItem value="check">账号检查</SelectItem>
                   <SelectItem value="private_message">私信发送</SelectItem>
                   <SelectItem value="broadcast">群发消息</SelectItem>
-                  <SelectItem value="verify_code">验证码接收</SelectItem>
                   <SelectItem value="group_chat">AI炒群</SelectItem>
                 </SelectContent>
               </Select>
@@ -378,35 +364,7 @@ export function CreateTaskDialog({
               </div>
             )}
 
-            {form.task_type === "verify_code" && (
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label>超时时间 (秒)</Label>
-                  <Input
-                    type="number"
-                    value={form.verify_timeout}
-                    onChange={e => setForm({ ...form, verify_timeout: e.target.value })}
-                    placeholder="30"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>指定发送者 (可选)</Label>
-                  <Input
-                    value={form.verify_source}
-                    onChange={e => setForm({ ...form, verify_source: e.target.value })}
-                    placeholder="例如: Telegram"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>匹配正则 (可选)</Label>
-                  <Input
-                    value={form.verify_pattern}
-                    onChange={e => setForm({ ...form, verify_pattern: e.target.value })}
-                    placeholder="例如: code is (\d+)"
-                  />
-                </div>
-              </div>
-            )}
+
 
             {form.task_type === "group_chat" && (
               <div className="space-y-4">

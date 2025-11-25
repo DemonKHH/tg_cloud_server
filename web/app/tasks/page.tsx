@@ -965,7 +965,6 @@ export default function TasksPage() {
                     <SelectItem value="check">账号检查</SelectItem>
                     <SelectItem value="private_message">私信发送</SelectItem>
                     <SelectItem value="broadcast">群发消息</SelectItem>
-                    <SelectItem value="verify_code">验证码接收</SelectItem>
                     <SelectItem value="group_chat">AI炒群</SelectItem>
                   </SelectContent>
                 </Select>
@@ -1087,41 +1086,7 @@ export default function TasksPage() {
                 </>
               )}
 
-              {createForm.task_type === "verify_code" && (
-                <>
-                  <div className="space-y-2">
-                    <Label htmlFor="verify-timeout">超时时间（秒）</Label>
-                    <Input
-                      id="verify-timeout"
-                      type="number"
-                      min="1"
-                      value={createForm.verify_timeout}
-                      onChange={(e) => setCreateForm({ ...createForm, verify_timeout: e.target.value })}
-                      placeholder="30"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="verify-source">来源过滤（可选）</Label>
-                    <Input
-                      id="verify-source"
-                      value={createForm.verify_source}
-                      onChange={(e) => setCreateForm({ ...createForm, verify_source: e.target.value })}
-                      placeholder="Telegram"
-                    />
-                    <p className="text-xs text-muted-foreground">过滤特定来源的验证码</p>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="verify-pattern">匹配模式（可选）</Label>
-                    <Input
-                      id="verify-pattern"
-                      value={createForm.verify_pattern}
-                      onChange={(e) => setCreateForm({ ...createForm, verify_pattern: e.target.value })}
-                      placeholder="\\d{6}"
-                    />
-                    <p className="text-xs text-muted-foreground">正则表达式，用于匹配验证码格式</p>
-                  </div>
-                </>
-              )}
+
 
               {createForm.task_type === "group_chat" && (
                 <>

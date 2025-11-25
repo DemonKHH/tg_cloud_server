@@ -1076,7 +1076,7 @@ export default function AccountsPage() {
                                   </TooltipTrigger>
                                   <TooltipContent side="top">
                                     <p className="text-xs">
-                                      {healthChecking === record.id ? "检查中..." : "健康检查"}
+                                      {healthChecking === record.id ? "检查中..." : "账号检查"}
                                     </p>
                                   </TooltipContent>
                                 </Tooltip>

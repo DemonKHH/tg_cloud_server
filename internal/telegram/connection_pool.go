@@ -844,6 +844,93 @@ func (cp *ConnectionPool) updateConnectionStatus(accountID string, isOnline bool
 	}
 }
 
+// CheckConnection 主动检查账号连接状态
+func (cp *ConnectionPool) CheckConnection(accountID uint64) error {
+	// 1. 获取账号信息
+	account, err := cp.accountRepo.GetByID(accountID)
+	if err != nil {
+		return err
+	}
+
+	// 2. 构建配置
+	config := &ClientConfig{
+		AppID:       cp.appID,
+		AppHash:     cp.appHash,
+		Phone:       account.Phone,
+		SessionData: []byte(account.SessionData),
+	}
+
+	if account.ProxyID != nil {
+		proxy, err := cp.proxyRepo.GetByID(*account.ProxyID)
+		if err == nil && proxy.IsActive {
+			config.ProxyConfig = &ProxyConfig{
+				Protocol: string(proxy.Protocol),
+				IP:       proxy.IP,
+				Port:     proxy.Port,
+				Username: proxy.Username,
+				Password: proxy.Password,
+			}
+		}
+	}
+
+	// 3. 获取或创建连接
+	conn, err := cp.GetOrCreateConnection(fmt.Sprintf("%d", accountID), config)
+	if err != nil {
+		return err
+	}
+
+	// 4. 等待连接就绪 (最多等待 15 秒)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("connection timeout")
+		case <-ticker.C:
+			conn.mu.Lock()
+			status := conn.status
+			conn.mu.Unlock()
+
+			switch status {
+			case StatusConnected:
+				// 5. 验证会话有效性
+				checkCtx, checkCancel := context.WithTimeout(context.Background(), 10*time.Second)
+				defer checkCancel()
+
+				// 获取当前用户信息来验证会话
+				user, err := conn.client.Self(checkCtx)
+				if err != nil {
+					// 如果获取用户信息失败，可能是 session 失效
+					cp.updateAccountStatusOnError(fmt.Sprintf("%d", accountID), err)
+					return fmt.Errorf("session invalid: %w", err)
+				}
+
+				// 验证成功，更新状态
+				if account.Status == models.AccountStatusWarning || account.Status == models.AccountStatusNew {
+					account.Status = models.AccountStatusNormal
+					now := time.Now()
+					account.LastCheckAt = &now
+					cp.accountRepo.Update(account)
+				}
+
+				// 确保在线状态为 true
+				cp.updateConnectionStatus(fmt.Sprintf("%d", accountID), true)
+
+				cp.logger.Info("Account check successful",
+					zap.Uint64("account_id", accountID),
+					zap.String("username", user.Username))
+				return nil
+			case StatusConnectionError:
+				return fmt.Errorf("connection failed")
+			}
+		}
+	}
+}
+
 // Close 关闭连接池
 func (cp *ConnectionPool) Close() {
 	cp.logger.Info("Closing connection pool")

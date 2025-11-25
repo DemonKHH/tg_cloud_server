@@ -119,7 +119,7 @@ func main() {
 
 	// 初始化服务层
 	authService := services.NewAuthService(userRepo, cfg)
-	accountService := services.NewAccountService(accountRepo, proxyRepo)
+	accountService := services.NewAccountService(accountRepo, proxyRepo, connectionPool)
 	proxyService := services.NewProxyService(proxyRepo)
 	taskService := services.NewTaskService(taskRepo, accountRepo)
 

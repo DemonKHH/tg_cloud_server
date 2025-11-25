@@ -10,6 +10,7 @@ import (
 	"tg_cloud_server/internal/common/logger"
 	"tg_cloud_server/internal/models"
 	"tg_cloud_server/internal/repository"
+	"tg_cloud_server/internal/telegram"
 )
 
 var (
@@ -20,17 +21,19 @@ var (
 
 // AccountService 账号管理服务
 type AccountService struct {
-	accountRepo repository.AccountRepository
-	proxyRepo   repository.ProxyRepository
-	logger      *zap.Logger
+	accountRepo    repository.AccountRepository
+	proxyRepo      repository.ProxyRepository
+	connectionPool *telegram.ConnectionPool
+	logger         *zap.Logger
 }
 
 // NewAccountService 创建账号管理服务
-func NewAccountService(accountRepo repository.AccountRepository, proxyRepo repository.ProxyRepository) *AccountService {
+func NewAccountService(accountRepo repository.AccountRepository, proxyRepo repository.ProxyRepository, connectionPool *telegram.ConnectionPool) *AccountService {
 	return &AccountService{
-		accountRepo: accountRepo,
-		proxyRepo:   proxyRepo,
-		logger:      logger.Get().Named("account_service"),
+		accountRepo:    accountRepo,
+		proxyRepo:      proxyRepo,
+		connectionPool: connectionPool,
+		logger:         logger.Get().Named("account_service"),
 	}
 }
 
@@ -194,6 +197,18 @@ func (s *AccountService) CheckAccountHealth(userID, accountID uint64) (*models.A
 	s.checkAccountStatus(account, report)
 	s.checkProxyStatus(account, report)
 	s.checkUsagePattern(account, report)
+
+	// 主动检查连接状态
+	if s.connectionPool != nil {
+		if err := s.connectionPool.CheckConnection(account.ID); err != nil {
+			report.Issues = append(report.Issues, fmt.Sprintf("连接检查失败: %v", err))
+			report.Suggestions = append(report.Suggestions, "请检查代理设置或账号Session是否有效")
+			// 更新状态为异常
+			if account.Status == models.AccountStatusNormal {
+				account.Status = models.AccountStatusWarning
+			}
+		}
+	}
 
 	// 更新最后检查时间
 	now = time.Now()

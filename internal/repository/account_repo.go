@@ -25,6 +25,7 @@ type AccountRepository interface {
 	GetAccountSummaries(userID uint64, page, limit int, search string) ([]*models.AccountSummary, int64, error)
 	GetAll() ([]*models.TGAccount, error)
 	UpdateSessionData(accountID uint64, sessionData []byte) error
+	UpdateConnectionStatus(id uint64, isOnline bool) error
 }
 
 // accountRepository 账号数据访问实现
@@ -226,7 +227,7 @@ func (r *accountRepository) GetAccountSummaries(userID uint64, page, limit int, 
 
 	// 获取摘要数据（包含 Telegram 信息和代理信息）
 	err := query.
-		Select("tg_accounts.id, tg_accounts.user_id, tg_accounts.phone, tg_accounts.status, tg_accounts.proxy_id, tg_accounts.tg_user_id, tg_accounts.username, tg_accounts.first_name, tg_accounts.last_name, tg_accounts.bio, tg_accounts.photo_url, tg_accounts.last_used_at, tg_accounts.created_at, proxy_ips.name as proxy_name, proxy_ips.ip as proxy_ip, proxy_ips.port as proxy_port, proxy_ips.username as proxy_username, proxy_ips.password as proxy_password, proxy_ips.protocol as proxy_protocol").
+		Select("tg_accounts.id, tg_accounts.user_id, tg_accounts.phone, tg_accounts.status, tg_accounts.is_online, tg_accounts.proxy_id, tg_accounts.tg_user_id, tg_accounts.username, tg_accounts.first_name, tg_accounts.last_name, tg_accounts.bio, tg_accounts.photo_url, tg_accounts.last_used_at, tg_accounts.created_at, proxy_ips.name as proxy_name, proxy_ips.ip as proxy_ip, proxy_ips.port as proxy_port, proxy_ips.username as proxy_username, proxy_ips.password as proxy_password, proxy_ips.protocol as proxy_protocol").
 		Joins("LEFT JOIN proxy_ips ON proxy_ips.id = tg_accounts.proxy_id").
 		Offset(offset).
 		Limit(limit).
@@ -253,4 +254,11 @@ func (r *accountRepository) UpdateSessionData(accountID uint64, sessionData []by
 	return r.db.Model(&models.TGAccount{}).
 		Where("id = ?", accountID).
 		Update("session_data", string(sessionData)).Error
+}
+
+// UpdateConnectionStatus 更新账号在线状态
+func (r *accountRepository) UpdateConnectionStatus(id uint64, isOnline bool) error {
+	return r.db.Model(&models.TGAccount{}).
+		Where("id = ?", id).
+		Update("is_online", isOnline).Error
 }

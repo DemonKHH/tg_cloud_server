@@ -220,6 +220,10 @@ func (cp *ConnectionPool) maintainConnection(accountID string, conn *ManagedConn
 		// 连接成功后，获取并更新账号信息（在同一个 Run 上下文中）
 		go cp.updateAccountInfoFromTelegram(accountID, conn, ctx)
 
+		// 更新在线状态为在线
+		cp.updateConnectionStatus(accountID, true)
+		defer cp.updateConnectionStatus(accountID, false)
+
 		// 保持连接直到取消
 		<-ctx.Done()
 		return ctx.Err()
@@ -800,8 +804,9 @@ func (cp *ConnectionPool) updateAccountStatusOnTaskError(accountID string, err e
 	} else if strings.Contains(errorStr, "FLOOD_WAIT") ||
 		strings.Contains(errorStr, "SLOWMODE_WAIT") ||
 		strings.Contains(errorStr, "PEER_FLOOD") {
+		// 触发限流，设置为冷却状态
 		account.Status = models.AccountStatusCooling
-		cp.logger.Warn("Account marked as cooling due to rate limit in task",
+		cp.logger.Warn("Account marked as cooling due to task error",
 			zap.String("account_id", accountID),
 			zap.Error(err))
 	} else if strings.Contains(errorStr, "CHAT_WRITE_FORBIDDEN") ||
@@ -821,6 +826,21 @@ func (cp *ConnectionPool) updateAccountStatusOnTaskError(accountID string, err e
 		cp.logger.Error("Failed to update account status on task error",
 			zap.String("account_id", accountID),
 			zap.Error(updateErr))
+	}
+}
+
+// updateConnectionStatus 更新账号在线状态
+func (cp *ConnectionPool) updateConnectionStatus(accountID string, isOnline bool) {
+	accountIDNum, err := strconv.ParseUint(accountID, 10, 64)
+	if err != nil {
+		return
+	}
+
+	if err := cp.accountRepo.UpdateConnectionStatus(accountIDNum, isOnline); err != nil {
+		cp.logger.Error("Failed to update connection status",
+			zap.String("account_id", accountID),
+			zap.Bool("is_online", isOnline),
+			zap.Error(err))
 	}
 }
 

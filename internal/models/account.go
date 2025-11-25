@@ -56,6 +56,7 @@ type TGAccount struct {
 	SessionData string        `json:"-" gorm:"type:text"` // 隐藏敏感数据
 	ProxyID     *uint64       `json:"proxy_id" gorm:"index"`
 	Status      AccountStatus `json:"status" gorm:"type:enum('new','normal','warning','restricted','dead','cooling','maintenance');default:'new'"`
+	IsOnline    bool          `json:"is_online" gorm:"default:false"` // 是否在线
 
 	// Telegram 账号信息（从 Telegram 获取并存储）
 	TgUserID  *int64  `json:"tg_user_id" gorm:"index"`        // Telegram 用户ID
@@ -121,10 +122,11 @@ func (a *TGAccount) BeforeCreate(tx *gorm.DB) error {
 
 // AccountSummary 账号摘要信息（用于列表显示）
 type AccountSummary struct {
-	ID      uint64        `json:"id"`
-	Phone   string        `json:"phone"`
-	Status  AccountStatus `json:"status"`
-	ProxyID *uint64       `json:"proxy_id,omitempty"`
+	ID       uint64        `json:"id"`
+	Phone    string        `json:"phone"`
+	Status   AccountStatus `json:"status"`
+	IsOnline bool          `json:"is_online"`
+	ProxyID  *uint64       `json:"proxy_id,omitempty"`
 
 	// Telegram 信息（始终返回，即使为空）
 	TgUserID  *int64  `json:"tg_user_id"`

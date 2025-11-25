@@ -969,20 +969,10 @@ export default function AccountsPage() {
                             <div className="flex items-center gap-2">
                               <div className={cn(
                                 "h-2 w-2 rounded-full",
-                                record.status === 'normal' ? 'bg-green-500 animate-pulse' :
-                                  record.status === 'warning' ? 'bg-yellow-500' :
-                                    record.status === 'cooling' ? 'bg-blue-500' :
-                                      record.status === 'restricted' ? 'bg-orange-500' :
-                                        record.status === 'dead' ? 'bg-red-500' :
-                                          'bg-gray-400'
+                                record.is_online ? 'bg-green-500 animate-pulse' : 'bg-gray-400'
                               )} />
                               <span className="text-sm text-muted-foreground">
-                                {record.status === 'normal' ? '已连接' :
-                                  record.status === 'warning' ? '异常' :
-                                    record.status === 'cooling' ? '冷却中' :
-                                      record.status === 'restricted' ? '受限' :
-                                        record.status === 'dead' ? '已死亡' :
-                                          '未知'}
+                                {record.is_online ? '在线' : '离线'}
                               </span>
                             </div>
                           </TableCell>

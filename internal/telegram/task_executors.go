@@ -363,11 +363,21 @@ func (t *BroadcastTask) sendBroadcastMessage(ctx context.Context, api *tg.Client
 	case int64:
 		// 如果是数字ID，尝试作为ChatID
 		inputPeer = &tg.InputPeerChat{ChatID: v}
+	case float64:
+		// JSON解码数字可能是float64
+		inputPeer = &tg.InputPeerChat{ChatID: int64(v)}
 	case string:
 		// 如果是字符串，尝试解析为群组用户名
 		cleanGroupname := v
 		if len(v) > 0 && v[0] == '@' {
 			cleanGroupname = v[1:]
+		}
+
+		// 移除可能的链接前缀
+		if len(cleanGroupname) > 13 && cleanGroupname[:13] == "https://t.me/" {
+			cleanGroupname = cleanGroupname[13:]
+		} else if len(cleanGroupname) > 5 && cleanGroupname[:5] == "t.me/" {
+			cleanGroupname = cleanGroupname[5:]
 		}
 
 		resolved, err := api.ContactsResolveUsername(ctx, &tg.ContactsResolveUsernameRequest{
@@ -393,7 +403,7 @@ func (t *BroadcastTask) sendBroadcastMessage(ctx context.Context, api *tg.Client
 			return fmt.Errorf("group not found: %s", cleanGroupname)
 		}
 	default:
-		return fmt.Errorf("unsupported group identifier type")
+		return fmt.Errorf("unsupported group identifier type: %T", group)
 	}
 
 	// 发送消息

@@ -114,33 +114,46 @@ export function CreateTaskDialog({
           return null
         }
         if (!form.broadcast_groups && !form.broadcast_channels) {
-          toast.error("请至少填写一个群组或频道ID")
+          toast.error("请至少填写一个群组或频道")
           return null
         }
         config.message = form.broadcast_message
 
         const allGroups: any[] = []
-        if (form.broadcast_groups) {
-          const groups = form.broadcast_groups.split(",")
+
+        const processInput = (input: string) => {
+          return input.split(",")
             .map(g => {
-              const num = parseInt(g.trim())
-              return !isNaN(num) && num > 0 ? num : null
+              let item = g.trim()
+              if (!item) return null
+
+              // 尝试解析为数字ID
+              // 使用正则表达式确保只有纯数字才被视为ID
+              if (/^-?\d+$/.test(item)) {
+                const num = parseInt(item)
+                if (!isNaN(num)) return num
+              }
+
+              // 处理链接格式 (t.me/username 或 https://t.me/username)
+              item = item.replace(/^https?:\/\//, '').replace(/^t\.me\//, '')
+
+              // 移除可能存在的 @ 前缀 (后端会处理，但前端清理一下也好)
+              // if (item.startsWith('@')) item = item.substring(1)
+
+              return item
             })
             .filter(g => g !== null)
-          allGroups.push(...groups)
+        }
+
+        if (form.broadcast_groups) {
+          allGroups.push(...processInput(form.broadcast_groups))
         }
         if (form.broadcast_channels) {
-          const channels = form.broadcast_channels.split(",")
-            .map(c => {
-              const num = parseInt(c.trim())
-              return !isNaN(num) && num > 0 ? num : null
-            })
-            .filter(c => c !== null)
-          allGroups.push(...channels)
+          allGroups.push(...processInput(form.broadcast_channels))
         }
 
         if (allGroups.length === 0) {
-          toast.error("请至少填写一个有效的群组或频道ID")
+          toast.error("请至少填写一个有效的群组或频道")
           return null
         }
 
@@ -329,19 +342,19 @@ export function CreateTaskDialog({
             {form.task_type === "broadcast" && (
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <Label>群组ID (逗号分隔)</Label>
+                  <Label>群组 (ID/用户名/链接，逗号分隔)</Label>
                   <Input
                     value={form.broadcast_groups}
                     onChange={e => setForm({ ...form, broadcast_groups: e.target.value })}
-                    placeholder="123456, 789012"
+                    placeholder="123456, @groupname, t.me/group"
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>频道ID (逗号分隔)</Label>
+                  <Label>频道 (ID/用户名/链接，逗号分隔)</Label>
                   <Input
                     value={form.broadcast_channels}
                     onChange={e => setForm({ ...form, broadcast_channels: e.target.value })}
-                    placeholder="123456, 789012"
+                    placeholder="123456, @channel, t.me/channel"
                   />
                 </div>
                 <div className="space-y-2">

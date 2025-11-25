@@ -212,11 +212,11 @@ func (r *accountRepository) GetAccountSummaries(userID uint64, page, limit int, 
 	offset := (page - 1) * limit
 
 	// 构建查询
-	query := r.db.Model(&models.TGAccount{}).Where("user_id = ?", userID)
+	query := r.db.Model(&models.TGAccount{}).Where("tg_accounts.user_id = ?", userID)
 
 	// 添加搜索条件（仅搜索手机号）
 	if search != "" {
-		query = query.Where("phone LIKE ?", "%"+search+"%")
+		query = query.Where("tg_accounts.phone LIKE ?", "%"+search+"%")
 	}
 
 	// 获取总数
@@ -224,12 +224,13 @@ func (r *accountRepository) GetAccountSummaries(userID uint64, page, limit int, 
 		return nil, 0, err
 	}
 
-	// 获取摘要数据（包含 Telegram 信息）
+	// 获取摘要数据（包含 Telegram 信息和代理信息）
 	err := query.
-		Select("id, user_id, phone, status, proxy_id, tg_user_id, username, first_name, last_name, bio, photo_url, last_used_at, created_at").
+		Select("tg_accounts.id, tg_accounts.user_id, tg_accounts.phone, tg_accounts.status, tg_accounts.proxy_id, tg_accounts.tg_user_id, tg_accounts.username, tg_accounts.first_name, tg_accounts.last_name, tg_accounts.bio, tg_accounts.photo_url, tg_accounts.last_used_at, tg_accounts.created_at, proxy_ips.name as proxy_name, proxy_ips.ip as proxy_ip, proxy_ips.port as proxy_port, proxy_ips.username as proxy_username, proxy_ips.password as proxy_password, proxy_ips.protocol as proxy_protocol").
+		Joins("LEFT JOIN proxy_ips ON proxy_ips.id = tg_accounts.proxy_id").
 		Offset(offset).
 		Limit(limit).
-		Order("created_at DESC").
+		Order("tg_accounts.created_at DESC").
 		Scan(&summaries).Error
 
 	// 确保返回空数组而不是 nil

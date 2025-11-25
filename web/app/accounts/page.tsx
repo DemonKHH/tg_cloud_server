@@ -12,7 +12,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import { Plus, MoreVertical, CheckCircle2, XCircle, AlertCircle, Upload, FileArchive, Search } from "lucide-react"
+import { Plus, MoreVertical, CheckCircle2, XCircle, AlertCircle, Upload, FileArchive, Search, Lock } from "lucide-react"
 import {
   Tooltip,
   TooltipContent,
@@ -987,19 +987,56 @@ export default function AccountsPage() {
                             </div>
                           </TableCell>
                           <TableCell className="py-4">
-                            <Badge
-                              variant={record.proxy_id ? 'default' : 'outline'}
-                              className={cn(
-                                "text-xs font-medium",
-                                record.proxy_id && "bg-purple-100 text-purple-700 border-purple-200 dark:bg-purple-900/30 dark:text-purple-400 dark:border-purple-800"
-                              )}
-                            >
-                              <div className={cn(
-                                "h-1.5 w-1.5 rounded-full mr-1.5",
-                                record.proxy_id ? "bg-purple-500" : "bg-gray-400"
-                              )} />
-                              {record.proxy_id ? '已绑定' : '未绑定'}
-                            </Badge>
+                            {record.proxy_id ? (
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <div className="flex flex-col gap-1.5 items-start cursor-help group/proxy w-fit">
+                                      <div className="flex items-center gap-1.5">
+                                        <Badge
+                                          variant="outline"
+                                          className="bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-900/30 dark:text-purple-400 dark:border-purple-800 h-5 px-1.5 text-[10px] uppercase"
+                                        >
+                                          {record.proxy_protocol}
+                                        </Badge>
+                                        {(record.proxy_username || record.proxy_password) && (
+                                          <Lock className="h-3 w-3 text-muted-foreground/50" />
+                                        )}
+                                      </div>
+                                      <span className="text-xs font-medium font-mono text-muted-foreground group-hover/proxy:text-foreground transition-colors">
+                                        {record.proxy_ip}:{record.proxy_port}
+                                      </span>
+                                    </div>
+                                  </TooltipTrigger>
+                                  <TooltipContent className="p-3">
+                                    <div className="space-y-2 text-xs">
+                                      <div className="flex items-center justify-between gap-4">
+                                        <span className="text-muted-foreground">地址:</span>
+                                        <span className="font-mono">{record.proxy_ip}:{record.proxy_port}</span>
+                                      </div>
+                                      {(record.proxy_username || record.proxy_password) && (
+                                        <>
+                                          <div className="h-px bg-border" />
+                                          <div className="flex items-center justify-between gap-4">
+                                            <span className="text-muted-foreground">用户:</span>
+                                            <span className="font-mono">{record.proxy_username || '-'}</span>
+                                          </div>
+                                          <div className="flex items-center justify-between gap-4">
+                                            <span className="text-muted-foreground">密码:</span>
+                                            <span className="font-mono">{record.proxy_password || '-'}</span>
+                                          </div>
+                                        </>
+                                      )}
+                                    </div>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            ) : (
+                              <Badge variant="outline" className="text-muted-foreground">
+                                <div className="h-1.5 w-1.5 rounded-full bg-gray-400 mr-1.5" />
+                                未绑定
+                              </Badge>
+                            )}
                           </TableCell>
                           <TableCell className="py-4">
                             <div className="flex items-center gap-2 text-sm text-muted-foreground">

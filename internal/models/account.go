@@ -139,6 +139,13 @@ type AccountSummary struct {
 	CreatedAt   time.Time  `json:"created_at"`
 	TaskCount   int64      `json:"task_count,omitempty"`
 	ProxyName   string     `json:"proxy_name,omitempty"`
+
+	// 代理详情
+	ProxyIP       string `json:"proxy_ip,omitempty"`
+	ProxyPort     int    `json:"proxy_port,omitempty"`
+	ProxyUsername string `json:"proxy_username,omitempty"`
+	ProxyPassword string `json:"proxy_password,omitempty"`
+	ProxyProtocol string `json:"proxy_protocol,omitempty"`
 }
 
 // AccountAvailability 账号可用性信息

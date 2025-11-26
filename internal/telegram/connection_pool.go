@@ -69,29 +69,31 @@ type ProxyConfig struct {
 
 // ConnectionPool 统一连接池管理器
 type ConnectionPool struct {
-	connections   map[string]*ManagedConnection
-	configs       map[string]*ClientConfig
-	mu            sync.RWMutex
-	maxIdle       time.Duration
-	cleanupTicker *time.Ticker
-	logger        *zap.Logger
-	appID         int
-	appHash       string
-	accountRepo   repository.AccountRepository
-	proxyRepo     repository.ProxyRepository
+	connections    map[string]*ManagedConnection
+	configs        map[string]*ClientConfig
+	mu             sync.RWMutex
+	maxIdle        time.Duration
+	cleanupTicker  *time.Ticker
+	logger         *zap.Logger
+	appID          int
+	appHash        string
+	accountRepo    repository.AccountRepository
+	proxyRepo      repository.ProxyRepository
+	updateHandlers map[string]telegram.UpdateHandler
 }
 
 // NewConnectionPool 创建新的连接池
 func NewConnectionPool(appID int, appHash string, maxIdle time.Duration, accountRepo repository.AccountRepository, proxyRepo repository.ProxyRepository) *ConnectionPool {
 	cp := &ConnectionPool{
-		connections: make(map[string]*ManagedConnection),
-		configs:     make(map[string]*ClientConfig),
-		maxIdle:     maxIdle,
-		logger:      logger.Get().Named("connection_pool"),
-		appID:       appID,
-		appHash:     appHash,
-		accountRepo: accountRepo,
-		proxyRepo:   proxyRepo,
+		connections:    make(map[string]*ManagedConnection),
+		configs:        make(map[string]*ClientConfig),
+		maxIdle:        maxIdle,
+		logger:         logger.Get().Named("connection_pool"),
+		appID:          appID,
+		appHash:        appHash,
+		accountRepo:    accountRepo,
+		proxyRepo:      proxyRepo,
+		updateHandlers: make(map[string]telegram.UpdateHandler),
 	}
 
 	// 启动清理定时器
@@ -146,6 +148,7 @@ func (cp *ConnectionPool) createNewConnection(accountID string, config *ClientCo
 
 	options := telegram.Options{
 		SessionStorage: sessionStorage,
+		UpdateHandler:  cp.createUpdateDispatcher(accountID),
 	}
 
 	// 配置代理 (固定绑定)
@@ -340,6 +343,9 @@ func (cp *ConnectionPool) ExecuteTask(accountID string, task TaskInterface) erro
 
 	// 执行任务并捕获错误
 	taskErr := conn.client.Run(context.Background(), func(ctx context.Context) error {
+		if advancedTask, ok := task.(AdvancedTaskInterface); ok {
+			return advancedTask.ExecuteAdvanced(ctx, conn.client)
+		}
 		api := conn.client.API()
 		return task.Execute(ctx, api)
 	})
@@ -407,6 +413,28 @@ func (cp *ConnectionPool) RemoveConnection(accountID string) {
 	}
 
 	delete(cp.configs, accountID)
+	delete(cp.updateHandlers, accountID)
+}
+
+// SetUpdateHandler 设置账号的更新处理器
+func (cp *ConnectionPool) SetUpdateHandler(accountID string, handler telegram.UpdateHandler) {
+	cp.mu.Lock()
+	defer cp.mu.Unlock()
+	cp.updateHandlers[accountID] = handler
+}
+
+// createUpdateDispatcher 创建更新分发器
+func (cp *ConnectionPool) createUpdateDispatcher(accountID string) telegram.UpdateHandler {
+	return telegram.UpdateHandlerFunc(func(ctx context.Context, u tg.UpdatesClass) error {
+		cp.mu.RLock()
+		handler, exists := cp.updateHandlers[accountID]
+		cp.mu.RUnlock()
+
+		if exists && handler != nil {
+			return handler.Handle(ctx, u)
+		}
+		return nil
+	})
 }
 
 // cleanupLoop 清理循环

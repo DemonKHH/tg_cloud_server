@@ -7,6 +7,7 @@ import (
 
 	"tg_cloud_server/internal/models"
 
+	gotd_telegram "github.com/gotd/td/telegram"
 	"github.com/gotd/td/tg"
 )
 
@@ -14,6 +15,12 @@ import (
 type TaskInterface interface {
 	Execute(ctx context.Context, api *tg.Client) error
 	GetType() string
+}
+
+// AdvancedTaskInterface 高级任务执行器接口 (支持完整Client)
+type AdvancedTaskInterface interface {
+	TaskInterface
+	ExecuteAdvanced(ctx context.Context, client *gotd_telegram.Client) error
 }
 
 // AccountCheckTask 账号检查任务

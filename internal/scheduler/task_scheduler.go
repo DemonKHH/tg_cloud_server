@@ -14,6 +14,7 @@ import (
 	"tg_cloud_server/internal/common/logger"
 	"tg_cloud_server/internal/models"
 	"tg_cloud_server/internal/repository"
+	"tg_cloud_server/internal/services"
 	"tg_cloud_server/internal/telegram"
 )
 
@@ -24,6 +25,7 @@ type TaskScheduler struct {
 	connectionPool *telegram.ConnectionPool     // 连接池引用
 	accountRepo    repository.AccountRepository // 账号仓库
 	taskRepo       repository.TaskRepository    // 任务仓库
+	aiService      services.AIService           // AI服务
 	logger         *zap.Logger
 	mu             sync.RWMutex
 	ctx            context.Context
@@ -36,6 +38,7 @@ func NewTaskScheduler(
 	connectionPool *telegram.ConnectionPool,
 	accountRepo repository.AccountRepository,
 	taskRepo repository.TaskRepository,
+	aiService services.AIService,
 ) *TaskScheduler {
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -45,6 +48,7 @@ func NewTaskScheduler(
 		connectionPool: connectionPool,
 		accountRepo:    accountRepo,
 		taskRepo:       taskRepo,
+		aiService:      aiService,
 		logger:         logger.Get().Named("task_scheduler"),
 		ctx:            ctx,
 		cancel:         cancel,
@@ -307,6 +311,12 @@ func (ts *TaskScheduler) processQueues() {
 
 // executeTask 执行任务
 func (ts *TaskScheduler) executeTask(task *models.Task) {
+	//如果是场景任务，使用专门的执行逻辑
+	if task.TaskType == models.TaskTypeScenario {
+		ts.executeScenarioTask(task)
+		return
+	}
+
 	// 获取账号ID列表
 	accountIDs := task.GetAccountIDList()
 
@@ -757,5 +767,53 @@ func (ts *TaskScheduler) createTaskLog(taskID uint64, accountID *uint64, action,
 			zap.Uint64("task_id", taskID),
 			zap.String("action", action),
 			zap.Error(err))
+	}
+}
+
+// executeScenarioTask 执行场景任务
+func (ts *TaskScheduler) executeScenarioTask(task *models.Task) {
+	// 更新任务状态为运行中
+	task.Status = models.TaskStatusRunning
+	startTime := time.Now()
+	task.StartedAt = &startTime
+
+	logger.LogTask(zapcore.InfoLevel, "Starting scenario task execution",
+		zap.Uint64("task_id", task.ID),
+		zap.String("task_type", string(task.TaskType)),
+		zap.Time("started_at", startTime))
+
+	if err := ts.taskRepo.UpdateTask(task.ID, map[string]interface{}{
+		"status":     models.TaskStatusRunning,
+		"started_at": startTime,
+	}); err != nil {
+		ts.logger.Error("Failed to update task status",
+			zap.Uint64("task_id", task.ID),
+			zap.Error(err))
+	}
+
+	// 创建 AgentRunner
+	runner, err := telegram.NewAgentRunner(task, ts.aiService, ts.connectionPool)
+	if err != nil {
+		ts.logger.Error("Failed to create agent runner", zap.Error(err))
+		ts.completeTaskWithError(task, err)
+		return
+	}
+
+	// 执行任务
+	err = runner.Run(ts.ctx)
+
+	// 更新结果
+	duration := time.Since(startTime)
+	if err != nil {
+		logger.LogTask(zapcore.ErrorLevel, "Scenario task execution failed",
+			zap.Uint64("task_id", task.ID),
+			zap.Duration("duration", duration),
+			zap.Error(err))
+		ts.completeTaskWithError(task, err)
+	} else {
+		logger.LogTask(zapcore.InfoLevel, "Scenario task execution completed successfully",
+			zap.Uint64("task_id", task.ID),
+			zap.Duration("duration", duration))
+		ts.completeTaskWithSuccess(task)
 	}
 }

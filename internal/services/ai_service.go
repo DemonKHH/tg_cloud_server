@@ -1,14 +1,18 @@
 package services
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 
 	"go.uber.org/zap"
 
 	"tg_cloud_server/internal/common/logger"
+	"tg_cloud_server/internal/models"
 )
 
 // AIProvider AI服务提供商
@@ -28,16 +32,19 @@ type AIService interface {
 	AnalyzeSentiment(ctx context.Context, text string) (*SentimentAnalysis, error)
 	ExtractKeywords(ctx context.Context, text string) ([]string, error)
 	GenerateVariations(ctx context.Context, template string, count int) ([]string, error)
+	AgentDecision(ctx context.Context, req *models.AgentDecisionRequest) (*models.AgentDecisionResponse, error)
+	GenerateImage(ctx context.Context, prompt string) (string, error)
 }
 
 // GroupChatConfig 群聊AI配置
 type GroupChatConfig struct {
-	GroupID      int64                  `json:"group_id"`
-	GroupName    string                 `json:"group_name"`
-	GroupTopic   string                 `json:"group_topic"`
-	ChatHistory  []ChatMessage          `json:"chat_history"`
-	UserProfile  *UserProfile           `json:"user_profile"`
-	AIPersona    string                 `json:"ai_persona"`
+	GroupID     int64                `json:"group_id"`
+	GroupName   string               `json:"group_name"`
+	GroupTopic  string               `json:"group_topic"`
+	ChatHistory []models.ChatMessage `json:"chat_history"`
+	UserProfile *UserProfile         `json:"user_profile"`
+	AIPersona   string               `json:"ai_persona"`
+
 	ResponseType string                 `json:"response_type"` // casual, professional, humorous
 	MaxLength    int                    `json:"max_length"`
 	Language     string                 `json:"language"`
@@ -58,13 +65,13 @@ type PrivateMessageConfig struct {
 }
 
 // ChatMessage 聊天消息
-type ChatMessage struct {
-	UserID    int64     `json:"user_id"`
-	Username  string    `json:"username"`
-	Message   string    `json:"message"`
-	Timestamp time.Time `json:"timestamp"`
-	IsBot     bool      `json:"is_bot"`
-}
+// type ChatMessage struct {
+// 	UserID    int64     `json:"user_id"`
+// 	Username  string    `json:"username"`
+// 	Message   string    `json:"message"`
+// 	Timestamp time.Time `json:"timestamp"`
+// 	IsBot     bool      `json:"is_bot"`
+// }
 
 // UserProfile 用户档案
 type UserProfile struct {
@@ -237,6 +244,154 @@ func (s *aiService) GenerateVariations(ctx context.Context, template string, cou
 	return variations, nil
 }
 
+// AgentDecision 智能体决策
+func (s *aiService) AgentDecision(ctx context.Context, req *models.AgentDecisionRequest) (*models.AgentDecisionResponse, error) {
+	s.logger.Info("Generating agent decision",
+		zap.String("persona", req.AgentPersona),
+		zap.String("goal", req.AgentGoal))
+
+	// 构建Prompt
+	prompt := s.buildAgentDecisionPrompt(req)
+
+	// 调用AI生成决策
+	responseJSON, err := s.generateResponse(ctx, prompt, 1000)
+	if err != nil {
+		return nil, err
+	}
+
+	// 解析JSON响应
+	// 这里假设AI返回的是合法的JSON字符串
+	// 实际生产中可能需要更鲁棒的解析逻辑，处理Markdown代码块等
+	cleanJSON := strings.TrimSpace(responseJSON)
+	if strings.HasPrefix(cleanJSON, "```json") {
+		cleanJSON = strings.TrimPrefix(cleanJSON, "```json")
+		cleanJSON = strings.TrimSuffix(cleanJSON, "```")
+	} else if strings.HasPrefix(cleanJSON, "```") {
+		cleanJSON = strings.TrimPrefix(cleanJSON, "```")
+		cleanJSON = strings.TrimSuffix(cleanJSON, "```")
+	}
+	cleanJSON = strings.TrimSpace(cleanJSON)
+
+	var decision models.AgentDecisionResponse
+	if err := json.Unmarshal([]byte(cleanJSON), &decision); err != nil {
+		s.logger.Error("Failed to parse agent decision",
+			zap.String("response", responseJSON),
+			zap.Error(err))
+		// 降级处理：如果不说话
+		return &models.AgentDecisionResponse{ShouldSpeak: false}, nil
+	}
+
+	return &decision, nil
+}
+
+// OpenAI Image Generation Request
+type openAIImageRequest struct {
+	Model  string `json:"model"`
+	Prompt string `json:"prompt"`
+	N      int    `json:"n"`
+	Size   string `json:"size"`
+}
+
+type openAIImageResponse struct {
+	Data []struct {
+		Url string `json:"url"`
+	} `json:"data"`
+	Error *struct {
+		Message string `json:"message"`
+	} `json:"error"`
+}
+
+// GenerateImage 生成图片
+func (s *aiService) GenerateImage(ctx context.Context, prompt string) (string, error) {
+	s.logger.Info("Generating image", zap.String("prompt", prompt))
+
+	if s.openAIKey == "" {
+		s.logger.Warn("OpenAI key is missing, using placeholder image")
+		return "https://via.placeholder.com/1024x1024.png?text=AI+Generated+Image", nil
+	}
+
+	reqBody := openAIImageRequest{
+		Model:  "dall-e-3",
+		Prompt: prompt,
+		N:      1,
+		Size:   "1024x1024",
+	}
+
+	jsonBody, err := json.Marshal(reqBody)
+	if err != nil {
+		return "", err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", "https://api.openai.com/v1/images/generations", bytes.NewBuffer(jsonBody))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+s.openAIKey)
+
+	client := &http.Client{Timeout: 60 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	var result openAIImageResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", err
+	}
+
+	if result.Error != nil {
+		return "", fmt.Errorf("openai image api error: %s", result.Error.Message)
+	}
+
+	if len(result.Data) > 0 {
+		return result.Data[0].Url, nil
+	}
+
+	return "", fmt.Errorf("no image generated")
+}
+
+// buildAgentDecisionPrompt 构建智能体决策Prompt
+func (s *aiService) buildAgentDecisionPrompt(req *models.AgentDecisionRequest) string {
+	var sb strings.Builder
+
+	sb.WriteString("你是一个Telegram群组中的用户。请根据以下信息决定你的下一步行动。\n\n")
+
+	sb.WriteString(fmt.Sprintf("当前话题: %s\n", req.ScenarioTopic))
+	sb.WriteString(fmt.Sprintf("你的人设: %s\n", req.AgentPersona))
+	sb.WriteString(fmt.Sprintf("你的目标: %s\n", req.AgentGoal))
+
+	sb.WriteString("\n最近的聊天记录:\n")
+	for _, msg := range req.ChatHistory {
+		sb.WriteString(fmt.Sprintf("[%s] %s: %s\n", msg.Timestamp.Format("15:04"), msg.Username, msg.Message))
+	}
+
+	sb.WriteString("\n可用资源:\n")
+	if len(req.ImagePool) > 0 {
+		sb.WriteString(fmt.Sprintf("- 图片库: %d 张图片可用 (ID: 0-%d)\n", len(req.ImagePool), len(req.ImagePool)-1))
+	} else {
+		sb.WriteString("- 图片库: 无\n")
+	}
+	if req.ImageGenEnabled {
+		sb.WriteString("- AI生图: 已启用 (可以使用 generate_photo 动作)\n")
+	} else {
+		sb.WriteString("- AI生图: 未启用\n")
+	}
+
+	sb.WriteString("\n请以JSON格式输出你的决策，包含以下字段:\n")
+	sb.WriteString("- should_speak: boolean, 是否需要发言\n")
+	sb.WriteString("- thought: string, 你的思考过程\n")
+	sb.WriteString("- action: string, 动作类型 (send_text, send_photo, generate_photo)\n")
+	sb.WriteString("- content: string, 发送的文本内容 (如果是发图，则是配文)\n")
+	sb.WriteString("- media_path: string, 如果action是send_photo，填写图片库中的图片路径/索引\n")
+	sb.WriteString("- image_prompt: string, 如果action是generate_photo，填写生图提示词\n")
+	sb.WriteString("- reply_to_msg_id: int, 回复的消息ID (可选)\n")
+	sb.WriteString("- delay_seconds: int, 模拟打字/思考延迟秒数 (1-10)\n")
+
+	return sb.String()
+}
+
 // buildGroupChatContext 构建群聊上下文
 func (s *aiService) buildGroupChatContext(config *GroupChatConfig) string {
 	var contextBuilder strings.Builder
@@ -303,12 +458,79 @@ func (s *aiService) generateResponse(ctx context.Context, prompt string, maxLeng
 	}
 }
 
+// OpenAI Chat Completion Request
+type openAIChatRequest struct {
+	Model       string          `json:"model"`
+	Messages    []openAIMessage `json:"messages"`
+	Temperature float64         `json:"temperature"`
+	MaxTokens   int             `json:"max_tokens"`
+}
+
+type openAIMessage struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
+type openAIChatResponse struct {
+	Choices []struct {
+		Message struct {
+			Content string `json:"content"`
+		} `json:"message"`
+	} `json:"choices"`
+	Error *struct {
+		Message string `json:"message"`
+	} `json:"error"`
+}
+
 // generateOpenAIResponse 调用OpenAI API
 func (s *aiService) generateOpenAIResponse(ctx context.Context, prompt string, maxLength int) (string, error) {
-	// TODO: 实现OpenAI API调用
-	// 这里需要使用OpenAI官方SDK或HTTP客户端
-	s.logger.Debug("Using OpenAI API (mock implementation)")
-	return s.generateFallbackResponse(prompt), nil
+	if s.openAIKey == "" {
+		s.logger.Warn("OpenAI key is missing, using fallback response")
+		return s.generateFallbackResponse(prompt), nil
+	}
+
+	reqBody := openAIChatRequest{
+		Model: s.defaultModel,
+		Messages: []openAIMessage{
+			{Role: "user", Content: prompt},
+		},
+		Temperature: s.temperature,
+		MaxTokens:   maxLength,
+	}
+
+	jsonBody, err := json.Marshal(reqBody)
+	if err != nil {
+		return "", err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", "https://api.openai.com/v1/chat/completions", bytes.NewBuffer(jsonBody))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+s.openAIKey)
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	var result openAIChatResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", err
+	}
+
+	if result.Error != nil {
+		return "", fmt.Errorf("openai api error: %s", result.Error.Message)
+	}
+
+	if len(result.Choices) > 0 {
+		return result.Choices[0].Message.Content, nil
+	}
+
+	return "", fmt.Errorf("no response from openai")
 }
 
 // generateClaudeResponse 调用Claude API

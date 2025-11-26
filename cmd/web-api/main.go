@@ -113,8 +113,14 @@ func main() {
 		zap.Int("api_id", cfg.Telegram.APIID),
 		zap.Duration("idle_timeout", cfg.Telegram.ConnectionPool.IdleTimeout))
 
+	// 初始化AI服务
+	aiService := services.NewAIService(services.ProviderLocal, map[string]interface{}{
+		"api_key": "",
+		"model":   "default",
+	})
+
 	// 初始化任务调度器
-	taskScheduler := scheduler.NewTaskScheduler(connectionPool, accountRepo, taskRepo)
+	taskScheduler := scheduler.NewTaskScheduler(connectionPool, accountRepo, taskRepo, aiService)
 	logger.Info("Task scheduler initialized and started")
 
 	// 初始化服务层
@@ -136,10 +142,7 @@ func main() {
 		"base_url":      "http://localhost:8080",
 		"max_file_size": 50 * 1024 * 1024, // 50MB
 	})
-	aiService := services.NewAIService(services.ProviderLocal, map[string]interface{}{
-		"api_key": "",
-		"model":   "default",
-	})
+
 	statsService := services.NewStatsService(userRepo, accountRepo, taskRepo, proxyRepo)
 
 	// 初始化定时任务服务

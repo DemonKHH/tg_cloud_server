@@ -21,6 +21,7 @@ const (
 	TaskTypeVerify    TaskType = "verify_code"     // 验证码接收
 	TaskTypeGroupChat TaskType = "group_chat"      // AI炒群
 	TaskTypeJoinGroup TaskType = "join_group"      // 批量加群
+	TaskTypeScenario  TaskType = "scenario"        // 智能体场景炒群
 )
 
 // TaskStatus 任务状态枚举

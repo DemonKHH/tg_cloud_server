@@ -33,7 +33,7 @@ import {
 } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Pencil, Trash2, Activity, Link2, MessageSquare, Megaphone, Users, ShieldCheck, ChevronDown } from "lucide-react"
+import { Pencil, Trash2, Activity, Link2, MessageSquare, Megaphone, Users, ChevronDown, UserPlus } from "lucide-react"
 import { usePagination } from "@/hooks/use-pagination"
 import { FilterBar } from "@/components/common/filter-bar"
 import { motion } from "framer-motion"
@@ -694,6 +694,24 @@ export default function AccountsPage() {
                         variant="ghost"
                         className="rounded-full hover:bg-primary/10 hover:text-primary"
                         onClick={() => {
+                          setInitialTaskType("force_add_group")
+                          setCreateTaskDialogOpen(true)
+                        }}
+                      >
+                        <UserPlus className="h-5 w-5" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>强拉</p>
+                    </TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="rounded-full hover:bg-primary/10 hover:text-primary"
+                        onClick={() => {
                           setInitialTaskType("check")
                           setCreateTaskDialogOpen(true)
                         }}
@@ -763,24 +781,7 @@ export default function AccountsPage() {
                     </TooltipContent>
                   </Tooltip>
 
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="rounded-full hover:bg-primary/10 hover:text-primary"
-                        onClick={() => {
-                          setInitialTaskType("verify_code")
-                          setCreateTaskDialogOpen(true)
-                        }}
-                      >
-                        <ShieldCheck className="h-5 w-5" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>接收验证码</p>
-                    </TooltipContent>
-                  </Tooltip>
+
                 </TooltipProvider>
 
                 <div className="w-px h-6 bg-border mx-2" />
@@ -1413,8 +1414,8 @@ export default function AccountsPage() {
             toast.success("任务创建成功，请前往任务页面查看")
           }}
         />
-      </div>
-    </MainLayout>
+      </div >
+    </MainLayout >
   )
 }
 

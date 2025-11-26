@@ -60,6 +60,9 @@ export function CreateTaskDialog({
     group_chat_ai_config: "{}",
     join_group_groups: "",
     join_group_delay: "",
+    force_add_group_username: "",
+    force_add_group_targets: "",
+    force_add_group_limit: "",
   })
 
   // Reset form when dialog opens
@@ -192,6 +195,44 @@ export function CreateTaskDialog({
         }
         break
 
+      case "force_add_group":
+        if (!form.force_add_group_username) {
+          toast.error("请填写目标群组用户名")
+          return null
+        }
+        let targetGroup = form.force_add_group_username.trim()
+        // Remove @ or t.me/ prefix if present
+        targetGroup = targetGroup.replace(/^https?:\/\//, '').replace(/^t\.me\//, '').replace(/^@/, '')
+
+        if (!targetGroup) {
+          toast.error("目标群组用户名无效")
+          return null
+        }
+
+        config.group_name = targetGroup
+
+        if (!form.force_add_group_targets) {
+          toast.error("请填写要拉入的用户列表")
+          return null
+        }
+        const forceAddTargets = form.force_add_group_targets.split(",")
+          .map(t => t.trim())
+          .filter(t => t)
+
+        if (forceAddTargets.length === 0) {
+          toast.error("请至少填写一个要拉入的用户")
+          return null
+        }
+        config.targets = forceAddTargets
+
+        if (form.force_add_group_limit) {
+          const limit = parseInt(form.force_add_group_limit)
+          if (!isNaN(limit) && limit > 0) {
+            config.limit_per_account = limit
+          }
+        }
+        break
+
       case "group_chat":
         if (!form.group_chat_group_id) {
           toast.error("请填写群组ID")
@@ -295,6 +336,7 @@ export function CreateTaskDialog({
                   <SelectItem value="private_message">私信发送</SelectItem>
                   <SelectItem value="broadcast">群发消息</SelectItem>
                   <SelectItem value="join_group">批量加群</SelectItem>
+                  <SelectItem value="force_add_group">强拉</SelectItem>
                   <SelectItem value="group_chat">AI炒群</SelectItem>
                 </SelectContent>
               </Select>
@@ -457,6 +499,40 @@ export function CreateTaskDialog({
                     onChange={e => setForm({ ...form, join_group_delay: e.target.value })}
                     placeholder="默认5秒"
                   />
+                </div>
+              </div>
+            )}
+
+            {form.task_type === "force_add_group" && (
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>目标群组用户名</Label>
+                  <Input
+                    value={form.force_add_group_username}
+                    onChange={e => setForm({ ...form, force_add_group_username: e.target.value })}
+                    placeholder="例如: @groupname 或 t.me/groupname"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>目标用户 (用户名/手机号，逗号分隔)</Label>
+                  <Textarea
+                    value={form.force_add_group_targets}
+                    onChange={e => setForm({ ...form, force_add_group_targets: e.target.value })}
+                    placeholder="@user1, @user2, +123456789"
+                    className="min-h-[100px]"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>单号拉人限制</Label>
+                  <Input
+                    type="number"
+                    value={form.force_add_group_limit}
+                    onChange={e => setForm({ ...form, force_add_group_limit: e.target.value })}
+                    placeholder="默认无限制"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    限制每个账号拉入群组的人数，留空则不限制
+                  </p>
                 </div>
               </div>
             )}

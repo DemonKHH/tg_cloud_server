@@ -167,11 +167,6 @@ export function CreateTaskDialog({
           }
         }
         break
-
-
-
-
-
       case "join_group":
         if (!form.join_group_groups) {
           toast.error("请填写群组链接或用户名")

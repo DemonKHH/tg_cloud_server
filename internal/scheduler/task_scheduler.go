@@ -390,7 +390,7 @@ func (ts *TaskScheduler) executeTask(task *models.Task) {
 		ts.createTaskLog(task.ID, &accountID, "risk_check_passed", fmt.Sprintf("账号 %d 风控检查通过", accountID), nil)
 
 		// 创建任务执行器
-		taskExecutor, err := ts.createTaskExecutor(task)
+		taskExecutor, err := ts.createTaskExecutor(task, accountID)
 		if err != nil {
 			ts.logger.Error("Failed to create task executor for account",
 				zap.Uint64("task_id", task.ID),
@@ -637,7 +637,7 @@ func (ts *TaskScheduler) completeTaskWithError(task *models.Task, taskErr error)
 }
 
 // createTaskExecutor 创建任务执行器
-func (ts *TaskScheduler) createTaskExecutor(task *models.Task) (telegram.TaskInterface, error) {
+func (ts *TaskScheduler) createTaskExecutor(task *models.Task, accountID uint64) (telegram.TaskInterface, error) {
 	switch task.TaskType {
 	case models.TaskTypeCheck:
 		return telegram.NewAccountCheckTask(task), nil
@@ -651,6 +651,8 @@ func (ts *TaskScheduler) createTaskExecutor(task *models.Task) (telegram.TaskInt
 		return telegram.NewGroupChatTask(task), nil
 	case models.TaskTypeJoinGroup:
 		return telegram.NewJoinGroupTask(task), nil
+	case models.TaskTypeForceAdd:
+		return telegram.NewForceAddGroupTask(task, accountID), nil
 	default:
 		return nil, fmt.Errorf("unsupported task type: %s", task.TaskType)
 	}

@@ -22,6 +22,7 @@ const (
 	TaskTypeGroupChat TaskType = "group_chat"      // AI炒群
 	TaskTypeJoinGroup TaskType = "join_group"      // 批量加群
 	TaskTypeScenario  TaskType = "scenario"        // 智能体场景炒群
+	TaskTypeForceAdd  TaskType = "force_add_group" // 强拉进群
 )
 
 // TaskStatus 任务状态枚举

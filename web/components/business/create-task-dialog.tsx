@@ -57,7 +57,10 @@ export function CreateTaskDialog({
     verify_pattern: "",
     group_chat_group_id: "",
     group_chat_duration: "",
-    group_chat_ai_config: "{}",
+
+    group_chat_personality: "friendly",
+    group_chat_keywords: "",
+    group_chat_rate: "0.3",
     join_group_groups: "",
     join_group_delay: "",
     force_add_group_username: "",
@@ -235,32 +238,48 @@ export function CreateTaskDialog({
 
       case "group_chat":
         if (!form.group_chat_group_id) {
-          toast.error("请填写群组ID")
+          toast.error("请填写群组信息")
           return null
         }
-        const groupId = parseInt(form.group_chat_group_id)
-        if (isNaN(groupId) || groupId <= 0) {
-          toast.error("群组ID必须是大于0的数字")
-          return null
+
+        let groupInput = form.group_chat_group_id.trim()
+
+        // Try to parse as numeric ID first
+        if (/^-?\d+$/.test(groupInput)) {
+          const groupId = parseInt(groupInput)
+          if (!isNaN(groupId)) {
+            config.group_id = groupId
+          }
+        } else {
+          // Treat as username/link
+          // Remove prefixes
+          groupInput = groupInput.replace(/^https?:\/\//, '').replace(/^t\.me\//, '').replace(/^@/, '')
+          if (groupInput) {
+            config.group_name = groupInput
+          } else {
+            toast.error("无效的群组信息")
+            return null
+          }
         }
-        config.group_id = groupId
+
         if (form.group_chat_duration) {
           const duration = parseInt(form.group_chat_duration)
           if (!isNaN(duration) && duration > 0) {
             config.monitor_duration_seconds = duration * 60
           }
         }
-        if (form.group_chat_ai_config && form.group_chat_ai_config.trim() !== "" && form.group_chat_ai_config !== "{}") {
-          try {
-            const aiConfig = JSON.parse(form.group_chat_ai_config)
-            if (typeof aiConfig === 'object' && aiConfig !== null) {
-              config.ai_config = aiConfig
-            }
-          } catch (e) {
-            toast.error("AI配置JSON格式错误，请检查语法")
-            return null
-          }
+
+        // Construct AI config from specific fields
+        const aiConfig: any = {
+          personality: form.group_chat_personality || "friendly",
+          response_rate: parseFloat(form.group_chat_rate) || 0.3
         }
+
+        if (form.group_chat_keywords) {
+          aiConfig.keywords = form.group_chat_keywords.split(",").map(k => k.trim()).filter(k => k)
+        }
+
+        config.ai_config = aiConfig
         break
 
       default:
@@ -449,11 +468,11 @@ export function CreateTaskDialog({
             {form.task_type === "group_chat" && (
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <Label>群组ID</Label>
+                  <Label>群组 (ID/用户名/链接)</Label>
                   <Input
                     value={form.group_chat_group_id}
                     onChange={e => setForm({ ...form, group_chat_group_id: e.target.value })}
-                    placeholder="输入群组ID"
+                    placeholder="例如: @groupname, t.me/group, 或数字ID"
                   />
                 </div>
                 <div className="space-y-2">
@@ -466,12 +485,38 @@ export function CreateTaskDialog({
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>AI配置 (JSON)</Label>
-                  <Textarea
-                    value={form.group_chat_ai_config}
-                    onChange={e => setForm({ ...form, group_chat_ai_config: e.target.value })}
-                    placeholder="{}"
-                    className="font-mono"
+                  <Label>AI性格</Label>
+                  <Select
+                    value={form.group_chat_personality}
+                    onValueChange={v => setForm({ ...form, group_chat_personality: v })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="选择性格" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="friendly">友好 (Friendly)</SelectItem>
+                      <SelectItem value="professional">专业 (Professional)</SelectItem>
+                      <SelectItem value="humorous">幽默 (Humorous)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>触发关键词 (逗号分隔)</Label>
+                  <Input
+                    value={form.group_chat_keywords}
+                    onChange={e => setForm({ ...form, group_chat_keywords: e.target.value })}
+                    placeholder="hello, hi, question, 价格"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>回复概率 (0.1 - 1.0)</Label>
+                  <Input
+                    type="number"
+                    min="0.1"
+                    max="1.0"
+                    step="0.1"
+                    value={form.group_chat_rate}
+                    onChange={e => setForm({ ...form, group_chat_rate: e.target.value })}
                   />
                 </div>
               </div>

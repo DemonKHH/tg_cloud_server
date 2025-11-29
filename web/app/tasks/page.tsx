@@ -72,6 +72,7 @@ export default function TasksPage() {
     auto_start: false, // 是否自动开始执行
     // 账号检查配置
     check_timeout: "2m",
+    check_spam_bot: false,
     // 私信配置
     private_targets: "",
     private_message: "",
@@ -426,6 +427,7 @@ export default function TasksPage() {
       priority: "5",
       auto_start: false,
       check_timeout: "2m",
+      check_spam_bot: false,
       private_targets: "",
       private_message: "",
       private_delay: "",
@@ -450,6 +452,7 @@ export default function TasksPage() {
       task_type: value,
       // 清空所有配置字段
       check_timeout: "2m",
+      check_spam_bot: false,
       private_targets: "",
       private_message: "",
       private_delay: "",
@@ -476,6 +479,9 @@ export default function TasksPage() {
         if (createForm.check_timeout && createForm.check_timeout !== "2m") {
           // 如果用户设置了非默认的超时时间，则添加到配置中
           config.timeout = createForm.check_timeout
+        }
+        if (createForm.check_spam_bot) {
+          config.check_spam_bot = true
         }
         break
 
@@ -1137,6 +1143,14 @@ export default function TasksPage() {
                       placeholder="2m"
                     />
                     <p className="text-xs text-muted-foreground">例如：30s, 2m, 5m</p>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Switch
+                      id="check-spam-bot"
+                      checked={createForm.check_spam_bot}
+                      onCheckedChange={checked => setCreateForm({ ...createForm, check_spam_bot: checked })}
+                    />
+                    <Label htmlFor="check-spam-bot">双向/冻结检查 (使用 @SpamBot)</Label>
                   </div>
                   <div className="bg-muted/50 rounded-lg p-3 text-xs text-muted-foreground">
                     <p>账号检查任务将自动检查账号的连接状态和可用性。</p>

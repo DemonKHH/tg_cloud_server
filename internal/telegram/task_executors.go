@@ -3,6 +3,7 @@ package telegram
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"tg_cloud_server/internal/models"
@@ -94,7 +95,25 @@ func (t *AccountCheckTask) Execute(ctx context.Context, api *tg.Client) error {
 		checkResults["config_retrieved"] = true
 	}
 
-	// 5. 账号状态评估
+	// 5. SpamBot 检查 (可选)
+	if checkSpamBot, ok := t.task.Config["check_spam_bot"].(bool); ok && checkSpamBot {
+		spamStatus, err := t.checkSpamBot(ctx, api)
+		if err != nil {
+			checkScore -= 20
+			issues = append(issues, fmt.Sprintf("SpamBot检查失败: %v", err))
+			checkResults["spam_bot_check"] = "failed"
+		} else {
+			checkResults["spam_bot_check"] = "passed"
+			checkResults["spam_status"] = spamStatus
+			if spamStatus != "clean" {
+				checkScore -= 50
+				issues = append(issues, fmt.Sprintf("账号受限: %s", spamStatus))
+				checkResults["spam_bot_check"] = "restricted"
+			}
+		}
+	}
+
+	// 6. 账号状态评估
 	if checkScore >= 90 {
 		checkResults["account_status"] = "excellent"
 	} else if checkScore >= 70 {
@@ -114,6 +133,112 @@ func (t *AccountCheckTask) Execute(ctx context.Context, api *tg.Client) error {
 	t.task.Result["status"] = "completed"
 
 	return nil
+}
+
+// checkSpamBot 检查 SpamBot 状态
+func (t *AccountCheckTask) checkSpamBot(ctx context.Context, api *tg.Client) (string, error) {
+	// 解析 SpamBot
+	resolved, err := api.ContactsResolveUsername(ctx, &tg.ContactsResolveUsernameRequest{
+		Username: "SpamBot",
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve SpamBot: %w", err)
+	}
+
+	var inputPeer tg.InputPeerClass
+	var botInputUser *tg.InputUser
+	if len(resolved.Users) > 0 {
+		if user, ok := resolved.Users[0].(*tg.User); ok {
+			inputPeer = &tg.InputPeerUser{
+				UserID:     user.ID,
+				AccessHash: user.AccessHash,
+			}
+			botInputUser = &tg.InputUser{
+				UserID:     user.ID,
+				AccessHash: user.AccessHash,
+			}
+		}
+	}
+
+	if inputPeer == nil || botInputUser == nil {
+		return "", fmt.Errorf("SpamBot user not found")
+	}
+
+	// 发送 /start
+	_, err = api.MessagesStartBot(ctx, &tg.MessagesStartBotRequest{
+		Bot:        botInputUser,
+		Peer:       inputPeer,
+		RandomID:   time.Now().UnixNano(),
+		StartParam: "",
+	})
+	if err != nil {
+		// 如果 StartBot 失败，尝试直接发送消息
+		_, err = api.MessagesSendMessage(ctx, &tg.MessagesSendMessageRequest{
+			Peer:     inputPeer,
+			Message:  "/start",
+			RandomID: time.Now().UnixNano(),
+		})
+		if err != nil {
+			return "", fmt.Errorf("failed to start SpamBot: %w", err)
+		}
+	}
+
+	// 等待响应
+	timeout := time.After(30 * time.Second)
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		case <-timeout:
+			return "", fmt.Errorf("timeout waiting for SpamBot response")
+		case <-ticker.C:
+			history, err := api.MessagesGetHistory(ctx, &tg.MessagesGetHistoryRequest{
+				Peer:  inputPeer,
+				Limit: 1,
+			})
+			if err != nil {
+				continue
+			}
+
+			if messages, ok := history.(*tg.MessagesMessages); ok {
+				if len(messages.Messages) > 0 {
+					if msg, ok := messages.Messages[0].(*tg.Message); ok {
+						// 检查是否是最近的消息 (例如最近1分钟内)
+						if time.Since(time.Unix(int64(msg.Date), 0)) < 1*time.Minute {
+							// 分析内容
+							if strings.Contains(msg.Message, "Good news, no limits are currently applied") {
+								return "clean", nil
+							}
+							// 返回限制信息的前100个字符
+							limitMsg := msg.Message
+							if len(limitMsg) > 100 {
+								limitMsg = limitMsg[:100] + "..."
+							}
+							return limitMsg, nil
+						}
+					}
+				}
+			} else if messagesSlice, ok := history.(*tg.MessagesMessagesSlice); ok {
+				if len(messagesSlice.Messages) > 0 {
+					if msg, ok := messagesSlice.Messages[0].(*tg.Message); ok {
+						if time.Since(time.Unix(int64(msg.Date), 0)) < 1*time.Minute {
+							if strings.Contains(msg.Message, "Good news, no limits are currently applied") {
+								return "clean", nil
+							}
+							limitMsg := msg.Message
+							if len(limitMsg) > 100 {
+								limitMsg = limitMsg[:100] + "..."
+							}
+							return limitMsg, nil
+						}
+					}
+				}
+			}
+		}
+	}
 }
 
 // GetType 获取任务类型

@@ -66,6 +66,7 @@ export function CreateTaskDialog({
     force_add_group_username: "",
     force_add_group_targets: "",
     force_add_group_limit: "",
+    check_spam_bot: false,
   })
 
   // Reset form when dialog opens
@@ -93,6 +94,9 @@ export function CreateTaskDialog({
       case "check":
         if (form.check_timeout && form.check_timeout !== "2m") {
           config.timeout = form.check_timeout
+        }
+        if (form.check_spam_bot) {
+          config.check_spam_bot = true
         }
         break
 
@@ -385,13 +389,23 @@ export function CreateTaskDialog({
           {/* Dynamic Config Fields */}
           <div className="border-t pt-4 mt-4">
             {form.task_type === "check" && (
-              <div className="space-y-2">
-                <Label>超时时间</Label>
-                <Input
-                  value={form.check_timeout}
-                  onChange={e => setForm({ ...form, check_timeout: e.target.value })}
-                  placeholder="例如: 2m, 30s"
-                />
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>超时时间</Label>
+                  <Input
+                    value={form.check_timeout}
+                    onChange={e => setForm({ ...form, check_timeout: e.target.value })}
+                    placeholder="例如: 2m, 30s"
+                  />
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    id="check-spam-bot"
+                    checked={form.check_spam_bot}
+                    onCheckedChange={checked => setForm({ ...form, check_spam_bot: checked })}
+                  />
+                  <Label htmlFor="check-spam-bot">双向/冻结检查 (使用 @SpamBot)</Label>
+                </div>
               </div>
             )}
 

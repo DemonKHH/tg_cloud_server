@@ -17,6 +17,8 @@ const (
 	AccountStatusDead        AccountStatus = "dead"        // 死亡
 	AccountStatusCooling     AccountStatus = "cooling"     // 冷却
 	AccountStatusMaintenance AccountStatus = "maintenance" // 维护
+	AccountStatusTwoWay      AccountStatus = "two_way"     // 双向
+	AccountStatusFrozen      AccountStatus = "frozen"      // 冻结
 )
 
 // ConnectionStatus 连接状态枚举
@@ -55,7 +57,7 @@ type TGAccount struct {
 	Phone       string        `json:"phone" gorm:"uniqueIndex;size:20;not null"`
 	SessionData string        `json:"-" gorm:"type:text"` // 隐藏敏感数据
 	ProxyID     *uint64       `json:"proxy_id" gorm:"index"`
-	Status      AccountStatus `json:"status" gorm:"type:enum('new','normal','warning','restricted','dead','cooling','maintenance');default:'new'"`
+	Status      AccountStatus `json:"status" gorm:"type:enum('new','normal','warning','restricted','dead','cooling','maintenance','two_way','frozen');default:'new'"`
 	IsOnline    bool          `json:"is_online" gorm:"default:false"` // 是否在线
 
 	// Telegram 账号信息（从 Telegram 获取并存储）
@@ -109,6 +111,10 @@ func (a *TGAccount) GetStatusColor() string {
 		return "blue"
 	case AccountStatusMaintenance:
 		return "gray"
+	case AccountStatusTwoWay:
+		return "yellow"
+	case AccountStatusFrozen:
+		return "red"
 	default:
 		return "purple"
 	}

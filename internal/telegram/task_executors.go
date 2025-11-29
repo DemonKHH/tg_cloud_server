@@ -109,6 +109,15 @@ func (t *AccountCheckTask) Execute(ctx context.Context, api *tg.Client) error {
 				checkScore -= 50
 				issues = append(issues, fmt.Sprintf("账号受限: %s", spamStatus))
 				checkResults["spam_bot_check"] = "restricted"
+
+				// 根据 SpamBot 返回结果设置建议的状态
+				if strings.Contains(strings.ToLower(spamStatus), "mutual contacts") {
+					suggestions = append(suggestions, "建议将账号状态设置为: 双向 (Two-way)")
+					checkResults["suggested_status"] = "two_way"
+				} else if strings.Contains(strings.ToLower(spamStatus), "frozen") || strings.Contains(strings.ToLower(spamStatus), "banned") {
+					suggestions = append(suggestions, "建议将账号状态设置为: 冻结 (Frozen)")
+					checkResults["suggested_status"] = "frozen"
+				}
 			}
 		}
 	}

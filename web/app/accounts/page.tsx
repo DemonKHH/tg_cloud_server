@@ -1003,6 +1003,29 @@ export default function AccountsPage() {
                                   )}
                                 </div>
                               )}
+
+                              {/* SpamBot Info */}
+                              {record.status === 'frozen' && (
+                                <div className="mt-1">
+                                  <Badge variant="destructive" className="w-fit text-[10px] px-1 py-0 h-5">
+                                    <AlertCircle className="h-3 w-3 mr-1" />
+                                    已冻结
+                                  </Badge>
+                                  {record.frozen_until && (
+                                    <div className="text-[10px] text-red-600 dark:text-red-400 mt-0.5">
+                                      直到: {record.frozen_until}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                              {record.status === 'two_way' && (
+                                <div className="mt-1">
+                                  <Badge variant="outline" className="w-fit bg-yellow-50 text-yellow-700 border-yellow-200 text-[10px] px-1 py-0 h-5">
+                                    <AlertCircle className="h-3 w-3 mr-1" />
+                                    双向限制
+                                  </Badge>
+                                </div>
+                              )}
                             </div>
                           </TableCell>
                           <TableCell className="py-4">

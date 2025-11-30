@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -468,7 +469,11 @@ func (ts *TaskScheduler) executeTask(task *models.Task) {
 			}
 
 			// 记录执行成功日志
-			ts.createTaskLog(task.ID, &accountID, "execution_success", fmt.Sprintf("账号 %d 执行成功 (耗时: %s)", accountID, accountDuration), accountResult)
+			logMessage := fmt.Sprintf("账号 %d 执行成功 (耗时: %s)", accountID, accountDuration)
+			if task.TaskType == models.TaskTypeCheck {
+				logMessage = ts.buildCheckTaskSummary(accountID, accountDuration, accountResult)
+			}
+			ts.createTaskLog(task.ID, &accountID, "execution_success", logMessage, accountResult)
 			successCount++
 
 			// 如果是账号检查任务，且有建议的状态变更，自动更新账号状态
@@ -487,7 +492,12 @@ func (ts *TaskScheduler) executeTask(task *models.Task) {
 					}
 
 					if shouldUpdate {
-						if err := ts.accountRepo.UpdateStatus(accountID, newStatus); err != nil {
+						var frozenUntil *string
+						if until, ok := accountResult["frozen_until"].(string); ok && until != "" {
+							frozenUntil = &until
+						}
+
+						if err := ts.accountRepo.UpdateRiskStatus(accountID, newStatus, frozenUntil); err != nil {
 							ts.logger.Error("Failed to auto-update account status",
 								zap.Uint64("account_id", accountID),
 								zap.String("new_status", string(newStatus)),
@@ -863,4 +873,57 @@ func (ts *TaskScheduler) executeScenarioTask(task *models.Task) {
 			zap.Duration("duration", duration))
 		ts.completeTaskWithSuccess(task)
 	}
+}
+
+// buildCheckTaskSummary 构建检查任务的详细摘要
+func (ts *TaskScheduler) buildCheckTaskSummary(accountID uint64, duration time.Duration, result map[string]interface{}) string {
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("账号 %d 执行成功 (耗时: %s)", accountID, duration))
+
+	// 2FA Check
+	if status, ok := result["2fa_check"].(string); ok {
+		sb.WriteString("\n- 2FA检查: ")
+		if status == "passed" {
+			has2FA, _ := result["has_2fa"].(bool)
+			if has2FA {
+				sb.WriteString("开启")
+				if isCorrect, ok := result["is_2fa_correct"].(string); ok {
+					switch isCorrect {
+					case "unchecked":
+						sb.WriteString(" (密码已配置)")
+					case "missing":
+						sb.WriteString(" (密码未配置)")
+					}
+				}
+			} else {
+				sb.WriteString("未开启")
+			}
+		} else {
+			sb.WriteString("失败")
+		}
+	}
+
+	// SpamBot Check
+	if status, ok := result["spam_bot_check"].(string); ok {
+		sb.WriteString("\n- SpamBot检查: ")
+		if status == "passed" {
+			isFrozen, _ := result["is_frozen"].(bool)
+			isBidirectional, _ := result["is_bidirectional"].(bool)
+
+			if isFrozen {
+				sb.WriteString("冻结")
+				if until, ok := result["frozen_until"].(string); ok && until != "" {
+					sb.WriteString(fmt.Sprintf(" (直到: %s)", until))
+				}
+			} else if isBidirectional {
+				sb.WriteString("双向限制")
+			} else {
+				sb.WriteString("正常")
+			}
+		} else {
+			sb.WriteString("失败")
+		}
+	}
+
+	return sb.String()
 }

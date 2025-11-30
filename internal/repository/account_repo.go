@@ -27,6 +27,7 @@ type AccountRepository interface {
 	UpdateSessionData(accountID uint64, sessionData []byte) error
 	UpdateConnectionStatus(id uint64, isOnline bool) error
 	Update2FAStatus(id uint64, has2FA bool, password string) error
+	UpdateRiskStatus(id uint64, status models.AccountStatus, frozenUntil *string) error
 }
 
 // accountRepository 账号数据访问实现
@@ -228,7 +229,7 @@ func (r *accountRepository) GetAccountSummaries(userID uint64, page, limit int, 
 
 	// 获取摘要数据（包含 Telegram 信息和代理信息）
 	err := query.
-		Select("tg_accounts.id, tg_accounts.user_id, tg_accounts.phone, tg_accounts.status, tg_accounts.is_online, tg_accounts.proxy_id, tg_accounts.tg_user_id, tg_accounts.username, tg_accounts.first_name, tg_accounts.last_name, tg_accounts.bio, tg_accounts.photo_url, tg_accounts.last_used_at, tg_accounts.created_at, proxy_ips.name as proxy_name, proxy_ips.ip as proxy_ip, proxy_ips.port as proxy_port, proxy_ips.username as proxy_username, proxy_ips.password as proxy_password, proxy_ips.protocol as proxy_protocol").
+		Select("tg_accounts.id, tg_accounts.user_id, tg_accounts.phone, tg_accounts.status, tg_accounts.is_online, tg_accounts.proxy_id, tg_accounts.frozen_until, tg_accounts.has_2fa, tg_accounts.two_fa_password, tg_accounts.tg_user_id, tg_accounts.username, tg_accounts.first_name, tg_accounts.last_name, tg_accounts.bio, tg_accounts.photo_url, tg_accounts.last_used_at, tg_accounts.created_at, proxy_ips.name as proxy_name, proxy_ips.ip as proxy_ip, proxy_ips.port as proxy_port, proxy_ips.username as proxy_username, proxy_ips.password as proxy_password, proxy_ips.protocol as proxy_protocol").
 		Joins("LEFT JOIN proxy_ips ON proxy_ips.id = tg_accounts.proxy_id").
 		Offset(offset).
 		Limit(limit).
@@ -272,6 +273,20 @@ func (r *accountRepository) Update2FAStatus(id uint64, has2FA bool, password str
 	}
 	if password != "" {
 		updates["two_fa_password"] = password
+	}
+	return r.db.Model(&models.TGAccount{}).
+		Where("id = ?", id).
+		Updates(updates).Error
+}
+
+// UpdateRiskStatus 更新账号风控状态
+func (r *accountRepository) UpdateRiskStatus(id uint64, status models.AccountStatus, frozenUntil *string) error {
+	updates := map[string]interface{}{
+		"status":     status,
+		"updated_at": time.Now(),
+	}
+	if frozenUntil != nil {
+		updates["frozen_until"] = *frozenUntil
 	}
 	return r.db.Model(&models.TGAccount{}).
 		Where("id = ?", id).

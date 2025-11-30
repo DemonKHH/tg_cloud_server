@@ -69,9 +69,12 @@ type TGAccount struct {
 	PhotoURL  *string `json:"photo_url" gorm:"size:500"`      // 头像URL
 
 	// 2FA 信息
-	Has2FA        bool   `json:"has_2fa" gorm:"default:false"`        // 是否开启2FA
-	TwoFAPassword string `json:"two_fa_password" gorm:"size:100"`     // 2FA密码
-	Is2FACorrect  bool   `json:"is_2fa_correct" gorm:"default:false"` // 2FA密码是否正确
+	Has2FA        bool   `json:"has_2fa" gorm:"column:has_2fa;default:false"`               // 是否开启2FA
+	TwoFAPassword string `json:"two_fa_password" gorm:"column:two_fa_password;size:100"`    // 2FA密码
+	Is2FACorrect  bool   `json:"is_2fa_correct" gorm:"column:is_2fa_correct;default:false"` // 2FA密码是否正确
+
+	// 限制信息
+	FrozenUntil *string `json:"frozen_until" gorm:"column:frozen_until;size:100"` // 冻结结束时间
 
 	LastCheckAt *time.Time `json:"last_check_at"`
 	LastUsedAt  *time.Time `json:"last_used_at"`
@@ -133,11 +136,14 @@ func (a *TGAccount) BeforeCreate(tx *gorm.DB) error {
 
 // AccountSummary 账号摘要信息（用于列表显示）
 type AccountSummary struct {
-	ID       uint64        `json:"id"`
-	Phone    string        `json:"phone"`
-	Status   AccountStatus `json:"status"`
-	IsOnline bool          `json:"is_online"`
-	ProxyID  *uint64       `json:"proxy_id,omitempty"`
+	ID            uint64        `json:"id"`
+	Phone         string        `json:"phone"`
+	Status        AccountStatus `json:"status"`
+	IsOnline      bool          `json:"is_online"`
+	ProxyID       *uint64       `json:"proxy_id,omitempty"`
+	FrozenUntil   *string       `json:"frozen_until,omitempty" gorm:"column:frozen_until"`
+	Has2FA        bool          `json:"has_2fa" gorm:"column:has_2fa"`
+	TwoFAPassword string        `json:"two_fa_password,omitempty" gorm:"column:two_fa_password"`
 
 	// Telegram 信息（始终返回，即使为空）
 	TgUserID  *int64  `json:"tg_user_id"`

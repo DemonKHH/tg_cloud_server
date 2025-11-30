@@ -151,6 +151,9 @@ func (t *AccountCheckTask) Execute(ctx context.Context, api *tg.Client) error {
 			checkResults["spam_bot_check"] = "passed"
 			checkResults["spambot_response"] = messageText
 
+			// 转换为小写以便匹配
+			messageTextLower := strings.ToLower(messageText)
+
 			// 检查双向限制
 			bidirectionalKeywords := []string{
 				"restricted from",
@@ -164,7 +167,7 @@ func (t *AccountCheckTask) Execute(ctx context.Context, api *tg.Client) error {
 
 			isBidirectional := false
 			for _, keyword := range bidirectionalKeywords {
-				if strings.Contains(messageText, keyword) {
+				if strings.Contains(messageTextLower, keyword) {
 					isBidirectional = true
 					break
 				}
@@ -186,7 +189,7 @@ func (t *AccountCheckTask) Execute(ctx context.Context, api *tg.Client) error {
 			// 使用正则进行更精确的匹配
 			isFrozen := false
 			for _, keyword := range frozenKeywords {
-				matched, _ := regexp.MatchString(keyword, messageText)
+				matched, _ := regexp.MatchString(keyword, messageTextLower)
 				if matched {
 					isFrozen = true
 					break
@@ -214,7 +217,7 @@ func (t *AccountCheckTask) Execute(ctx context.Context, api *tg.Client) error {
 				issues = append(issues, "账号处于双向限制状态")
 				suggestions = append(suggestions, "建议将账号状态设置为: 双向 (Two-way)")
 				checkResults["suggested_status"] = "two_way"
-			} else if strings.Contains(messageText, "Good news, no limits are currently applied") {
+			} else if strings.Contains(messageTextLower, "good news, no limits are currently applied") {
 				// 账号正常
 			} else {
 				// 其他未知限制
@@ -243,6 +246,35 @@ func (t *AccountCheckTask) Execute(ctx context.Context, api *tg.Client) error {
 	t.task.Result["check_results"] = checkResults
 	t.task.Result["check_time"] = time.Now().Unix()
 	t.task.Result["status"] = "completed"
+
+	// 将关键结果提升到顶层，以便 TaskScheduler 处理
+	if val, ok := checkResults["suggested_status"]; ok {
+		t.task.Result["suggested_status"] = val
+	}
+	if val, ok := checkResults["has_2fa"]; ok {
+		t.task.Result["has_2fa"] = val
+	}
+	if val, ok := checkResults["two_fa_password"]; ok {
+		t.task.Result["two_fa_password"] = val
+	}
+	if val, ok := checkResults["frozen_until"]; ok {
+		t.task.Result["frozen_until"] = val
+	}
+	if val, ok := checkResults["2fa_check"]; ok {
+		t.task.Result["2fa_check"] = val
+	}
+	if val, ok := checkResults["is_2fa_correct"]; ok {
+		t.task.Result["is_2fa_correct"] = val
+	}
+	if val, ok := checkResults["spam_bot_check"]; ok {
+		t.task.Result["spam_bot_check"] = val
+	}
+	if val, ok := checkResults["is_frozen"]; ok {
+		t.task.Result["is_frozen"] = val
+	}
+	if val, ok := checkResults["is_bidirectional"]; ok {
+		t.task.Result["is_bidirectional"] = val
+	}
 
 	return nil
 }

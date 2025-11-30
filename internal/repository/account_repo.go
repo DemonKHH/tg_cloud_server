@@ -26,6 +26,7 @@ type AccountRepository interface {
 	GetAll() ([]*models.TGAccount, error)
 	UpdateSessionData(accountID uint64, sessionData []byte) error
 	UpdateConnectionStatus(id uint64, isOnline bool) error
+	Update2FAStatus(id uint64, has2FA bool, password string) error
 }
 
 // accountRepository 账号数据访问实现
@@ -261,4 +262,18 @@ func (r *accountRepository) UpdateConnectionStatus(id uint64, isOnline bool) err
 	return r.db.Model(&models.TGAccount{}).
 		Where("id = ?", id).
 		Update("is_online", isOnline).Error
+}
+
+// Update2FAStatus 更新账号2FA状态
+func (r *accountRepository) Update2FAStatus(id uint64, has2FA bool, password string) error {
+	updates := map[string]interface{}{
+		"has_2fa":    has2FA,
+		"updated_at": time.Now(),
+	}
+	if password != "" {
+		updates["two_fa_password"] = password
+	}
+	return r.db.Model(&models.TGAccount{}).
+		Where("id = ?", id).
+		Updates(updates).Error
 }

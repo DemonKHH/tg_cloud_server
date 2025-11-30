@@ -12,7 +12,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import { Plus, MoreVertical, CheckCircle2, XCircle, AlertCircle, Upload, FileArchive, Search, Lock } from "lucide-react"
+import { Plus, MoreVertical, CheckCircle2, XCircle, AlertCircle, Upload, FileArchive, Search, Lock, Unlock } from "lucide-react"
 import {
   Tooltip,
   TooltipContent,
@@ -824,6 +824,7 @@ export default function AccountsPage() {
                       </TableHead>
                       <TableHead className="w-[200px] font-semibold">账号信息</TableHead>
                       <TableHead className="w-[180px] font-semibold">Telegram 信息</TableHead>
+                      <TableHead className="w-[140px] font-semibold">安全</TableHead>
                       <TableHead className="w-[120px] font-semibold">状态</TableHead>
                       <TableHead className="w-[150px] font-semibold">连接状态</TableHead>
                       <TableHead className="w-[100px] font-semibold">代理</TableHead>
@@ -974,6 +975,35 @@ export default function AccountsPage() {
                                 <span>未同步</span>
                               </div>
                             )}
+                          </TableCell>
+                          <TableCell className="py-4">
+                            <div className="flex flex-col gap-1.5">
+                              {record.has_2fa ? (
+                                <Badge variant="outline" className="w-fit bg-green-50 text-green-700 border-green-200 dark:bg-green-900/30 dark:text-green-400 dark:border-green-800">
+                                  <Lock className="h-3 w-3 mr-1" />
+                                  2FA 已开启
+                                </Badge>
+                              ) : (
+                                <Badge variant="outline" className="w-fit text-muted-foreground border-dashed">
+                                  <Unlock className="h-3 w-3 mr-1" />
+                                  2FA 未开启
+                                </Badge>
+                              )}
+
+                              {record.has_2fa && (
+                                <div className="text-xs">
+                                  {record.two_fa_password ? (
+                                    <span className="text-green-600 dark:text-green-400 flex items-center">
+                                      <CheckCircle2 className="h-3 w-3 mr-1" /> 密码已配置
+                                    </span>
+                                  ) : (
+                                    <span className="text-yellow-600 dark:text-yellow-400 flex items-center">
+                                      <AlertCircle className="h-3 w-3 mr-1" /> 密码未配置
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+                            </div>
                           </TableCell>
                           <TableCell className="py-4">
                             <Badge

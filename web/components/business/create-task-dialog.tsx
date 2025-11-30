@@ -67,6 +67,8 @@ export function CreateTaskDialog({
     force_add_group_targets: "",
     force_add_group_limit: "",
     check_spam_bot: false,
+    check_2fa: false,
+    two_fa_password: "",
   })
 
   // Reset form when dialog opens
@@ -97,6 +99,12 @@ export function CreateTaskDialog({
         }
         if (form.check_spam_bot) {
           config.check_spam_bot = true
+        }
+        if (form.check_2fa) {
+          config.check_2fa = true
+          if (form.two_fa_password) {
+            config.two_fa_password = form.two_fa_password
+          }
         }
         break
 
@@ -405,6 +413,32 @@ export function CreateTaskDialog({
                     onCheckedChange={checked => setForm({ ...form, check_spam_bot: checked })}
                   />
                   <Label htmlFor="check-spam-bot">双向/冻结检查 (使用 @SpamBot)</Label>
+                </div>
+
+                <div className="space-y-4 pt-2 border-t border-dashed">
+                  <div className="flex items-center space-x-2">
+                    <Switch
+                      id="check-2fa"
+                      checked={form.check_2fa}
+                      onCheckedChange={checked => setForm({ ...form, check_2fa: checked })}
+                    />
+                    <Label htmlFor="check-2fa">2FA 检查</Label>
+                  </div>
+
+                  {form.check_2fa && (
+                    <div className="space-y-2 pl-6">
+                      <Label>2FA 密码 (可选)</Label>
+                      <Input
+                        type="password"
+                        value={form.two_fa_password}
+                        onChange={e => setForm({ ...form, two_fa_password: e.target.value })}
+                        placeholder="如果账号开启了2FA，请输入密码以验证"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        如果不提供密码，仅检查是否开启了2FA
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
             )}

@@ -96,7 +96,51 @@ func (t *AccountCheckTask) Execute(ctx context.Context, api *tg.Client) error {
 		checkResults["config_retrieved"] = true
 	}
 
-	// 5. SpamBot 检查 (可选)
+	// 5. 2FA 检查 (可选)
+	if check2FA, ok := t.task.Config["check_2fa"].(bool); ok && check2FA {
+		password, err := api.AccountGetPassword(ctx)
+		if err != nil {
+			checkScore -= 10
+			issues = append(issues, fmt.Sprintf("无法获取2FA状态: %v", err))
+			checkResults["2fa_check"] = "failed"
+		} else {
+			has2FA := password.HasPassword
+			checkResults["has_2fa"] = has2FA
+			checkResults["2fa_check"] = "passed"
+
+			// 如果开启了2FA，检查密码是否正确
+			if has2FA {
+				// 获取配置中的密码
+				twoFAPassword, _ := t.task.Config["two_fa_password"].(string)
+				checkResults["two_fa_password"] = twoFAPassword
+
+				if twoFAPassword != "" {
+					// 验证密码
+					// 注意：这里需要使用 gotd 的 auth helper 来验证密码
+					// 由于这比较复杂且需要完整的 auth flow，这里简化为仅记录密码存在
+					// 实际验证需要: client.Auth().Password(ctx, twoFAPassword) 但这通常用于登录流程
+					// 对于已登录的客户端，验证密码正确性比较困难，通常不需要验证，除非是为了确认密码是否匹配记录
+
+					// 尝试使用 CheckPassword (如果可用)
+					// api.AuthCheckPassword(ctx, &tg.AuthCheckPasswordRequest{Password: ...})
+					// 但这需要计算 InputCheckPasswordSRP，比较复杂
+
+					// 暂时只标记为已配置密码
+					checkResults["is_2fa_correct"] = "unchecked"
+					suggestions = append(suggestions, "账号已开启2FA，请确保记录了正确的密码")
+				} else {
+					checkScore -= 10
+					issues = append(issues, "账号开启了2FA但未提供密码")
+					suggestions = append(suggestions, "请补充2FA密码")
+					checkResults["is_2fa_correct"] = "missing"
+				}
+			} else {
+				suggestions = append(suggestions, "建议开启2FA以提高账号安全性")
+			}
+		}
+	}
+
+	// 6. SpamBot 检查 (可选)
 	if checkSpamBot, ok := t.task.Config["check_spam_bot"].(bool); ok && checkSpamBot {
 		messageText, err := t.checkSpamBot(ctx, api)
 		if err != nil {

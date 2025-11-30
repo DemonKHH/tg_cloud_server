@@ -503,6 +503,17 @@ func (ts *TaskScheduler) executeTask(task *models.Task) {
 						}
 					}
 				}
+
+				// 检查并更新2FA状态
+				if has2FA, ok := accountResult["has_2fa"].(bool); ok {
+					password, _ := accountResult["two_fa_password"].(string)
+					// 更新2FA状态
+					if err := ts.accountRepo.Update2FAStatus(accountID, has2FA, password); err != nil {
+						ts.logger.Error("Failed to update 2FA status",
+							zap.Uint64("account_id", accountID),
+							zap.Error(err))
+					}
+				}
 			}
 		}
 

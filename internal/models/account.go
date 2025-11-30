@@ -68,6 +68,11 @@ type TGAccount struct {
 	Bio       *string `json:"bio" gorm:"type:text"`           // 个人简介
 	PhotoURL  *string `json:"photo_url" gorm:"size:500"`      // 头像URL
 
+	// 2FA 信息
+	Has2FA        bool   `json:"has_2fa" gorm:"default:false"`        // 是否开启2FA
+	TwoFAPassword string `json:"two_fa_password" gorm:"size:100"`     // 2FA密码
+	Is2FACorrect  bool   `json:"is_2fa_correct" gorm:"default:false"` // 2FA密码是否正确
+
 	LastCheckAt *time.Time `json:"last_check_at"`
 	LastUsedAt  *time.Time `json:"last_used_at"`
 	CreatedAt   time.Time  `json:"created_at"`

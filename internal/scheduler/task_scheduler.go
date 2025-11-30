@@ -470,6 +470,40 @@ func (ts *TaskScheduler) executeTask(task *models.Task) {
 			// 记录执行成功日志
 			ts.createTaskLog(task.ID, &accountID, "execution_success", fmt.Sprintf("账号 %d 执行成功 (耗时: %s)", accountID, accountDuration), accountResult)
 			successCount++
+
+			// 如果是账号检查任务，且有建议的状态变更，自动更新账号状态
+			if task.TaskType == models.TaskTypeCheck {
+				if suggestedStatus, ok := accountResult["suggested_status"].(string); ok {
+					var newStatus models.AccountStatus
+					shouldUpdate := false
+
+					switch suggestedStatus {
+					case "frozen":
+						newStatus = models.AccountStatusFrozen
+						shouldUpdate = true
+					case "two_way":
+						newStatus = models.AccountStatusTwoWay
+						shouldUpdate = true
+					}
+
+					if shouldUpdate {
+						if err := ts.accountRepo.UpdateStatus(accountID, newStatus); err != nil {
+							ts.logger.Error("Failed to auto-update account status",
+								zap.Uint64("account_id", accountID),
+								zap.String("new_status", string(newStatus)),
+								zap.Error(err))
+						} else {
+							ts.logger.Info("Auto-updated account status",
+								zap.Uint64("account_id", accountID),
+								zap.String("new_status", string(newStatus)))
+
+							// 记录状态更新日志
+							ts.createTaskLog(task.ID, &accountID, "status_updated",
+								fmt.Sprintf("账号 %d 状态自动更新为: %s", accountID, newStatus), nil)
+						}
+					}
+				}
+			}
 		}
 
 		// 保存该账号的结果

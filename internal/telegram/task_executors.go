@@ -3,6 +3,7 @@ package telegram
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -97,27 +98,85 @@ func (t *AccountCheckTask) Execute(ctx context.Context, api *tg.Client) error {
 
 	// 5. SpamBot 检查 (可选)
 	if checkSpamBot, ok := t.task.Config["check_spam_bot"].(bool); ok && checkSpamBot {
-		spamStatus, err := t.checkSpamBot(ctx, api)
+		messageText, err := t.checkSpamBot(ctx, api)
 		if err != nil {
 			checkScore -= 20
 			issues = append(issues, fmt.Sprintf("SpamBot检查失败: %v", err))
 			checkResults["spam_bot_check"] = "failed"
 		} else {
 			checkResults["spam_bot_check"] = "passed"
-			checkResults["spam_status"] = spamStatus
-			if spamStatus != "clean" {
-				checkScore -= 50
-				issues = append(issues, fmt.Sprintf("账号受限: %s", spamStatus))
-				checkResults["spam_bot_check"] = "restricted"
+			checkResults["spambot_response"] = messageText
 
-				// 根据 SpamBot 返回结果设置建议的状态
-				if strings.Contains(strings.ToLower(spamStatus), "mutual contacts") {
-					suggestions = append(suggestions, "建议将账号状态设置为: 双向 (Two-way)")
-					checkResults["suggested_status"] = "two_way"
-				} else if strings.Contains(strings.ToLower(spamStatus), "frozen") || strings.Contains(strings.ToLower(spamStatus), "banned") {
-					suggestions = append(suggestions, "建议将账号状态设置为: 冻结 (Frozen)")
-					checkResults["suggested_status"] = "frozen"
+			// 检查双向限制
+			bidirectionalKeywords := []string{
+				"restricted from",
+				"can't message people",
+				"cannot message people",
+				"can't send messages",
+				"cannot send messages",
+				"messaging strangers",
+				"marked as spam",
+			}
+
+			isBidirectional := false
+			for _, keyword := range bidirectionalKeywords {
+				if strings.Contains(messageText, keyword) {
+					isBidirectional = true
+					break
 				}
+			}
+			checkResults["is_bidirectional"] = isBidirectional
+
+			// 检查冻结状态
+			frozenKeywords := []string{
+				"account was blocked",
+				"account has been blocked",
+				"blocked for violations",
+				"permanently blocked",
+				"blocked.{1,20}cannot be restored", // Go的strings.Contains不支持正则，这里简化处理，稍后用正则
+				"account is limited",
+				"permanently limited",
+				"violated the terms of service",
+			}
+
+			// 使用正则进行更精确的匹配
+			isFrozen := false
+			for _, keyword := range frozenKeywords {
+				matched, _ := regexp.MatchString(keyword, messageText)
+				if matched {
+					isFrozen = true
+					break
+				}
+			}
+			checkResults["is_frozen"] = isFrozen
+
+			if isFrozen {
+				// 提取冻结结束时间
+				re := regexp.MustCompile(`limited until ([^\.]+)`)
+				matches := re.FindStringSubmatch(messageText)
+				if len(matches) > 1 {
+					checkResults["frozen_until"] = matches[1]
+				}
+			}
+
+			// 根据检查结果更新建议和分数
+			if isFrozen {
+				checkScore = 0 // 冻结账号分数为0
+				issues = append(issues, "账号已被冻结或严重受限")
+				suggestions = append(suggestions, "建议将账号状态设置为: 冻结 (Frozen)")
+				checkResults["suggested_status"] = "frozen"
+			} else if isBidirectional {
+				checkScore -= 50
+				issues = append(issues, "账号处于双向限制状态")
+				suggestions = append(suggestions, "建议将账号状态设置为: 双向 (Two-way)")
+				checkResults["suggested_status"] = "two_way"
+			} else if strings.Contains(messageText, "Good news, no limits are currently applied") {
+				// 账号正常
+			} else {
+				// 其他未知限制
+				checkScore -= 20
+				issues = append(issues, "账号存在未知限制")
+				checkResults["unknown_limits"] = true
 			}
 		}
 	}
@@ -217,16 +276,7 @@ func (t *AccountCheckTask) checkSpamBot(ctx context.Context, api *tg.Client) (st
 					if msg, ok := messages.Messages[0].(*tg.Message); ok {
 						// 检查是否是最近的消息 (例如最近1分钟内)
 						if time.Since(time.Unix(int64(msg.Date), 0)) < 1*time.Minute {
-							// 分析内容
-							if strings.Contains(msg.Message, "Good news, no limits are currently applied") {
-								return "clean", nil
-							}
-							// 返回限制信息的前100个字符
-							limitMsg := msg.Message
-							if len(limitMsg) > 100 {
-								limitMsg = limitMsg[:100] + "..."
-							}
-							return limitMsg, nil
+							return msg.Message, nil
 						}
 					}
 				}
@@ -234,14 +284,7 @@ func (t *AccountCheckTask) checkSpamBot(ctx context.Context, api *tg.Client) (st
 				if len(messagesSlice.Messages) > 0 {
 					if msg, ok := messagesSlice.Messages[0].(*tg.Message); ok {
 						if time.Since(time.Unix(int64(msg.Date), 0)) < 1*time.Minute {
-							if strings.Contains(msg.Message, "Good news, no limits are currently applied") {
-								return "clean", nil
-							}
-							limitMsg := msg.Message
-							if len(limitMsg) > 100 {
-								limitMsg = limitMsg[:100] + "..."
-							}
-							return limitMsg, nil
+							return msg.Message, nil
 						}
 					}
 				}

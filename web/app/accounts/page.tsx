@@ -12,7 +12,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import { Plus, MoreVertical, CheckCircle2, XCircle, AlertCircle, Upload, FileArchive, Search, Lock, Unlock, LogOut } from "lucide-react"
+import { Plus, CheckCircle2, XCircle, AlertCircle, Upload, FileArchive, Search, Lock, Unlock, LogOut } from "lucide-react"
 import {
   Tooltip,
   TooltipContent,
@@ -35,7 +35,6 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Pencil, Trash2, Activity, Link2, MessageSquare, Megaphone, Users, ChevronDown, UserPlus } from "lucide-react"
 import { usePagination } from "@/hooks/use-pagination"
-import { FilterBar } from "@/components/common/filter-bar"
 import { motion } from "framer-motion"
 import { Checkbox } from "@/components/ui/checkbox"
 import { CreateTaskDialog } from "@/components/business/create-task-dialog"
@@ -60,17 +59,20 @@ export default function AccountsPage() {
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [selectedProxy, setSelectedProxy] = useState<string>("")
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [proxies, setProxies] = useState<any[]>([])
   const [loadingProxies, setLoadingProxies] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // 编辑账号相关状态
   const [editDialogOpen, setEditDialogOpen] = useState(false)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [editingAccount, setEditingAccount] = useState<any>(null)
   const [editForm, setEditForm] = useState({ note: "", phone: "", session_data: "" })
 
   // 绑定代理相关状态
   const [bindProxyDialogOpen, setBindProxyDialogOpen] = useState(false)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [bindingAccount, setBindingAccount] = useState<any>(null)
   const [selectedBindProxy, setSelectedBindProxy] = useState<string>("")
 
@@ -106,9 +108,6 @@ export default function AccountsPage() {
       toast.error(error.message || "批量设置2FA失败")
     }
   }
-
-
-
 
 
   // 全选/取消全选

@@ -169,7 +169,11 @@ export const accountAPI = {
   },
   getQueueInfo: (id: string) => apiClient.get(`/accounts/${id}/queue`),
   batchBindProxy: (accountIds: string[], proxyId?: number) =>
-    apiClient.post('/accounts/batch/bind-proxy', { account_ids: accountIds, proxy_id: proxyId || null }),
+    apiClient.post('/accounts/batch/bind-proxy', { account_ids: accountIds.map(Number), proxy_id: proxyId || null }),
+  batchSet2FA: (accountIds: string[], password: string) =>
+    apiClient.post('/accounts/batch/set-2fa', { account_ids: accountIds.map(Number), password }),
+  batchUpdate2FA: (accountIds: string[], newPassword: string, oldPassword?: string) =>
+    apiClient.post('/accounts/batch/update-2fa', { account_ids: accountIds.map(Number), new_password: newPassword, old_password: oldPassword }),
 };
 
 // 任务管理API
@@ -206,7 +210,7 @@ export const proxyAPI = {
 
 // 模块功能API
 export const moduleAPI = {
-  accountCheck: (data: { account_id: string; [key: string]: any }) =>
+  accountCheck: (data: { account_id: string;[key: string]: any }) =>
     apiClient.post('/modules/check', data),
   privateMessage: (data: any) => apiClient.post('/modules/private', data),
   broadcast: (data: any) => apiClient.post('/modules/broadcast', data),
@@ -287,4 +291,3 @@ export const statsAPI = {
   getTaskStats: () => apiClient.get('/stats/tasks'),
   getProxyStats: () => apiClient.get('/stats/proxies'),
 };
-

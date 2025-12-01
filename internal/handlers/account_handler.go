@@ -563,6 +563,77 @@ func (h *AccountHandler) UploadAccountFiles(c *gin.Context) {
 	response.SuccessWithMessage(c, fmt.Sprintf("成功创建 %d 个账号，失败 %d 个", len(createdAccounts), len(errors)), result)
 }
 
+// BatchSet2FA 批量设置2FA密码
+// @Summary 批量设置2FA密码
+// @Description 批量设置账号的2FA密码（仅更新本地记录）
+// @Tags 账号管理
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param request body models.BatchSet2FARequest true "设置信息"
+// @Success 200 {object} map[string]string "操作成功"
+// @Failure 400 {object} map[string]string "请求错误"
+// @Failure 401 {object} map[string]string "未授权"
+// @Failure 500 {object} map[string]string "服务器错误"
+// @Router /api/v1/accounts/batch/set-2fa [post]
+func (h *AccountHandler) BatchSet2FA(c *gin.Context) {
+	userID := h.getUserID(c)
+	if userID == 0 {
+		return
+	}
+
+	var req models.BatchSet2FARequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		h.logger.Warn("Invalid batch set 2fa request", zap.Error(err))
+		response.InvalidParam(c, "请求参数无效："+err.Error())
+		return
+	}
+
+	if err := h.accountService.BatchSet2FA(userID, &req); err != nil {
+		h.logger.Error("Failed to batch set 2fa", zap.Error(err))
+		response.InternalError(c, "批量设置2FA失败")
+		return
+	}
+
+	response.SuccessWithMessage(c, "批量设置2FA密码成功", nil)
+}
+
+// BatchUpdate2FA 批量修改2FA密码
+// @Summary 批量修改2FA密码
+// @Description 批量修改账号的2FA密码（尝试修改Telegram密码）
+// @Tags 账号管理
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param request body models.BatchUpdate2FARequest true "修改信息"
+// @Success 200 {object} map[string]interface{} "操作结果"
+// @Failure 400 {object} map[string]string "请求错误"
+// @Failure 401 {object} map[string]string "未授权"
+// @Failure 500 {object} map[string]string "服务器错误"
+// @Router /api/v1/accounts/batch/update-2fa [post]
+func (h *AccountHandler) BatchUpdate2FA(c *gin.Context) {
+	userID := h.getUserID(c)
+	if userID == 0 {
+		return
+	}
+
+	var req models.BatchUpdate2FARequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		h.logger.Warn("Invalid batch update 2fa request", zap.Error(err))
+		response.InvalidParam(c, "请求参数无效："+err.Error())
+		return
+	}
+
+	results, err := h.accountService.BatchUpdate2FA(userID, &req)
+	if err != nil {
+		h.logger.Error("Failed to batch update 2fa", zap.Error(err))
+		response.InternalError(c, "批量修改2FA失败")
+		return
+	}
+
+	response.SuccessWithMessage(c, "批量修改2FA操作完成", results)
+}
+
 // handleFileUpload 处理文件上传
 func (h *AccountHandler) handleFileUpload(c *gin.Context, userID uint64, file multipart.File, header *multipart.FileHeader, proxyID *uint64) {
 	// 验证文件大小（100MB限制）

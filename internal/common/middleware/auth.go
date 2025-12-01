@@ -1,13 +1,13 @@
 package middleware
 
 import (
-	"net/http"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
 	"tg_cloud_server/internal/common/logger"
+	"tg_cloud_server/internal/common/response"
 	"tg_cloud_server/internal/services"
 )
 
@@ -21,10 +21,7 @@ func AuthMiddleware(authService *services.AuthService) gin.HandlerFunc {
 		if authHeader == "" {
 			log.Warn("Missing authorization header",
 				zap.String("path", c.Request.URL.Path))
-			c.JSON(http.StatusUnauthorized, gin.H{
-				"error":   "unauthorized",
-				"message": "缺少认证令牌",
-			})
+			response.Unauthorized(c, "缺少认证令牌")
 			c.Abort()
 			return
 		}
@@ -34,10 +31,7 @@ func AuthMiddleware(authService *services.AuthService) gin.HandlerFunc {
 		if !strings.HasPrefix(authHeader, bearerPrefix) {
 			log.Warn("Invalid authorization header format",
 				zap.String("header", authHeader))
-			c.JSON(http.StatusUnauthorized, gin.H{
-				"error":   "unauthorized",
-				"message": "无效的认证令牌格式",
-			})
+			response.Unauthorized(c, "无效的认证令牌格式")
 			c.Abort()
 			return
 		}
@@ -46,10 +40,7 @@ func AuthMiddleware(authService *services.AuthService) gin.HandlerFunc {
 		token := authHeader[len(bearerPrefix):]
 		if token == "" {
 			log.Warn("Empty token")
-			c.JSON(http.StatusUnauthorized, gin.H{
-				"error":   "unauthorized",
-				"message": "认证令牌为空",
-			})
+			response.Unauthorized(c, "认证令牌为空")
 			c.Abort()
 			return
 		}
@@ -60,10 +51,7 @@ func AuthMiddleware(authService *services.AuthService) gin.HandlerFunc {
 			log.Warn("Token verification failed",
 				zap.Error(err),
 				zap.String("token_prefix", token[:min(10, len(token))]))
-			c.JSON(http.StatusUnauthorized, gin.H{
-				"error":   "unauthorized",
-				"message": "无效的认证令牌",
-			})
+			response.Unauthorized(c, "无效的认证令牌")
 			c.Abort()
 			return
 		}
@@ -74,10 +62,7 @@ func AuthMiddleware(authService *services.AuthService) gin.HandlerFunc {
 			log.Warn("Failed to get user profile",
 				zap.Uint64("user_id", userID),
 				zap.Error(err))
-			c.JSON(http.StatusUnauthorized, gin.H{
-				"error":   "unauthorized",
-				"message": "无法获取用户信息",
-			})
+			response.Unauthorized(c, "无法获取用户信息")
 			c.Abort()
 			return
 		}
@@ -86,10 +71,7 @@ func AuthMiddleware(authService *services.AuthService) gin.HandlerFunc {
 		if !userProfile.IsActive {
 			log.Warn("User account is inactive",
 				zap.Uint64("user_id", userID))
-			c.JSON(http.StatusForbidden, gin.H{
-				"error":   "forbidden",
-				"message": "用户账号已被禁用",
-			})
+			response.Forbidden(c, "用户账号已被禁用")
 			c.Abort()
 			return
 		}
@@ -99,11 +81,7 @@ func AuthMiddleware(authService *services.AuthService) gin.HandlerFunc {
 			log.Warn("User account is expired",
 				zap.Uint64("user_id", userID),
 				zap.Time("expires_at", *userProfile.ExpiresAt))
-			c.JSON(http.StatusForbidden, gin.H{
-				"error":      "forbidden",
-				"message":    "用户账号已过期，请联系管理员续费",
-				"expires_at": userProfile.ExpiresAt,
-			})
+			response.Forbidden(c, "用户账号已过期，请联系管理员续费")
 			c.Abort()
 			return
 		}

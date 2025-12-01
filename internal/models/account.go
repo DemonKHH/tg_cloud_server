@@ -215,6 +215,19 @@ type UpdateAccountRequest struct {
 	ProxyID *uint64        `json:"proxy_id"`
 }
 
+// BatchSet2FARequest 批量设置2FA密码请求（仅更新本地记录）
+type BatchSet2FARequest struct {
+	AccountIDs []uint64 `json:"account_ids" binding:"required,min=1"`
+	Password   string   `json:"password" binding:"required"`
+}
+
+// BatchUpdate2FARequest 批量修改2FA密码请求（尝试修改Telegram密码）
+type BatchUpdate2FARequest struct {
+	AccountIDs  []uint64 `json:"account_ids" binding:"required,min=1"`
+	OldPassword string   `json:"old_password"` // 如果为空，尝试使用本地存储的密码
+	NewPassword string   `json:"new_password" binding:"required"`
+}
+
 // AccountHealthReport 账号健康报告
 type AccountHealthReport struct {
 	AccountID    uint64                 `json:"account_id"`

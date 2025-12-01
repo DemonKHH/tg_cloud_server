@@ -28,14 +28,14 @@ func RegisterAPIRoutes(
 
 	// API路由组（需要认证）
 	api := router.Group("/api/v1")
-	
+
 	// 添加日志中间件
 	api.Use(middleware.APILoggerMiddleware())
 	api.Use(middleware.TaskLoggerMiddleware())
-	
+
 	// 如果需要详细日志（包含请求响应体），可以启用这个中间件
 	// api.Use(middleware.DetailedAPILoggerMiddleware())
-	
+
 	api.Use(middleware.JWTAuthMiddleware(authService))
 
 	// 用户资料管理
@@ -57,10 +57,12 @@ func RegisterAPIRoutes(
 		accounts.GET("/:id/health", accountHandler.CheckAccountHealth)           // 检查健康度
 		accounts.GET("/:id/availability", accountHandler.GetAccountAvailability) // 获取可用性
 		accounts.POST("/:id/bind-proxy", accountHandler.BindProxy)               // 绑定代理
-		accounts.POST("/upload", accountHandler.UploadAccountFiles)             // 上传并解析账号文件
+		accounts.POST("/upload", accountHandler.UploadAccountFiles)              // 上传并解析账号文件
 
-		// 批量操作（需要高级用户权限）
-		accounts.POST("/batch/bind-proxy", middleware.RequirePermission("advanced_features"), accountHandler.BindProxy) // 批量绑定代理
+		// 批量操作
+		accounts.POST("/batch/bind-proxy", accountHandler.BindProxy)      // 批量绑定代理
+		accounts.POST("/batch/set-2fa", accountHandler.BatchSet2FA)       // 批量设置2FA
+		accounts.POST("/batch/update-2fa", accountHandler.BatchUpdate2FA) // 批量修改2FA
 	}
 
 	// 模块功能路由（五大核心模块）- 需要基础权限

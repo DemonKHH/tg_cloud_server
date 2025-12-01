@@ -1,12 +1,11 @@
 package middleware
 
 import (
-	"net/http"
-
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
 	"tg_cloud_server/internal/common/logger"
+	"tg_cloud_server/internal/common/response"
 	"tg_cloud_server/internal/models"
 )
 
@@ -19,10 +18,7 @@ func RequireRole(roles ...models.UserRole) gin.HandlerFunc {
 		roleInterface, exists := c.Get("user_role")
 		if !exists {
 			log.Warn("User role not found in context")
-			c.JSON(http.StatusUnauthorized, gin.H{
-				"error":   "unauthorized",
-				"message": "用户角色信息缺失",
-			})
+			response.Unauthorized(c, "用户角色信息缺失")
 			c.Abort()
 			return
 		}
@@ -30,10 +26,7 @@ func RequireRole(roles ...models.UserRole) gin.HandlerFunc {
 		userRole, ok := roleInterface.(models.UserRole)
 		if !ok {
 			log.Warn("Invalid user role type in context")
-			c.JSON(http.StatusForbidden, gin.H{
-				"error":   "forbidden",
-				"message": "无效的用户角色",
-			})
+			response.Forbidden(c, "无效的用户角色")
 			c.Abort()
 			return
 		}
@@ -51,11 +44,7 @@ func RequireRole(roles ...models.UserRole) gin.HandlerFunc {
 			log.Warn("Insufficient role permissions",
 				zap.String("user_role", string(userRole)),
 				zap.String("path", c.Request.URL.Path))
-			c.JSON(http.StatusForbidden, gin.H{
-				"error":          "forbidden",
-				"message":        "权限不足，需要更高的角色权限",
-				"required_roles": roles,
-			})
+			response.Forbidden(c, "权限不足，需要更高的角色权限")
 			c.Abort()
 			return
 		}
@@ -84,10 +73,7 @@ func RequirePermission(permission string) gin.HandlerFunc {
 		userProfileInterface, exists := c.Get("user_profile")
 		if !exists {
 			log.Warn("User profile not found in context")
-			c.JSON(http.StatusUnauthorized, gin.H{
-				"error":   "unauthorized",
-				"message": "用户信息缺失",
-			})
+			response.Unauthorized(c, "用户信息缺失")
 			c.Abort()
 			return
 		}
@@ -95,10 +81,7 @@ func RequirePermission(permission string) gin.HandlerFunc {
 		userProfile, ok := userProfileInterface.(*models.UserProfile)
 		if !ok {
 			log.Warn("Invalid user profile type in context")
-			c.JSON(http.StatusForbidden, gin.H{
-				"error":   "forbidden",
-				"message": "无效的用户信息",
-			})
+			response.Forbidden(c, "无效的用户信息")
 			c.Abort()
 			return
 		}
@@ -116,11 +99,7 @@ func RequirePermission(permission string) gin.HandlerFunc {
 				zap.Uint64("user_id", userProfile.ID),
 				zap.String("required_permission", permission),
 				zap.String("path", c.Request.URL.Path))
-			c.JSON(http.StatusForbidden, gin.H{
-				"error":               "forbidden",
-				"message":             "权限不足",
-				"required_permission": permission,
-			})
+			response.Forbidden(c, "权限不足")
 			c.Abort()
 			return
 		}
@@ -139,10 +118,7 @@ func RequireAnyPermission(permissions ...string) gin.HandlerFunc {
 		userProfileInterface, exists := c.Get("user_profile")
 		if !exists {
 			log.Warn("User profile not found in context")
-			c.JSON(http.StatusUnauthorized, gin.H{
-				"error":   "unauthorized",
-				"message": "用户信息缺失",
-			})
+			response.Unauthorized(c, "用户信息缺失")
 			c.Abort()
 			return
 		}
@@ -150,10 +126,7 @@ func RequireAnyPermission(permissions ...string) gin.HandlerFunc {
 		userProfile, ok := userProfileInterface.(*models.UserProfile)
 		if !ok {
 			log.Warn("Invalid user profile type in context")
-			c.JSON(http.StatusForbidden, gin.H{
-				"error":   "forbidden",
-				"message": "无效的用户信息",
-			})
+			response.Forbidden(c, "无效的用户信息")
 			c.Abort()
 			return
 		}
@@ -179,11 +152,7 @@ func RequireAnyPermission(permissions ...string) gin.HandlerFunc {
 				zap.Uint64("user_id", userProfile.ID),
 				zap.Strings("required_permissions", permissions),
 				zap.String("path", c.Request.URL.Path))
-			c.JSON(http.StatusForbidden, gin.H{
-				"error":                "forbidden",
-				"message":              "权限不足",
-				"required_permissions": permissions,
-			})
+			response.Forbidden(c, "权限不足")
 			c.Abort()
 			return
 		}

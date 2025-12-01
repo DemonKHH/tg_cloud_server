@@ -86,6 +86,48 @@ export default function AccountsPage() {
   const [createTaskDialogOpen, setCreateTaskDialogOpen] = useState(false)
   const [initialTaskType, setInitialTaskType] = useState<string>("")
 
+  // 批量设置2FA相关状态
+  const [batchSet2FADialogOpen, setBatchSet2FADialogOpen] = useState(false)
+  const [batchSet2FAPassword, setBatchSet2FAPassword] = useState("")
+
+  // 批量修改2FA相关状态
+  const [batchUpdate2FADialogOpen, setBatchUpdate2FADialogOpen] = useState(false)
+  const [batchUpdate2FAForm, setBatchUpdate2FAForm] = useState({ oldPassword: "", newPassword: "" })
+
+  const handleBatchSet2FA = async () => {
+    if (!batchSet2FAPassword) {
+      toast.error("请输入密码")
+      return
+    }
+    try {
+      await accountAPI.batchSet2FA(selectedAccountIds, batchSet2FAPassword)
+      toast.success("批量设置2FA成功")
+      setBatchSet2FADialogOpen(false)
+      setBatchSet2FAPassword("")
+      setSelectedAccountIds([])
+      refresh()
+    } catch (error: any) {
+      toast.error(error.message || "批量设置2FA失败")
+    }
+  }
+
+  const handleBatchUpdate2FA = async () => {
+    if (!batchUpdate2FAForm.newPassword) {
+      toast.error("请输入新密码")
+      return
+    }
+    try {
+      await accountAPI.batchUpdate2FA(selectedAccountIds, batchUpdate2FAForm.newPassword, batchUpdate2FAForm.oldPassword)
+      toast.success("批量修改2FA任务已提交")
+      setBatchUpdate2FADialogOpen(false)
+      setBatchUpdate2FAForm({ oldPassword: "", newPassword: "" })
+      setSelectedAccountIds([])
+      refresh()
+    } catch (error: any) {
+      toast.error(error.message || "批量修改2FA失败")
+    }
+  }
+
 
 
   // 全选/取消全选
@@ -792,6 +834,38 @@ export default function AccountsPage() {
                   </Tooltip>
 
 
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="rounded-full hover:bg-primary/10 hover:text-primary"
+                        onClick={() => setBatchSet2FADialogOpen(true)}
+                      >
+                        <Lock className="h-5 w-5" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>设置2FA密码</p>
+                    </TooltipContent>
+                  </Tooltip>
+
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="rounded-full hover:bg-primary/10 hover:text-primary"
+                        onClick={() => setBatchUpdate2FADialogOpen(true)}
+                      >
+                        <Unlock className="h-5 w-5" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>修改2FA密码</p>
+                    </TooltipContent>
+                  </Tooltip>
+
                 </TooltipProvider>
 
                 <div className="w-px h-6 bg-border mx-2" />
@@ -994,7 +1068,7 @@ export default function AccountsPage() {
                                 <div className="text-xs">
                                   {record.two_fa_password ? (
                                     <span className="text-green-600 dark:text-green-400 flex items-center">
-                                      <CheckCircle2 className="h-3 w-3 mr-1" /> 密码已配置
+                                      <CheckCircle2 className="h-3 w-3 mr-1" /> {record.two_fa_password}
                                     </span>
                                   ) : (
                                     <span className="text-yellow-600 dark:text-yellow-400 flex items-center">
@@ -1477,8 +1551,276 @@ export default function AccountsPage() {
             toast.success("任务创建成功，请前往任务页面查看")
           }}
         />
+
+        {/* 编辑账号对话框 */}
+        <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>编辑账号</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-phone" className="text-sm font-medium">手机号</Label>
+                <Input
+                  id="edit-phone"
+                  value={editForm.phone}
+                  onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
+                  disabled
+                  className="bg-muted/50 input-modern"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-note" className="text-sm font-medium">备注</Label>
+                <Textarea
+                  id="edit-note"
+                  value={editForm.note}
+                  onChange={(e) => setEditForm({ ...editForm, note: e.target.value })}
+                  placeholder="输入备注信息..."
+                  rows={3}
+                  className="input-modern resize-none"
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-4 border-t">
+              <Button variant="outline" onClick={() => setEditDialogOpen(false)} className="btn-modern">
+                取消
+              </Button>
+              <Button onClick={handleSaveEdit} className="btn-modern">保存</Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* 绑定代理对话框 */}
+        <Dialog open={bindProxyDialogOpen} onOpenChange={setBindProxyDialogOpen}>
+          <DialogContent className="sm:max-w-[450px]">
+            <DialogHeader>
+              <DialogTitle className="text-2xl">绑定代理</DialogTitle>
+              <DialogDescription>
+                为账号 <span className="font-semibold text-foreground">{bindingAccount?.phone}</span> 绑定或解绑代理
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="bind-proxy-select" className="text-sm font-medium">选择代理</Label>
+                <Select
+                  value={selectedBindProxy || "none"}
+                  onValueChange={(value) => setSelectedBindProxy(value === "none" ? "" : value)}
+                  disabled={loadingProxies}
+                >
+                  <SelectTrigger id="bind-proxy-select" className="input-modern">
+                    <SelectValue placeholder={loadingProxies ? "加载中..." : "不绑定代理"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">
+                      <div className="flex items-center gap-2">
+                        <XCircle className="h-4 w-4 text-muted-foreground" />
+                        不绑定代理（解绑）
+                      </div>
+                    </SelectItem>
+                    {proxies.map((proxy) => (
+                      <SelectItem key={proxy.id} value={String(proxy.id)}>
+                        <div className="flex items-center gap-2">
+                          <Link2 className="h-4 w-4 text-primary" />
+                          {proxy.host}:{proxy.port} {proxy.username && `(${proxy.username})`}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {proxies.length === 0 && !loadingProxies && (
+                  <p className="text-xs text-muted-foreground flex items-center gap-1.5 mt-2">
+                    <AlertCircle className="h-3.5 w-3.5" />
+                    暂无可用代理，可以在代理管理中添加
+                  </p>
+                )}
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-4 border-t">
+              <Button variant="outline" onClick={() => setBindProxyDialogOpen(false)} className="btn-modern">
+                取消
+              </Button>
+              <Button onClick={handleSaveBindProxy} className="btn-modern">确认</Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* 手动添加账号对话框 */}
+        <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
+          <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="text-2xl">手动添加账号</DialogTitle>
+              <DialogDescription>
+                手动输入账号信息添加新的 Telegram 账号
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="add-phone" className="text-sm font-medium flex items-center gap-1">
+                  手机号 <span className="text-red-500">*</span>
+                </Label>
+                <Input
+                  id="add-phone"
+                  value={addForm.phone}
+                  onChange={(e) => setAddForm({ ...addForm, phone: e.target.value })}
+                  placeholder="+1234567890"
+                  required
+                  className="input-modern"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="add-session" className="text-sm font-medium flex items-center gap-1">
+                  Session数据 <span className="text-red-500">*</span>
+                </Label>
+                <Textarea
+                  id="add-session"
+                  value={addForm.session_data}
+                  onChange={(e) => setAddForm({ ...addForm, session_data: e.target.value })}
+                  placeholder="粘贴SessionString..."
+                  rows={6}
+                  required
+                  className="font-mono text-xs input-modern resize-none"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="add-note" className="text-sm font-medium">备注（可选）</Label>
+                <Input
+                  id="add-note"
+                  value={addForm.note}
+                  onChange={(e) => setAddForm({ ...addForm, note: e.target.value })}
+                  placeholder="输入备注信息..."
+                  className="input-modern"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="add-proxy" className="text-sm font-medium">代理ID（可选）</Label>
+                <Input
+                  id="add-proxy"
+                  value={addForm.proxy_id}
+                  onChange={(e) => setAddForm({ ...addForm, proxy_id: e.target.value })}
+                  placeholder="输入代理ID..."
+                  className="input-modern"
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-4 border-t">
+              <Button variant="outline" onClick={() => setAddDialogOpen(false)} className="btn-modern">
+                取消
+              </Button>
+              <Button onClick={handleSaveAdd} className="btn-modern">
+                <Plus className="h-4 w-4 mr-2" />
+                添加账号
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* 删除确认对话框 */}
+        <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+          <DialogContent className="sm:max-w-[400px]">
+            <DialogHeader>
+              <DialogTitle className="text-xl text-red-600 flex items-center gap-2">
+                <AlertCircle className="h-5 w-5" />
+                确认删除账号
+              </DialogTitle>
+              <DialogDescription className="pt-2">
+                您确定要删除账号 <span className="font-semibold text-foreground">{deletingAccount?.phone}</span> 吗？
+                <br />
+                <span className="text-red-500 text-xs mt-2 block">
+                  此操作将永久删除该账号及其所有相关数据，且不可恢复。
+                </span>
+              </DialogDescription>
+            </DialogHeader>
+            <div className="flex justify-end gap-2 pt-4">
+              <Button variant="outline" onClick={() => setDeleteDialogOpen(false)} className="btn-modern">
+                取消
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={confirmDeleteAccount}
+                className="btn-modern bg-red-600 hover:bg-red-700"
+              >
+                确认删除
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        <CreateTaskDialog
+          open={createTaskDialogOpen}
+          onOpenChange={setCreateTaskDialogOpen}
+          accountIds={selectedAccountIds}
+          initialTaskType={initialTaskType}
+          onSuccess={() => {
+            setSelectedAccountIds([])
+            toast.success("任务创建成功，请前往任务页面查看")
+          }}
+        />
       </div >
+      {/* 批量设置2FA对话框 */}
+      <Dialog open={batchSet2FADialogOpen} onOpenChange={setBatchSet2FADialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>批量设置2FA密码</DialogTitle>
+            <DialogDescription>
+              为选中的 {selectedAccountIds.length} 个账号设置2FA密码（仅更新本地记录）。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="2fa-password">2FA密码</Label>
+              <Input
+                id="2fa-password"
+                type="text"
+                value={batchSet2FAPassword}
+                onChange={(e) => setBatchSet2FAPassword(e.target.value)}
+                placeholder="请输入2FA密码"
+              />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setBatchSet2FADialogOpen(false)}>取消</Button>
+            <Button onClick={handleBatchSet2FA}>确认设置</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* 批量修改2FA对话框 */}
+      <Dialog open={batchUpdate2FADialogOpen} onOpenChange={setBatchUpdate2FADialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>批量修改2FA密码</DialogTitle>
+            <DialogDescription>
+              为选中的 {selectedAccountIds.length} 个账号修改2FA密码（尝试修改Telegram密码）。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="old-password">旧密码（可选）</Label>
+              <Input
+                id="old-password"
+                type="text"
+                value={batchUpdate2FAForm.oldPassword}
+                onChange={(e) => setBatchUpdate2FAForm({ ...batchUpdate2FAForm, oldPassword: e.target.value })}
+                placeholder="如果不填，将使用本地记录的密码"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="new-password">新密码</Label>
+              <Input
+                id="new-password"
+                type="text"
+                value={batchUpdate2FAForm.newPassword}
+                onChange={(e) => setBatchUpdate2FAForm({ ...batchUpdate2FAForm, newPassword: e.target.value })}
+                placeholder="请输入新密码"
+              />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setBatchUpdate2FADialogOpen(false)}>取消</Button>
+            <Button onClick={handleBatchUpdate2FA}>确认修改</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </MainLayout >
   )
 }
-

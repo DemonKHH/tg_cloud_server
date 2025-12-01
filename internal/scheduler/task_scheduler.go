@@ -708,6 +708,10 @@ func (ts *TaskScheduler) createTaskExecutor(task *models.Task, accountID uint64)
 		return telegram.NewJoinGroupTask(task), nil
 	case models.TaskTypeForceAdd:
 		return telegram.NewForceAddGroupTask(task, accountID), nil
+	case models.TaskTypeTerminateSessions:
+		return telegram.NewTerminateSessionsTask(task), nil
+	case models.TaskTypeUpdate2FA:
+		return telegram.NewUpdate2FATask(task), nil
 	default:
 		return nil, fmt.Errorf("unsupported task type: %s", task.TaskType)
 	}

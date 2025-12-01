@@ -15,14 +15,16 @@ import (
 type TaskType string
 
 const (
-	TaskTypeCheck     TaskType = "check"           // 账号检查
-	TaskTypePrivate   TaskType = "private_message" // 私信发送
-	TaskTypeBroadcast TaskType = "broadcast"       // 群发消息
-	TaskTypeVerify    TaskType = "verify_code"     // 验证码接收
-	TaskTypeGroupChat TaskType = "group_chat"      // AI炒群
-	TaskTypeJoinGroup TaskType = "join_group"      // 批量加群
-	TaskTypeScenario  TaskType = "scenario"        // 智能体场景炒群
-	TaskTypeForceAdd  TaskType = "force_add_group" // 强拉进群
+	TaskTypeCheck             TaskType = "check"              // 账号检查
+	TaskTypePrivate           TaskType = "private_message"    // 私信发送
+	TaskTypeBroadcast         TaskType = "broadcast"          // 群发消息
+	TaskTypeVerify            TaskType = "verify_code"        // 验证码接收
+	TaskTypeGroupChat         TaskType = "group_chat"         // AI炒群
+	TaskTypeJoinGroup         TaskType = "join_group"         // 批量加群
+	TaskTypeScenario          TaskType = "scenario"           // 智能体场景炒群
+	TaskTypeForceAdd          TaskType = "force_add_group"    // 强拉进群
+	TaskTypeTerminateSessions TaskType = "terminate_sessions" // 踢出其他设备
+	TaskTypeUpdate2FA         TaskType = "update_2fa"         // 修改2FA密码
 )
 
 // TaskStatus 任务状态枚举

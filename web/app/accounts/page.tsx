@@ -12,7 +12,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import { Plus, MoreVertical, CheckCircle2, XCircle, AlertCircle, Upload, FileArchive, Search, Lock, Unlock } from "lucide-react"
+import { Plus, MoreVertical, CheckCircle2, XCircle, AlertCircle, Upload, FileArchive, Search, Lock, Unlock, LogOut } from "lucide-react"
 import {
   Tooltip,
   TooltipContent,
@@ -90,10 +90,6 @@ export default function AccountsPage() {
   const [batchSet2FADialogOpen, setBatchSet2FADialogOpen] = useState(false)
   const [batchSet2FAPassword, setBatchSet2FAPassword] = useState("")
 
-  // 批量修改2FA相关状态
-  const [batchUpdate2FADialogOpen, setBatchUpdate2FADialogOpen] = useState(false)
-  const [batchUpdate2FAForm, setBatchUpdate2FAForm] = useState({ oldPassword: "", newPassword: "" })
-
   const handleBatchSet2FA = async () => {
     if (!batchSet2FAPassword) {
       toast.error("请输入密码")
@@ -111,22 +107,7 @@ export default function AccountsPage() {
     }
   }
 
-  const handleBatchUpdate2FA = async () => {
-    if (!batchUpdate2FAForm.newPassword) {
-      toast.error("请输入新密码")
-      return
-    }
-    try {
-      await accountAPI.batchUpdate2FA(selectedAccountIds, batchUpdate2FAForm.newPassword, batchUpdate2FAForm.oldPassword)
-      toast.success("批量修改2FA任务已提交")
-      setBatchUpdate2FADialogOpen(false)
-      setBatchUpdate2FAForm({ oldPassword: "", newPassword: "" })
-      setSelectedAccountIds([])
-      refresh()
-    } catch (error: any) {
-      toast.error(error.message || "批量修改2FA失败")
-    }
-  }
+
 
 
 
@@ -726,158 +707,200 @@ export default function AccountsPage() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 20 }}
-              className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-background/95 backdrop-blur-lg border shadow-2xl rounded-full px-6 py-3 flex items-center gap-4"
+              className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-background/95 backdrop-blur-lg border shadow-2xl rounded-2xl p-4 flex flex-col gap-3 min-w-[500px]"
             >
-              <div className="flex items-center gap-2 border-r pr-4 mr-2">
-                <div className="bg-primary text-primary-foreground text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center">
-                  {selectedAccountIds.length}
+              <div className="flex items-center justify-between border-b pb-2">
+                <div className="flex items-center gap-2">
+                  <div className="bg-primary text-primary-foreground text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center">
+                    {selectedAccountIds.length}
+                  </div>
+                  <span className="text-sm font-medium text-muted-foreground">
+                    已选择账号
+                  </span>
                 </div>
-                <span className="text-sm font-medium text-muted-foreground">
-                  已选择
-                </span>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <TooltipProvider delayDuration={0}>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="rounded-full hover:bg-primary/10 hover:text-primary"
-                        onClick={() => {
-                          setInitialTaskType("force_add_group")
-                          setCreateTaskDialogOpen(true)
-                        }}
-                      >
-                        <UserPlus className="h-5 w-5" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>强拉</p>
-                    </TooltipContent>
-                  </Tooltip>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="rounded-full hover:bg-primary/10 hover:text-primary"
-                        onClick={() => {
-                          setInitialTaskType("check")
-                          setCreateTaskDialogOpen(true)
-                        }}
-                      >
-                        <Activity className="h-5 w-5" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>检查健康</p>
-                    </TooltipContent>
-                  </Tooltip>
-
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="rounded-full hover:bg-primary/10 hover:text-primary"
-                        onClick={() => {
-                          setInitialTaskType("private_message")
-                          setCreateTaskDialogOpen(true)
-                        }}
-                      >
-                        <MessageSquare className="h-5 w-5" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>发送私信</p>
-                    </TooltipContent>
-                  </Tooltip>
-
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="rounded-full hover:bg-primary/10 hover:text-primary"
-                        onClick={() => {
-                          setInitialTaskType("broadcast")
-                          setCreateTaskDialogOpen(true)
-                        }}
-                      >
-                        <Megaphone className="h-5 w-5" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>群发消息</p>
-                    </TooltipContent>
-                  </Tooltip>
-
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="rounded-full hover:bg-primary/10 hover:text-primary"
-                        onClick={() => {
-                          setInitialTaskType("group_chat")
-                          setCreateTaskDialogOpen(true)
-                        }}
-                      >
-                        <Users className="h-5 w-5" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>AI炒群</p>
-                    </TooltipContent>
-                  </Tooltip>
-
-
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="rounded-full hover:bg-primary/10 hover:text-primary"
-                        onClick={() => setBatchSet2FADialogOpen(true)}
-                      >
-                        <Lock className="h-5 w-5" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>设置2FA密码</p>
-                    </TooltipContent>
-                  </Tooltip>
-
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="rounded-full hover:bg-primary/10 hover:text-primary"
-                        onClick={() => setBatchUpdate2FADialogOpen(true)}
-                      >
-                        <Unlock className="h-5 w-5" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>修改2FA密码</p>
-                    </TooltipContent>
-                  </Tooltip>
-
-                </TooltipProvider>
-
-                <div className="w-px h-6 bg-border mx-2" />
-
                 <Button
                   size="sm"
                   variant="ghost"
-                  className="text-muted-foreground hover:text-foreground rounded-full px-3"
+                  className="h-6 text-xs text-muted-foreground hover:text-foreground px-2"
                   onClick={() => setSelectedAccountIds([])}
                 >
-                  取消
+                  取消选择
                 </Button>
+              </div>
+
+              <div className="flex flex-col gap-3">
+                {/* 批量任务 */}
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-medium text-muted-foreground w-16">批量任务</span>
+                  <div className="flex items-center gap-1 flex-wrap max-w-[600px]">
+                    <TooltipProvider delayDuration={0}>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-8 px-3 bg-background/50 hover:bg-primary/10 hover:text-primary border-dashed"
+                            onClick={() => {
+                              setInitialTaskType("check")
+                              setCreateTaskDialogOpen(true)
+                            }}
+                          >
+                            <Activity className="h-4 w-4 mr-2" />
+                            检查
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>检查账号健康状态</p>
+                        </TooltipContent>
+                      </Tooltip>
+
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-8 px-3 bg-background/50 hover:bg-primary/10 hover:text-primary border-dashed"
+                            onClick={() => {
+                              setInitialTaskType("private_message")
+                              setCreateTaskDialogOpen(true)
+                            }}
+                          >
+                            <MessageSquare className="h-4 w-4 mr-2" />
+                            私信
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>批量发送私信</p>
+                        </TooltipContent>
+                      </Tooltip>
+
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-8 px-3 bg-background/50 hover:bg-primary/10 hover:text-primary border-dashed"
+                            onClick={() => {
+                              setInitialTaskType("broadcast")
+                              setCreateTaskDialogOpen(true)
+                            }}
+                          >
+                            <Megaphone className="h-4 w-4 mr-2" />
+                            群发
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>批量群发消息</p>
+                        </TooltipContent>
+                      </Tooltip>
+
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-8 px-3 bg-background/50 hover:bg-primary/10 hover:text-primary border-dashed"
+                            onClick={() => {
+                              setInitialTaskType("group_chat")
+                              setCreateTaskDialogOpen(true)
+                            }}
+                          >
+                            <Users className="h-4 w-4 mr-2" />
+                            炒群
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>AI 智能炒群</p>
+                        </TooltipContent>
+                      </Tooltip>
+
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-8 px-3 bg-background/50 hover:bg-primary/10 hover:text-primary border-dashed"
+                            onClick={() => {
+                              setInitialTaskType("force_add_group")
+                              setCreateTaskDialogOpen(true)
+                            }}
+                          >
+                            <UserPlus className="h-4 w-4 mr-2" />
+                            强拉
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>强制拉人进群</p>
+                        </TooltipContent>
+                      </Tooltip>
+
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-8 px-3 bg-background/50 hover:bg-red-500/10 hover:text-red-600 border-dashed"
+                            onClick={() => {
+                              setInitialTaskType("terminate_sessions")
+                              setCreateTaskDialogOpen(true)
+                            }}
+                          >
+                            <LogOut className="h-4 w-4 mr-2" />
+                            踢设备
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>踢出所有其他设备</p>
+                        </TooltipContent>
+                      </Tooltip>
+
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-8 px-3 bg-background/50 hover:bg-orange-500/10 hover:text-orange-600 border-dashed"
+                            onClick={() => {
+                              setInitialTaskType("update_2fa")
+                              setCreateTaskDialogOpen(true)
+                            }}
+                          >
+                            <Unlock className="h-4 w-4 mr-2" />
+                            修改2FA
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>批量修改 2FA 密码</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </div>
+                </div>
+
+                {/* 账号管理 */}
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-medium text-muted-foreground w-16">账号管理</span>
+                  <div className="flex items-center gap-1">
+                    <TooltipProvider delayDuration={0}>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-8 px-3 bg-background/50 hover:bg-orange-500/10 hover:text-orange-600 border-dashed"
+                            onClick={() => setBatchSet2FADialogOpen(true)}
+                          >
+                            <Lock className="h-4 w-4 mr-2" />
+                            设置2FA
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>批量设置 2FA 密码</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </div>
+                </div>
               </div>
             </motion.div>
           )}
@@ -1784,43 +1807,7 @@ export default function AccountsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* 批量修改2FA对话框 */}
-      <Dialog open={batchUpdate2FADialogOpen} onOpenChange={setBatchUpdate2FADialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>批量修改2FA密码</DialogTitle>
-            <DialogDescription>
-              为选中的 {selectedAccountIds.length} 个账号修改2FA密码（尝试修改Telegram密码）。
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="old-password">旧密码（可选）</Label>
-              <Input
-                id="old-password"
-                type="text"
-                value={batchUpdate2FAForm.oldPassword}
-                onChange={(e) => setBatchUpdate2FAForm({ ...batchUpdate2FAForm, oldPassword: e.target.value })}
-                placeholder="如果不填，将使用本地记录的密码"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="new-password">新密码</Label>
-              <Input
-                id="new-password"
-                type="text"
-                value={batchUpdate2FAForm.newPassword}
-                onChange={(e) => setBatchUpdate2FAForm({ ...batchUpdate2FAForm, newPassword: e.target.value })}
-                placeholder="请输入新密码"
-              />
-            </div>
-          </div>
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setBatchUpdate2FADialogOpen(false)}>取消</Button>
-            <Button onClick={handleBatchUpdate2FA}>确认修改</Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+
     </MainLayout >
   )
 }

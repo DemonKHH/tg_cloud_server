@@ -69,6 +69,9 @@ export function CreateTaskDialog({
     check_spam_bot: false,
     check_2fa: false,
     two_fa_password: "",
+    update_2fa_old_password: "",
+    update_2fa_new_password: "",
+    update_2fa_hint: "",
   })
 
   // Reset form when dialog opens
@@ -294,6 +297,24 @@ export function CreateTaskDialog({
         config.ai_config = aiConfig
         break
 
+      case "terminate_sessions":
+        // No specific config needed
+        break
+
+      case "update_2fa":
+        if (!form.update_2fa_new_password) {
+          toast.error("请填写新密码")
+          return null
+        }
+        config.new_password = form.update_2fa_new_password
+        if (form.update_2fa_old_password) {
+          config.old_password = form.update_2fa_old_password
+        }
+        if (form.update_2fa_hint) {
+          config.hint = form.update_2fa_hint
+        }
+        break
+
       default:
         toast.error("请选择有效的任务类型")
         return null
@@ -368,7 +389,9 @@ export function CreateTaskDialog({
                   <SelectItem value="broadcast">群发消息</SelectItem>
                   <SelectItem value="join_group">批量加群</SelectItem>
                   <SelectItem value="force_add_group">强拉</SelectItem>
+                  <SelectItem value="terminate_sessions">踢出其他设备</SelectItem>
                   <SelectItem value="group_chat">AI炒群</SelectItem>
+                  <SelectItem value="update_2fa">修改2FA密码</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -439,6 +462,40 @@ export function CreateTaskDialog({
                       </p>
                     </div>
                   )}
+                </div>
+              </div>
+            )}
+
+            {form.task_type === "update_2fa" && (
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>旧密码 (可选)</Label>
+                  <Input
+                    type="password"
+                    value={form.update_2fa_old_password}
+                    onChange={e => setForm({ ...form, update_2fa_old_password: e.target.value })}
+                    placeholder="如果不填则使用当前记录的密码"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    如果账号当前有2FA密码，请提供。
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label>新密码</Label>
+                  <Input
+                    type="password"
+                    value={form.update_2fa_new_password}
+                    onChange={e => setForm({ ...form, update_2fa_new_password: e.target.value })}
+                    placeholder="请输入新密码"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>密码提示 (可选)</Label>
+                  <Input
+                    value={form.update_2fa_hint}
+                    onChange={e => setForm({ ...form, update_2fa_hint: e.target.value })}
+                    placeholder="密码提示信息"
+                  />
                 </div>
               </div>
             )}
@@ -639,6 +696,6 @@ export function CreateTaskDialog({
           </Button>
         </DialogFooter>
       </DialogContent>
-    </Dialog>
+    </Dialog >
   )
 }

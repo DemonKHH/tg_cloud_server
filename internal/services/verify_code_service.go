@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -195,8 +196,8 @@ func (s *VerifyCodeService) BatchGenerateCode(userID uint64, accountIDs []uint64
 	return results, nil
 }
 
-// ListSessions 获取用户的验证码会话列表 (支持分页)
-func (s *VerifyCodeService) ListSessions(userID uint64, page, limit int) ([]models.VerifyCodeSessionResponse, int64, error) {
+// ListSessions 获取用户的验证码会话列表 (支持分页和搜索)
+func (s *VerifyCodeService) ListSessions(userID uint64, page, limit int, keyword string) ([]models.VerifyCodeSessionResponse, int64, error) {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
 
@@ -220,6 +221,14 @@ func (s *VerifyCodeService) ListSessions(userID uint64, page, limit int) ([]mode
 		accountPhone := "Unknown"
 		if err == nil {
 			accountPhone = account.Phone
+		}
+
+		// 关键词过滤
+		if keyword != "" {
+			keywordLower := strings.ToLower(keyword)
+			if !strings.Contains(strings.ToLower(session.Code), keywordLower) && !strings.Contains(strings.ToLower(accountPhone), keywordLower) {
+				continue
+			}
 		}
 
 		allSessions = append(allSessions, models.VerifyCodeSessionResponse{

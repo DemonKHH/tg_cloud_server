@@ -296,7 +296,7 @@ export const verifyCodeAPI = {
   // 获取会话信息（调试用，需要认证）
   getSessionInfo: (code: string) => apiClient.get(`/verify-code/${code}/info`),
   // 获取会话列表
-  listSessions: (params?: { page?: number; limit?: number }) => apiClient.get<{
+  listSessions: (params?: { page?: number; limit?: number; keyword?: string }) => apiClient.get<{
     items: {
       code: string;
       url: string;
@@ -312,7 +312,7 @@ export const verifyCodeAPI = {
       limit: number;
       pages: number;
     };
-  }>('/verify-code/sessions', { params }),
+  }>('/verify-code/sessions', params),
 };
 
 // 统计API

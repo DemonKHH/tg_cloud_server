@@ -64,25 +64,7 @@ export default function VerifyCodesPage() {
   // 批量操作状态
   const [selectedCodes, setSelectedCodes] = useState<string[]>([])
   const [batchDeleteDialogOpen, setBatchDeleteDialogOpen] = useState(false)
-
-  const fileInputRef = useRef<HTMLInputElement>(null)
-
-  // 刷新会话列表（从API获取）
-  const refreshSessions = async () => {
-    try {
-      const response = await verifyCodeAPI.listSessions()
-      if (response.data?.items) {
-        setSessions(response.data.items)
-        // 更新选中状态，移除不存在的会话
-        setSelectedCodes(prev => prev.filter(code => response.data?.items.some((s: VerifyCodeSession) => s.code === code)))
-      }
-    } catch (error) {
-      console.error('Failed to fetch sessions:', error)
-      toast.error("获取会话列表失败")
-    }
-  }
-
-
+  const [hiddenCodes, setHiddenCodes] = useState<string[]>([])
 
   // 复制链接
   const copyToClipboard = async (text: string, type: string) => {
@@ -103,8 +85,7 @@ export default function VerifyCodesPage() {
   const deleteSession = (code: string) => {
     // 这里应该调用后端API删除，但目前后端没有删除接口，只是前端隐藏
     // 如果需要后端支持，需要添加 DeleteSession 接口
-    const updatedSessions = sessions.filter(s => s.code !== code)
-    setSessions(updatedSessions)
+    setHiddenCodes(prev => [...prev, code])
     toast.success("验证码会话已移除")
     if (selectedCodes.includes(code)) {
       setSelectedCodes(prev => prev.filter(c => c !== code))
@@ -118,8 +99,7 @@ export default function VerifyCodesPage() {
   }
 
   const confirmBatchDelete = () => {
-    const updatedSessions = sessions.filter(s => !selectedCodes.includes(s.code))
-    setSessions(updatedSessions)
+    setHiddenCodes(prev => [...prev, ...selectedCodes])
     toast.success(`已移除 ${selectedCodes.length} 个会话`)
     setSelectedCodes([])
     setBatchDeleteDialogOpen(false)
@@ -169,34 +149,55 @@ export default function VerifyCodesPage() {
     }
   }
 
-  // 过滤会话
+  // 过滤会话 (仅本地状态过滤，搜索已由后端处理)
   const filteredSessions = sessions.filter(session => {
-    const matchesSearch =
-      session.account_phone.toLowerCase().includes(searchKeyword.toLowerCase()) ||
-      session.code.toLowerCase().includes(searchKeyword.toLowerCase())
+    if (hiddenCodes.includes(session.code)) return false
 
-    if (statusFilter === "all") return matchesSearch
+    if (statusFilter === "all") return true
 
     const now = new Date()
     const expiresAt = new Date(session.expires_at * 1000)
     const isExpired = expiresAt <= now
 
-    if (statusFilter === "active") return matchesSearch && !isExpired
-    if (statusFilter === "expired") return matchesSearch && isExpired
+    if (statusFilter === "active") return !isExpired
+    if (statusFilter === "expired") return isExpired
 
-    return matchesSearch
+    return true
   })
 
+  // 获取会话列表
+  const fetchSessions = async () => {
+    try {
+      setLoading(true)
+      const res = await verifyCodeAPI.listSessions({
+        page,
+        limit,
+        keyword: searchKeyword,
+      })
 
+      if (res.data) {
+        setSessions(res.data.items)
+        setTotal(res.data.pagination.total)
+      }
+    } catch (error) {
+      console.error("Failed to fetch sessions:", error)
+      toast.error("获取会话列表失败")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const refresh = () => {
+    fetchSessions()
+  }
 
   // 初始化
   useEffect(() => {
-    refreshSessions()
-
-    // 定时刷新过期状态
-    const interval = setInterval(refreshSessions, 5000) // 每5秒刷新一次
-    return () => clearInterval(interval)
-  }, [])
+    const timer = setTimeout(() => {
+      fetchSessions()
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [page, limit, searchKeyword])
 
   return (
     <MainLayout>
@@ -210,7 +211,7 @@ export default function VerifyCodesPage() {
           <FilterBar
             className="flex-1 max-w-md"
             search={searchKeyword}
-            onSearchChange={setSearchKeyword}
+            onSearchChange={(val) => setSearchKeyword(val)}
             searchPlaceholder="搜索账号或代码..."
             filters={
               <Select value={statusFilter} onValueChange={setStatusFilter}>
@@ -229,14 +230,12 @@ export default function VerifyCodesPage() {
           <div className="flex items-center gap-2">
             <Button
               variant="outline"
-              onClick={refreshSessions}
+              onClick={refresh}
               className="gap-2"
             >
-              <RefreshCw className="h-4 w-4" />
+              <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
               刷新
             </Button>
-
-
           </div>
         </div>
 
@@ -298,7 +297,6 @@ export default function VerifyCodesPage() {
                     />
                   </TableHead>
                   <TableHead>账号</TableHead>
-                  <TableHead>访问代码</TableHead>
                   <TableHead>访问链接</TableHead>
                   <TableHead>过期时间</TableHead>
                   <TableHead className="text-right">操作</TableHead>
@@ -307,7 +305,7 @@ export default function VerifyCodesPage() {
               <TableBody>
                 {filteredSessions.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="h-48 text-center">
+                    <TableCell colSpan={5} className="h-48 text-center">
                       <div className="flex flex-col items-center justify-center text-muted-foreground">
                         <Smartphone className="h-12 w-12 mb-4 opacity-20" />
                         <p className="text-lg font-medium mb-2">暂无验证码会话</p>
@@ -316,133 +314,136 @@ export default function VerifyCodesPage() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filteredSessions.map((session) => (
-                    <TableRow
-                      key={session.code}
-                      className={cn(
-                        "group transition-colors hover:bg-muted/50",
-                        selectedCodes.includes(session.code) && "bg-primary/5"
-                      )}
-                    >
-                      <TableCell>
-                        <Checkbox
-                          checked={selectedCodes.includes(session.code)}
-                          onCheckedChange={() => toggleSelectOne(session.code)}
-                          className="border-2 border-primary/60 data-[state=checked]:bg-primary data-[state=checked]:border-primary"
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-xs">
-                            {session.account_phone.slice(-2)}
+                  filteredSessions.map((session) => {
+                    const fullUrl = typeof window !== 'undefined' ? `${window.location.origin}${session.url}` : session.url
+                    return (
+                      <TableRow
+                        key={session.code}
+                        className={cn(
+                          "group transition-colors hover:bg-muted/50",
+                          selectedCodes.includes(session.code) && "bg-primary/5"
+                        )}
+                      >
+                        <TableCell>
+                          <Checkbox
+                            checked={selectedCodes.includes(session.code)}
+                            onCheckedChange={() => toggleSelectOne(session.code)}
+                            className="border-2 border-primary/60 data-[state=checked]:bg-primary data-[state=checked]:border-primary"
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-xs">
+                              {session.account_phone.slice(-2)}
+                            </div>
+                            <span className="font-medium">{session.account_phone}</span>
                           </div>
-                          <span className="font-medium">{session.account_phone}</span>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <code className="px-2 py-1 bg-muted rounded text-sm font-mono border">
-                            {session.code.substring(0, 8)}...
-                          </code>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2 max-w-[500px]">
+                            <span className="text-sm text-muted-foreground truncate font-mono bg-muted/30 px-2 py-1 rounded flex-1">
+                              {fullUrl}
+                            </span>
+                            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-8 w-8"
+                                      onClick={() => copyToClipboard(fullUrl, "访问链接")}
+                                    >
+                                      <Copy className="h-3.5 w-3.5" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>复制链接</TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-8 w-8"
+                                      onClick={() => openLink(fullUrl)}
+                                    >
+                                      <ExternalLink className="h-3.5 w-3.5" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>在新标签页打开</TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          {(() => {
+                            const { text, color } = formatExpiration(session.expires_at)
+                            return (
+                              <div className="flex items-center gap-2">
+                                <Badge variant={color} className="font-normal">
+                                  <Clock className="h-3 w-3 mr-1" />
+                                  {text}
+                                </Badge>
+                              </div>
+                            )
+                          })()}
+                        </TableCell>
+                        <TableCell className="text-right">
                           <TooltipProvider>
                             <Tooltip>
                               <TooltipTrigger asChild>
                                 <Button
                                   variant="ghost"
                                   size="icon"
-                                  className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
-                                  onClick={() => copyToClipboard(session.code, "访问代码")}
+                                  onClick={() => deleteSession(session.code)}
+                                  className="h-8 w-8 text-muted-foreground hover:text-red-600 hover:bg-red-50"
                                 >
-                                  <Copy className="h-3.5 w-3.5" />
+                                  <XCircle className="h-4 w-4" />
                                 </Button>
                               </TooltipTrigger>
-                              <TooltipContent>复制代码</TooltipContent>
+                              <TooltipContent>删除会话</TooltipContent>
                             </Tooltip>
                           </TooltipProvider>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm text-muted-foreground truncate max-w-[200px] font-mono bg-muted/30 px-2 py-1 rounded">
-                            {session.url}
-                          </span>
-                          <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <TooltipProvider>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-8 w-8"
-                                    onClick={() => copyToClipboard(session.url, "访问链接")}
-                                  >
-                                    <Copy className="h-3.5 w-3.5" />
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent>复制链接</TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
-                            <TooltipProvider>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-8 w-8"
-                                    onClick={() => openLink(session.url)}
-                                  >
-                                    <ExternalLink className="h-3.5 w-3.5" />
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent>在新标签页打开</TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
-                          </div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        {(() => {
-                          const { text, color } = formatExpiration(session.expires_at)
-                          return (
-                            <div className="flex items-center gap-2">
-                              <Badge variant={color} className="font-normal">
-                                <Clock className="h-3 w-3 mr-1" />
-                                {text}
-                              </Badge>
-                            </div>
-                          )
-                        })()}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => deleteSession(session.code)}
-                                className="h-8 w-8 text-muted-foreground hover:text-red-600 hover:bg-red-50"
-                              >
-                                <XCircle className="h-4 w-4" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>删除会话</TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                      </TableCell>
-                    </TableRow>
-                  ))
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })
                 )}
               </TableBody>
             </Table>
           </div>
         </motion.div>
 
-        {filteredSessions.length > 0 && (
-          <div className="text-sm text-muted-foreground text-center">
-            显示 {filteredSessions.length} 个验证码会话
+        {/* Pagination */}
+        <div className="flex items-center justify-between py-4">
+          <div className="text-sm text-muted-foreground">
+            共 {total} 条记录
           </div>
-        )}
+          <div className="flex items-center space-x-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              disabled={page === 1 || loading}
+            >
+              上一页
+            </Button>
+            <div className="text-sm font-medium">
+              第 {page} 页
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPage(p => p + 1)}
+              disabled={sessions.length < 50 || loading}
+            >
+              下一页
+            </Button>
+          </div>
+        </div>
 
         {/* 批量删除确认对话框 */}
         <Dialog open={batchDeleteDialogOpen} onOpenChange={setBatchDeleteDialogOpen}>

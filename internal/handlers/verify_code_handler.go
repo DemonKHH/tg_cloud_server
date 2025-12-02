@@ -170,7 +170,9 @@ func (h *VerifyCodeHandler) ListSessions(c *gin.Context) {
 		}
 	}
 
-	sessions, total, err := h.verifyCodeService.ListSessions(userID, page, limit)
+	keyword := c.Query("keyword")
+
+	sessions, total, err := h.verifyCodeService.ListSessions(userID, page, limit, keyword)
 	if err != nil {
 		h.logger.Error("Failed to list verification code sessions",
 			zap.Uint64("user_id", userID),

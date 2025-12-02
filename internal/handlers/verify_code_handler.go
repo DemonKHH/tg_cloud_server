@@ -171,6 +171,11 @@ func (h *VerifyCodeHandler) ListSessions(c *gin.Context) {
 	}
 
 	keyword := c.Query("keyword")
+	h.logger.Info("ListSessions request",
+		zap.Uint64("user_id", userID),
+		zap.String("keyword", keyword),
+		zap.Int("page", page),
+		zap.Int("limit", limit))
 
 	sessions, total, err := h.verifyCodeService.ListSessions(userID, page, limit, keyword)
 	if err != nil {

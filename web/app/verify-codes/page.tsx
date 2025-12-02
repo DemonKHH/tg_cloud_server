@@ -127,25 +127,20 @@ export default function VerifyCodesPage() {
   const formatExpiration = (expiresAt: number) => {
     const date = new Date(expiresAt * 1000)
     const now = new Date()
-    const diff = date.getTime() - now.getTime()
+    const isExpired = date <= now
 
-    if (diff <= 0) {
-      return { text: "已过期", color: "destructive" as const }
-    }
+    const year = date.getFullYear()
+    const month = String(date.getMonth() + 1).padStart(2, '0')
+    const day = String(date.getDate()).padStart(2, '0')
+    const hours = String(date.getHours()).padStart(2, '0')
+    const minutes = String(date.getMinutes()).padStart(2, '0')
+    const seconds = String(date.getSeconds()).padStart(2, '0')
 
-    const minutes = Math.floor(diff / (1000 * 60))
-    const seconds = Math.floor((diff % (1000 * 60)) / 1000)
+    const text = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`
 
-    if (minutes > 0) {
-      return {
-        text: `${minutes}分${seconds}秒后过期`,
-        color: minutes > 2 ? "default" as const : "secondary" as const
-      }
-    } else {
-      return {
-        text: `${seconds}秒后过期`,
-        color: "destructive" as const
-      }
+    return {
+      text,
+      color: isExpired ? "destructive" as const : "outline" as const
     }
   }
 

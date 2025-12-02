@@ -204,6 +204,11 @@ func (s *VerifyCodeService) ListSessions(userID uint64, page, limit int, keyword
 	var allSessions []models.VerifyCodeSessionResponse
 	now := time.Now()
 
+	s.logger.Info("ListSessions service",
+		zap.Int("total_in_memory", len(s.sessions)),
+		zap.Uint64("user_id", userID),
+		zap.String("keyword", keyword))
+
 	// 1. 过滤并收集所有有效会话
 	for _, session := range s.sessions {
 		// 过滤用户

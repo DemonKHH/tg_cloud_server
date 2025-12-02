@@ -22,7 +22,6 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { cn } from "@/lib/utils"
-import { verifyCodeAPI, accountAPI } from "@/lib/api"
 import { useState, useEffect, useRef } from "react"
 import {
   Select,
@@ -38,14 +37,6 @@ import { motion } from "framer-motion"
 
 import { Checkbox } from "@/components/ui/checkbox"
 
-interface Account {
-  id: number
-  phone: string
-  status: string
-  proxy_id?: number
-  created_at: string
-}
-
 interface VerifyCodeSession {
   code: string
   url: string
@@ -57,9 +48,7 @@ interface VerifyCodeSession {
 }
 
 export default function VerifyCodesPage() {
-  const [accounts, setAccounts] = useState<Account[]>([])
   const [sessions, setSessions] = useState<VerifyCodeSession[]>([])
-  const [loading, setLoading] = useState(false)
 
 
   // 搜索状态
@@ -71,21 +60,6 @@ export default function VerifyCodesPage() {
   const [batchDeleteDialogOpen, setBatchDeleteDialogOpen] = useState(false)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
-
-  // 加载账号列表
-  const loadAccounts = async () => {
-    try {
-      setLoading(true)
-      const response = await accountAPI.list({ limit: 1000 }) // 获取所有账号
-      if (response.data?.data) {
-        setAccounts(response.data.data)
-      }
-    } catch (error: any) {
-      toast.error(error?.response?.data?.msg || "获取账号列表失败")
-    } finally {
-      setLoading(false)
-    }
-  }
 
   // 刷新会话列表（从本地存储获取）
   const refreshSessions = () => {
@@ -223,7 +197,6 @@ export default function VerifyCodesPage() {
 
   // 初始化
   useEffect(() => {
-    loadAccounts()
     refreshSessions()
 
     // 定时刷新过期状态
@@ -338,18 +311,7 @@ export default function VerifyCodesPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {loading ? (
-                  Array.from({ length: 3 }).map((_, index) => (
-                    <TableRow key={index}>
-                      <TableCell><div className="h-4 w-4 bg-muted rounded" /></TableCell>
-                      <TableCell><div className="h-4 bg-muted rounded animate-pulse" /></TableCell>
-                      <TableCell><div className="h-4 bg-muted rounded animate-pulse" /></TableCell>
-                      <TableCell><div className="h-4 bg-muted rounded animate-pulse" /></TableCell>
-                      <TableCell><div className="h-4 bg-muted rounded animate-pulse" /></TableCell>
-                      <TableCell><div className="h-4 bg-muted rounded animate-pulse" /></TableCell>
-                    </TableRow>
-                  ))
-                ) : filteredSessions.length === 0 ? (
+                {filteredSessions.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={6} className="h-48 text-center">
                       <div className="flex flex-col items-center justify-center text-muted-foreground">

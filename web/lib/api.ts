@@ -111,6 +111,10 @@ class ApiClient {
     });
   }
 
+  async delete<T>(endpoint: string): Promise<APIResponse<T>> {
+    return this.request<T>(endpoint, { method: 'DELETE' });
+  }
+
   async postFormData<T>(endpoint: string, formData: FormData): Promise<APIResponse<T>> {
     const url = `${this.baseURL}${endpoint}`;
     const headers: Record<string, string> = {};
@@ -313,6 +317,8 @@ export const verifyCodeAPI = {
       pages: number;
     };
   }>('/verify-code/sessions', params),
+  // 批量删除会话
+  batchDelete: (codes: string[]) => apiClient.post('/verify-code/batch/delete', { codes }),
 };
 
 // 统计API

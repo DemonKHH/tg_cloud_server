@@ -64,7 +64,6 @@ export default function VerifyCodesPage() {
   // 批量操作状态
   const [selectedCodes, setSelectedCodes] = useState<string[]>([])
   const [batchDeleteDialogOpen, setBatchDeleteDialogOpen] = useState(false)
-  const [hiddenCodes, setHiddenCodes] = useState<string[]>([])
 
   // 复制链接
   const copyToClipboard = async (text: string, type: string) => {
@@ -82,13 +81,18 @@ export default function VerifyCodesPage() {
   }
 
   // 删除会话
-  const deleteSession = (code: string) => {
-    // 这里应该调用后端API删除，但目前后端没有删除接口，只是前端隐藏
-    // 如果需要后端支持，需要添加 DeleteSession 接口
-    setHiddenCodes(prev => [...prev, code])
-    toast.success("验证码会话已移除")
-    if (selectedCodes.includes(code)) {
-      setSelectedCodes(prev => prev.filter(c => c !== code))
+  const deleteSession = async (code: string) => {
+    try {
+      await verifyCodeAPI.batchDelete([code])
+      toast.success("验证码会话已删除")
+      if (selectedCodes.includes(code)) {
+        setSelectedCodes(prev => prev.filter(c => c !== code))
+      }
+      // 刷新列表
+      fetchSessions()
+    } catch (error) {
+      console.error("Failed to delete session:", error)
+      toast.error("删除会话失败")
     }
   }
 
@@ -98,11 +102,18 @@ export default function VerifyCodesPage() {
     setBatchDeleteDialogOpen(true)
   }
 
-  const confirmBatchDelete = () => {
-    setHiddenCodes(prev => [...prev, ...selectedCodes])
-    toast.success(`已移除 ${selectedCodes.length} 个会话`)
-    setSelectedCodes([])
-    setBatchDeleteDialogOpen(false)
+  const confirmBatchDelete = async () => {
+    try {
+      await verifyCodeAPI.batchDelete(selectedCodes)
+      toast.success(`已删除 ${selectedCodes.length} 个会话`)
+      setSelectedCodes([])
+      setBatchDeleteDialogOpen(false)
+      // 刷新列表
+      fetchSessions()
+    } catch (error) {
+      console.error("Failed to batch delete sessions:", error)
+      toast.error("批量删除失败")
+    }
   }
 
   // 全选/取消全选
@@ -144,10 +155,8 @@ export default function VerifyCodesPage() {
     }
   }
 
-  // 过滤会话 (仅本地状态过滤，搜索已由后端处理)
+  // 过滤会话 (仅本地状态过滤)
   const filteredSessions = sessions.filter(session => {
-    if (hiddenCodes.includes(session.code)) return false
-
     if (statusFilter === "all") return true
 
     const now = new Date()

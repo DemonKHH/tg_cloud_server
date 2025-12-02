@@ -6,11 +6,12 @@ import (
 
 // VerifyCodeSession 验证码会话
 type VerifyCodeSession struct {
-	Code      string    `json:"code"`       // 临时访问代码
-	AccountID uint64    `json:"account_id"` // 关联的账号ID
-	UserID    uint64    `json:"user_id"`    // 用户ID
-	CreatedAt time.Time `json:"created_at"` // 创建时间
-	ExpiresAt time.Time `json:"expires_at"` // 过期时间
+	ID        uint64    `gorm:"primaryKey;autoIncrement" json:"id"`
+	Code      string    `gorm:"uniqueIndex;size:64;not null" json:"code"` // 临时访问代码
+	AccountID uint64    `gorm:"index;not null" json:"account_id"`         // 关联的账号ID
+	UserID    uint64    `gorm:"index;not null" json:"user_id"`            // 用户ID
+	CreatedAt time.Time `gorm:"autoCreateTime" json:"created_at"`         // 创建时间
+	ExpiresAt time.Time `gorm:"index;not null" json:"expires_at"`         // 过期时间
 }
 
 // VerifyCodeSessionResponse 验证码会话响应

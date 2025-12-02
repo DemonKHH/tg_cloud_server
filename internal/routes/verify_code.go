@@ -26,6 +26,10 @@ func SetupVerifyCodeRoutes(
 			authenticatedGroup.POST("/batch/generate", verifyCodeHandler.BatchGenerateCode)
 			authenticatedGroup.GET("/sessions", verifyCodeHandler.ListSessions)
 
+			// 删除验证码会话
+			authenticatedGroup.DELETE("/:code", verifyCodeHandler.DeleteSession)
+			authenticatedGroup.POST("/batch/delete", verifyCodeHandler.BatchDeleteSessions)
+
 			// 获取访问码信息 (调试用)
 			authenticatedGroup.GET("/:code/info", verifyCodeHandler.GetCodeInfo)
 		}

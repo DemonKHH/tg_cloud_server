@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
@@ -316,4 +317,109 @@ func (h *VerifyCodeHandler) GetCodeInfo(c *gin.Context) {
 		zap.Uint64("account_id", session.AccountID))
 
 	response.Success(c, session)
+}
+
+// DeleteSession 删除单个验证码会话
+// @Summary 删除验证码会话
+// @Description 删除指定的验证码会话
+// @Tags 验证码
+// @Produce json
+// @Security ApiKeyAuth
+// @Param code path string true "临时访问代码"
+// @Success 200 {object} map[string]string "删除成功"
+// @Failure 400 {object} map[string]string "请求错误"
+// @Failure 401 {object} map[string]string "未授权"
+// @Failure 404 {object} map[string]string "会话不存在"
+// @Router /api/v1/verify-code/{code} [delete]
+func (h *VerifyCodeHandler) DeleteSession(c *gin.Context) {
+	userID, err := utils.GetUserID(c)
+	if err != nil {
+		response.Unauthorized(c, err.Error())
+		return
+	}
+
+	code := c.Param("code")
+	if code == "" {
+		response.InvalidParam(c, "访问代码不能为空")
+		return
+	}
+
+	err = h.verifyCodeService.DeleteSession(userID, code)
+	if err != nil {
+		h.logger.Warn("Failed to delete session",
+			zap.String("code", code),
+			zap.Uint64("user_id", userID),
+			zap.Error(err))
+
+		if verifyErr, ok := err.(*models.VerifyCodeError); ok {
+			if verifyErr.Code == "CODE_NOT_FOUND" {
+				response.NotFound(c, verifyErr.Message)
+				return
+			}
+		}
+		response.InternalError(c, "删除会话失败")
+		return
+	}
+
+	h.logger.Info("Session deleted successfully",
+		zap.String("code", code),
+		zap.Uint64("user_id", userID))
+
+	response.SuccessWithMessage(c, "会话删除成功", nil)
+}
+
+// BatchDeleteSessions 批量删除验证码会话
+// @Summary 批量删除验证码会话
+// @Description 批量删除多个验证码会话
+// @Tags 验证码
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param request body map[string][]string true "批量删除请求 {\"codes\": [\"code1\", \"code2\"]}"
+// @Success 200 {object} map[string]interface{} "删除成功"
+// @Failure 400 {object} map[string]string "请求错误"
+// @Failure 401 {object} map[string]string "未授权"
+// @Failure 500 {object} map[string]string "服务器错误"
+// @Router /api/v1/verify-code/batch/delete [post]
+func (h *VerifyCodeHandler) BatchDeleteSessions(c *gin.Context) {
+	userID, err := utils.GetUserID(c)
+	if err != nil {
+		response.Unauthorized(c, err.Error())
+		return
+	}
+
+	var req struct {
+		Codes []string `json:"codes" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		h.logger.Warn("Invalid batch delete request",
+			zap.Uint64("user_id", userID),
+			zap.Error(err))
+		response.InvalidParam(c, "请求参数无效："+err.Error())
+		return
+	}
+
+	if len(req.Codes) == 0 {
+		response.InvalidParam(c, "codes不能为空")
+		return
+	}
+
+	err = h.verifyCodeService.BatchDeleteSessions(userID, req.Codes)
+	if err != nil {
+		h.logger.Error("Failed to batch delete sessions",
+			zap.Uint64("user_id", userID),
+			zap.Int("count", len(req.Codes)),
+			zap.Error(err))
+		response.InternalError(c, "批量删除会话失败")
+		return
+	}
+
+	h.logger.Info("Batch sessions deleted successfully",
+		zap.Uint64("user_id", userID),
+		zap.Int("count", len(req.Codes)))
+
+	response.SuccessWithMessage(c, fmt.Sprintf("成功删除 %d 个会话", len(req.Codes)), gin.H{
+		"deleted_count": len(req.Codes),
+	})
 }

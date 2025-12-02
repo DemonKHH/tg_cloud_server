@@ -100,6 +100,7 @@ func main() {
 	taskRepo := repository.NewTaskRepository(db)
 	proxyRepo := repository.NewProxyRepository(db)
 	fileRepo := repository.NewFileRepository(db)
+	verifyCodeRepo := repository.NewVerifyCodeRepository(db)
 
 	// 初始化Telegram连接池
 	connectionPool := telegram.NewConnectionPool(
@@ -134,7 +135,7 @@ func main() {
 	logger.Info("Task service connected to task scheduler")
 
 	// 初始化验证码服务
-	verifyCodeService := services.NewVerifyCodeService(accountRepo, userRepo, connectionPool, logger)
+	verifyCodeService := services.NewVerifyCodeService(accountRepo, userRepo, verifyCodeRepo, connectionPool, logger)
 	logger.Info("Verify code service initialized")
 
 	fileService := services.NewFileService(fileRepo, map[string]interface{}{

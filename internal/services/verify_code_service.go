@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/gotd/td/tg"
@@ -21,27 +20,25 @@ import (
 type VerifyCodeService struct {
 	accountRepo    repository.AccountRepository
 	userRepo       repository.UserRepository
+	verifyCodeRepo repository.VerifyCodeRepository
 	connectionPool *telegram.ConnectionPool
 	logger         *zap.Logger
-
-	// 临时code存储 (生产环境应使用Redis)
-	sessions map[string]*models.VerifyCodeSession
-	mutex    sync.RWMutex
 }
 
 // NewVerifyCodeService 创建验证码服务
 func NewVerifyCodeService(
 	accountRepo repository.AccountRepository,
 	userRepo repository.UserRepository,
+	verifyCodeRepo repository.VerifyCodeRepository,
 	connectionPool *telegram.ConnectionPool,
 	logger *zap.Logger,
 ) *VerifyCodeService {
 	service := &VerifyCodeService{
 		accountRepo:    accountRepo,
 		userRepo:       userRepo,
+		verifyCodeRepo: verifyCodeRepo,
 		connectionPool: connectionPool,
 		logger:         logger.Named("verify_code_service"),
-		sessions:       make(map[string]*models.VerifyCodeSession),
 	}
 
 	// 启动清理过期会话的协程
@@ -108,10 +105,11 @@ func (s *VerifyCodeService) GenerateCode(userID, accountID uint64, expiresIn int
 		ExpiresAt: time.Now().Add(time.Duration(expiresIn) * time.Second),
 	}
 
-	// 存储会话
-	s.mutex.Lock()
-	s.sessions[code] = session
-	s.mutex.Unlock()
+	// 存储会话到数据库
+	if err := s.verifyCodeRepo.Create(session); err != nil {
+		s.logger.Error("Failed to create session in database", zap.Error(err))
+		return nil, fmt.Errorf("failed to create session: %w", err)
+	}
 
 	s.logger.Info("Verification code session created",
 		zap.String("code", code),
@@ -178,10 +176,11 @@ func (s *VerifyCodeService) BatchGenerateCode(userID uint64, accountIDs []uint64
 			ExpiresAt: time.Now().Add(time.Duration(expiresIn) * time.Second),
 		}
 
-		// 存储会话
-		s.mutex.Lock()
-		s.sessions[code] = session
-		s.mutex.Unlock()
+		// 存储会话到数据库
+		if err := s.verifyCodeRepo.Create(session); err != nil {
+			s.logger.Error("Failed to create session in database", zap.Error(err))
+			continue
+		}
 
 		results = append(results, models.BatchGenerateCodeItem{
 			AccountID: accountID,
@@ -198,29 +197,22 @@ func (s *VerifyCodeService) BatchGenerateCode(userID uint64, accountIDs []uint64
 
 // ListSessions 获取用户的验证码会话列表 (支持分页和搜索)
 func (s *VerifyCodeService) ListSessions(userID uint64, page, limit int, keyword string) ([]models.VerifyCodeSessionResponse, int64, error) {
-	s.mutex.RLock()
-	defer s.mutex.RUnlock()
-
-	var allSessions []models.VerifyCodeSessionResponse
-	now := time.Now()
-
 	s.logger.Info("ListSessions service",
-		zap.Int("total_in_memory", len(s.sessions)),
 		zap.Uint64("user_id", userID),
-		zap.String("keyword", keyword))
+		zap.String("keyword", keyword),
+		zap.Int("page", page),
+		zap.Int("limit", limit))
 
-	// 1. 过滤并收集所有有效会话
-	for _, session := range s.sessions {
-		// 过滤用户
-		if session.UserID != userID {
-			continue
-		}
+	// 从数据库获取会话列表
+	sessions, total, err := s.verifyCodeRepo.ListByUserID(userID, page, limit, keyword)
+	if err != nil {
+		s.logger.Error("Failed to list sessions from database", zap.Error(err))
+		return nil, 0, err
+	}
 
-		// 过滤已过期
-		if now.After(session.ExpiresAt) {
-			continue
-		}
-
+	// 转换为响应格式
+	var responses []models.VerifyCodeSessionResponse
+	for _, session := range sessions {
 		// 获取账号信息
 		account, err := s.accountRepo.GetByID(session.AccountID)
 		accountPhone := "Unknown"
@@ -228,15 +220,16 @@ func (s *VerifyCodeService) ListSessions(userID uint64, page, limit int, keyword
 			accountPhone = account.Phone
 		}
 
-		// 关键词过滤
+		// 如果有关键词搜索，也需要匹配账号手机号
 		if keyword != "" {
 			keywordLower := strings.ToLower(keyword)
-			if !strings.Contains(strings.ToLower(session.Code), keywordLower) && !strings.Contains(strings.ToLower(accountPhone), keywordLower) {
+			if !strings.Contains(strings.ToLower(session.Code), keywordLower) &&
+				!strings.Contains(strings.ToLower(accountPhone), keywordLower) {
 				continue
 			}
 		}
 
-		allSessions = append(allSessions, models.VerifyCodeSessionResponse{
+		responses = append(responses, models.VerifyCodeSessionResponse{
 			Code:         session.Code,
 			AccountID:    session.AccountID,
 			AccountPhone: accountPhone,
@@ -247,38 +240,14 @@ func (s *VerifyCodeService) ListSessions(userID uint64, page, limit int, keyword
 		})
 	}
 
-	// 2. 计算总数
-	total := int64(len(allSessions))
-
-	// 3. 分页处理
-	if page < 1 {
-		page = 1
-	}
-	if limit < 1 {
-		limit = 50
-	}
-
-	start := (page - 1) * limit
-	if start >= len(allSessions) {
-		return []models.VerifyCodeSessionResponse{}, total, nil
-	}
-
-	end := start + limit
-	if end > len(allSessions) {
-		end = len(allSessions)
-	}
-
-	return allSessions[start:end], total, nil
+	return responses, total, nil
 }
 
 // GetVerifyCode 通过code获取验证码
 func (s *VerifyCodeService) GetVerifyCode(ctx context.Context, code string, timeoutSeconds int) (*models.VerifyCodeResponse, error) {
-	// 获取会话
-	s.mutex.RLock()
-	session, exists := s.sessions[code]
-	s.mutex.RUnlock()
-
-	if !exists {
+	// 从数据库获取会话
+	session, err := s.verifyCodeRepo.GetByCode(code)
+	if err != nil {
 		return &models.VerifyCodeResponse{
 			Success: false,
 			Message: models.ErrCodeNotFound.Message,
@@ -426,12 +395,10 @@ func (s *VerifyCodeService) generateUniqueCode() (string, error) {
 
 		code := hex.EncodeToString(bytes)
 
-		// 检查是否已存在
-		s.mutex.RLock()
-		_, exists := s.sessions[code]
-		s.mutex.RUnlock()
-
-		if !exists {
+		// 检查数据库中是否已存在
+		_, err := s.verifyCodeRepo.GetByCode(code)
+		if err != nil {
+			// 不存在，可以使用
 			return code, nil
 		}
 	}
@@ -445,33 +412,46 @@ func (s *VerifyCodeService) cleanupExpiredSessions() {
 	defer ticker.Stop()
 
 	for range ticker.C {
-		s.mutex.Lock()
-		now := time.Now()
-		for code, session := range s.sessions {
-			if now.After(session.ExpiresAt) {
-				delete(s.sessions, code)
-				s.logger.Debug("Cleaned up expired session",
-					zap.String("code", code),
-					zap.Uint64("account_id", session.AccountID))
-			}
+		if err := s.verifyCodeRepo.DeleteExpired(); err != nil {
+			s.logger.Error("Failed to cleanup expired sessions", zap.Error(err))
+		} else {
+			s.logger.Debug("Cleaned up expired sessions")
 		}
-		s.mutex.Unlock()
 	}
 }
 
 // GetSessionInfo 获取会话信息 (用于调试)
 func (s *VerifyCodeService) GetSessionInfo(code string) *models.VerifyCodeSession {
-	s.mutex.RLock()
-	session, exists := s.sessions[code]
-	s.mutex.RUnlock()
+	session, err := s.verifyCodeRepo.GetByCode(code)
+	if err != nil {
+		return nil
+	}
+	return session
+}
 
-	if !exists {
+// DeleteSession 删除单个会话
+func (s *VerifyCodeService) DeleteSession(userID uint64, code string) error {
+	// 先验证会话是否属于该用户
+	session, err := s.verifyCodeRepo.GetByCode(code)
+	if err != nil {
+		return models.ErrCodeNotFound
+	}
+
+	if session.UserID != userID {
+		return fmt.Errorf("no permission to delete this session")
+	}
+
+	return s.verifyCodeRepo.DeleteByCode(code)
+}
+
+// BatchDeleteSessions 批量删除会话
+func (s *VerifyCodeService) BatchDeleteSessions(userID uint64, codes []string) error {
+	if len(codes) == 0 {
 		return nil
 	}
 
-	// 返回副本
-	sessionCopy := *session
-	return &sessionCopy
+	// 使用repository的批量删除方法，同时验证用户权限
+	return s.verifyCodeRepo.DeleteByUserIDAndCodes(userID, codes)
 }
 
 // verifyCodeTaskResult 验证码任务结果

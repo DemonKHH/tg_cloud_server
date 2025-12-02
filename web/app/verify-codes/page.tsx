@@ -36,20 +36,26 @@ import { FilterBar } from "@/components/common/filter-bar"
 import { motion } from "framer-motion"
 
 import { Checkbox } from "@/components/ui/checkbox"
+import { verifyCodeAPI } from "@/lib/api"
 
 interface VerifyCodeSession {
   code: string
   url: string
   account_id: number
   account_phone: string
-  expires_at: string
+  expires_at: number
   expires_in: number
-  created_at: string
+  created_at: number
 }
 
 export default function VerifyCodesPage() {
   const [sessions, setSessions] = useState<VerifyCodeSession[]>([])
 
+  // 分页状态
+  const [page, setPage] = useState(1)
+  const [limit] = useState(50)
+  const [total, setTotal] = useState(0)
+  const [loading, setLoading] = useState(false)
 
   // 搜索状态
   const [searchKeyword, setSearchKeyword] = useState("")
@@ -61,30 +67,18 @@ export default function VerifyCodesPage() {
 
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // 刷新会话列表（从本地存储获取）
-  const refreshSessions = () => {
-    const savedSessions = localStorage.getItem('verifyCodeSessions')
-    if (savedSessions) {
-      try {
-        const parsed = JSON.parse(savedSessions) as VerifyCodeSession[]
-        // 过滤掉过期的会话
-        const now = new Date()
-        const validSessions = parsed.filter(session => new Date(session.expires_at) > now)
-
-        if (validSessions.length !== parsed.length) {
-          // 有过期会话，更新本地存储
-          localStorage.setItem('verifyCodeSessions', JSON.stringify(validSessions))
-        }
-
-        setSessions(validSessions)
-        // 清理已选择但不存在的会话
-        setSelectedCodes(prev => prev.filter(code => validSessions.some(s => s.code === code)))
-      } catch (error) {
-        console.error('Failed to parse sessions from localStorage:', error)
-        setSessions([])
+  // 刷新会话列表（从API获取）
+  const refreshSessions = async () => {
+    try {
+      const response = await verifyCodeAPI.listSessions()
+      if (response.data?.items) {
+        setSessions(response.data.items)
+        // 更新选中状态，移除不存在的会话
+        setSelectedCodes(prev => prev.filter(code => response.data?.items.some((s: VerifyCodeSession) => s.code === code)))
       }
-    } else {
-      setSessions([])
+    } catch (error) {
+      console.error('Failed to fetch sessions:', error)
+      toast.error("获取会话列表失败")
     }
   }
 
@@ -107,10 +101,11 @@ export default function VerifyCodesPage() {
 
   // 删除会话
   const deleteSession = (code: string) => {
+    // 这里应该调用后端API删除，但目前后端没有删除接口，只是前端隐藏
+    // 如果需要后端支持，需要添加 DeleteSession 接口
     const updatedSessions = sessions.filter(s => s.code !== code)
     setSessions(updatedSessions)
-    localStorage.setItem('verifyCodeSessions', JSON.stringify(updatedSessions))
-    toast.success("验证码会话已删除")
+    toast.success("验证码会话已移除")
     if (selectedCodes.includes(code)) {
       setSelectedCodes(prev => prev.filter(c => c !== code))
     }
@@ -125,8 +120,7 @@ export default function VerifyCodesPage() {
   const confirmBatchDelete = () => {
     const updatedSessions = sessions.filter(s => !selectedCodes.includes(s.code))
     setSessions(updatedSessions)
-    localStorage.setItem('verifyCodeSessions', JSON.stringify(updatedSessions))
-    toast.success(`已删除 ${selectedCodes.length} 个会话`)
+    toast.success(`已移除 ${selectedCodes.length} 个会话`)
     setSelectedCodes([])
     setBatchDeleteDialogOpen(false)
   }
@@ -150,8 +144,8 @@ export default function VerifyCodesPage() {
   }
 
   // 格式化过期时间
-  const formatExpiration = (expiresAt: string) => {
-    const date = new Date(expiresAt)
+  const formatExpiration = (expiresAt: number) => {
+    const date = new Date(expiresAt * 1000)
     const now = new Date()
     const diff = date.getTime() - now.getTime()
 
@@ -184,7 +178,7 @@ export default function VerifyCodesPage() {
     if (statusFilter === "all") return matchesSearch
 
     const now = new Date()
-    const expiresAt = new Date(session.expires_at)
+    const expiresAt = new Date(session.expires_at * 1000)
     const isExpired = expiresAt <= now
 
     if (statusFilter === "active") return matchesSearch && !isExpired

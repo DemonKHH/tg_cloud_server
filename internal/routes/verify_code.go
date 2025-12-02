@@ -24,6 +24,7 @@ func SetupVerifyCodeRoutes(
 			// 生成验证码访问链接
 			authenticatedGroup.POST("/generate", verifyCodeHandler.GenerateCode)
 			authenticatedGroup.POST("/batch/generate", verifyCodeHandler.BatchGenerateCode)
+			authenticatedGroup.GET("/sessions", verifyCodeHandler.ListSessions)
 
 			// 获取访问码信息 (调试用)
 			authenticatedGroup.GET("/:code/info", verifyCodeHandler.GetCodeInfo)

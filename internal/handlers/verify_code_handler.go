@@ -136,6 +136,52 @@ func (h *VerifyCodeHandler) BatchGenerateCode(c *gin.Context) {
 	})
 }
 
+// ListSessions 获取验证码会话列表
+// @Summary 获取验证码会话列表
+// @Description 获取当前用户的所有活跃验证码会话 (分页)
+// @Tags 验证码
+// @Produce json
+// @Security ApiKeyAuth
+// @Param page query int false "页码" default(1)
+// @Param limit query int false "每页数量" default(50)
+// @Success 200 {object} map[string]interface{} "会话列表"
+// @Failure 401 {object} map[string]string "未授权"
+// @Failure 500 {object} map[string]string "服务器错误"
+// @Router /api/v1/verify-code/sessions [get]
+func (h *VerifyCodeHandler) ListSessions(c *gin.Context) {
+	userID, err := utils.GetUserID(c)
+	if err != nil {
+		response.Unauthorized(c, err.Error())
+		return
+	}
+
+	// 获取分页参数
+	page := 1
+	if pageStr := c.Query("page"); pageStr != "" {
+		if p, err := strconv.Atoi(pageStr); err == nil && p > 0 {
+			page = p
+		}
+	}
+
+	limit := 50
+	if limitStr := c.Query("limit"); limitStr != "" {
+		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 {
+			limit = l
+		}
+	}
+
+	sessions, total, err := h.verifyCodeService.ListSessions(userID, page, limit)
+	if err != nil {
+		h.logger.Error("Failed to list verification code sessions",
+			zap.Uint64("user_id", userID),
+			zap.Error(err))
+		response.InternalError(c, "获取会话列表失败")
+		return
+	}
+
+	response.Paginated(c, sessions, page, limit, total)
+}
+
 // GetVerifyCode 通过访问码获取验证码 (公开接口，不需要认证)
 // @Summary 获取验证码
 // @Description 通过访问码直接获取TG验证码，此接口不需要认证

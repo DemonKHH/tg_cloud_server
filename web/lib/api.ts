@@ -295,6 +295,24 @@ export const verifyCodeAPI = {
   },
   // 获取会话信息（调试用，需要认证）
   getSessionInfo: (code: string) => apiClient.get(`/verify-code/${code}/info`),
+  // 获取会话列表
+  listSessions: (params?: { page?: number; limit?: number }) => apiClient.get<{
+    items: {
+      code: string;
+      url: string;
+      account_id: number;
+      account_phone: string;
+      expires_at: number;
+      expires_in: number;
+      created_at: number;
+    }[];
+    pagination: {
+      total: number;
+      page: number;
+      limit: number;
+      pages: number;
+    };
+  }>('/verify-code/sessions', { params }),
 };
 
 // 统计API

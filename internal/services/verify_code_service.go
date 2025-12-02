@@ -195,6 +195,68 @@ func (s *VerifyCodeService) BatchGenerateCode(userID uint64, accountIDs []uint64
 	return results, nil
 }
 
+// ListSessions 获取用户的验证码会话列表 (支持分页)
+func (s *VerifyCodeService) ListSessions(userID uint64, page, limit int) ([]models.VerifyCodeSessionResponse, int64, error) {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+
+	var allSessions []models.VerifyCodeSessionResponse
+	now := time.Now()
+
+	// 1. 过滤并收集所有有效会话
+	for _, session := range s.sessions {
+		// 过滤用户
+		if session.UserID != userID {
+			continue
+		}
+
+		// 过滤已过期
+		if now.After(session.ExpiresAt) {
+			continue
+		}
+
+		// 获取账号信息
+		account, err := s.accountRepo.GetByID(session.AccountID)
+		accountPhone := "Unknown"
+		if err == nil {
+			accountPhone = account.Phone
+		}
+
+		allSessions = append(allSessions, models.VerifyCodeSessionResponse{
+			Code:         session.Code,
+			AccountID:    session.AccountID,
+			AccountPhone: accountPhone,
+			URL:          fmt.Sprintf("/api/v1/verify-code/%s", session.Code),
+			ExpiresAt:    session.ExpiresAt.Unix(),
+			ExpiresIn:    int(session.ExpiresAt.Sub(session.CreatedAt).Seconds()),
+			CreatedAt:    session.CreatedAt.Unix(),
+		})
+	}
+
+	// 2. 计算总数
+	total := int64(len(allSessions))
+
+	// 3. 分页处理
+	if page < 1 {
+		page = 1
+	}
+	if limit < 1 {
+		limit = 50
+	}
+
+	start := (page - 1) * limit
+	if start >= len(allSessions) {
+		return []models.VerifyCodeSessionResponse{}, total, nil
+	}
+
+	end := start + limit
+	if end > len(allSessions) {
+		end = len(allSessions)
+	}
+
+	return allSessions[start:end], total, nil
+}
+
 // GetVerifyCode 通过code获取验证码
 func (s *VerifyCodeService) GetVerifyCode(ctx context.Context, code string, timeoutSeconds int) (*models.VerifyCodeResponse, error) {
 	// 获取会话

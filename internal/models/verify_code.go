@@ -13,6 +13,17 @@ type VerifyCodeSession struct {
 	ExpiresAt time.Time `json:"expires_at"` // 过期时间
 }
 
+// VerifyCodeSessionResponse 验证码会话响应
+type VerifyCodeSessionResponse struct {
+	Code         string `json:"code"`
+	AccountID    uint64 `json:"account_id"`
+	AccountPhone string `json:"account_phone"`
+	URL          string `json:"url"`
+	ExpiresAt    int64  `json:"expires_at"`
+	ExpiresIn    int    `json:"expires_in"`
+	CreatedAt    int64  `json:"created_at"`
+}
+
 // IsExpired 检查是否已过期
 func (s *VerifyCodeSession) IsExpired() bool {
 	return time.Now().After(s.ExpiresAt)

@@ -53,6 +53,83 @@ func (h *ProxyHandler) CreateProxy(c *gin.Context) {
 	response.SuccessWithMessage(c, "代理创建成功", proxy)
 }
 
+// BatchCreateProxy 批量创建代理
+func (h *ProxyHandler) BatchCreateProxy(c *gin.Context) {
+	userID, err := utils.GetUserID(c)
+	if err != nil {
+		response.Unauthorized(c, err.Error())
+		return
+	}
+
+	var req models.BatchCreateProxyRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.InvalidParam(c, err.Error())
+		return
+	}
+
+	proxies, err := h.proxyService.BatchCreateProxy(userID, &req)
+	if err != nil {
+		h.logger.Error("Failed to batch create proxies",
+			zap.Uint64("user_id", userID),
+			zap.Error(err))
+		response.InternalError(c, err.Error())
+		return
+	}
+
+	response.SuccessWithMessage(c, "批量添加代理成功", proxies)
+}
+
+// BatchDeleteProxy 批量删除代理
+func (h *ProxyHandler) BatchDeleteProxy(c *gin.Context) {
+	userID, err := utils.GetUserID(c)
+	if err != nil {
+		response.Unauthorized(c, err.Error())
+		return
+	}
+
+	var req models.BatchDeleteProxyRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.InvalidParam(c, err.Error())
+		return
+	}
+
+	if err := h.proxyService.BatchDeleteProxy(userID, req.ProxyIDs); err != nil {
+		h.logger.Error("Failed to batch delete proxies",
+			zap.Uint64("user_id", userID),
+			zap.Error(err))
+		response.InternalError(c, err.Error())
+		return
+	}
+
+	response.SuccessWithMessage(c, "批量删除代理成功", nil)
+}
+
+// BatchTestProxy 批量测试代理
+func (h *ProxyHandler) BatchTestProxy(c *gin.Context) {
+	userID, err := utils.GetUserID(c)
+	if err != nil {
+		response.Unauthorized(c, err.Error())
+		return
+	}
+
+	var req models.BatchProxyTestRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.InvalidParam(c, err.Error())
+		return
+	}
+
+	results, err := h.proxyService.BatchTestProxy(userID, req.ProxyIDs)
+	if err != nil {
+		h.logger.Error("Failed to batch test proxies",
+			zap.Uint64("user_id", userID),
+			zap.Error(err))
+		response.InternalError(c, err.Error())
+		return
+	}
+
+	response.SuccessWithMessage(c, "批量测试代理完成", results)
+}
+
 // GetProxies 获取代理列表
 func (h *ProxyHandler) GetProxies(c *gin.Context) {
 	userID, err := utils.GetUserID(c)

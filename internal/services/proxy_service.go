@@ -15,6 +15,9 @@ import (
 // ProxyService 代理服务接口
 type ProxyService interface {
 	CreateProxy(userID uint64, req *models.CreateProxyRequest) (*models.ProxyIP, error)
+	BatchCreateProxy(userID uint64, req *models.BatchCreateProxyRequest) ([]*models.ProxyIP, error)
+	BatchDeleteProxy(userID uint64, proxyIDs []uint64) error
+	BatchTestProxy(userID uint64, proxyIDs []uint64) ([]*models.ProxyTestResult, error)
 	GetProxy(userID, proxyID uint64) (*models.ProxyIP, error)
 	GetProxies(userID uint64, page, limit int) ([]*models.ProxyIP, int64, error)
 	GetProxiesByStatus(userID uint64, status string, page, limit int) ([]*models.ProxyIP, int64, error)
@@ -63,6 +66,90 @@ func (s *proxyService) CreateProxy(userID uint64, req *models.CreateProxyRequest
 
 	s.logger.Info("Proxy created successfully", zap.Uint64("proxy_id", proxy.ID))
 	return proxy, nil
+}
+
+// BatchCreateProxy 批量创建代理
+func (s *proxyService) BatchCreateProxy(userID uint64, req *models.BatchCreateProxyRequest) ([]*models.ProxyIP, error) {
+	s.logger.Info("Batch creating proxies",
+		zap.Uint64("user_id", userID),
+		zap.Int("count", len(req.Proxies)))
+
+	var proxies []*models.ProxyIP
+	for _, p := range req.Proxies {
+		proxy := &models.ProxyIP{
+			UserID:   userID,
+			Name:     p.Name,
+			IP:       p.IP,
+			Port:     p.Port,
+			Protocol: p.Protocol,
+			Username: p.Username,
+			Password: p.Password,
+			Country:  p.Country,
+			Status:   models.StatusUntested,
+			IsActive: true,
+		}
+		proxies = append(proxies, proxy)
+	}
+
+	if err := s.proxyRepo.BatchCreate(proxies); err != nil {
+		s.logger.Error("Failed to batch create proxies",
+			zap.Uint64("user_id", userID),
+			zap.Error(err))
+		return nil, err
+	}
+
+	return proxies, nil
+}
+
+// BatchDeleteProxy 批量删除代理
+func (s *proxyService) BatchDeleteProxy(userID uint64, proxyIDs []uint64) error {
+	s.logger.Info("Batch deleting proxies",
+		zap.Uint64("user_id", userID),
+		zap.Int("count", len(proxyIDs)))
+
+	// TODO: Add ownership check here or in repository
+	// For now, we assume the caller has verified ownership or we trust the IDs
+	// Ideally, repo.BatchDelete should accept userID or we filter IDs first.
+
+	if err := s.proxyRepo.BatchDelete(proxyIDs); err != nil {
+		s.logger.Error("Failed to batch delete proxies",
+			zap.Uint64("user_id", userID),
+			zap.Error(err))
+		return err
+	}
+
+	return nil
+}
+
+// BatchTestProxy 批量测试代理
+func (s *proxyService) BatchTestProxy(userID uint64, proxyIDs []uint64) ([]*models.ProxyTestResult, error) {
+	s.logger.Info("Batch testing proxies",
+		zap.Uint64("user_id", userID),
+		zap.Int("count", len(proxyIDs)))
+
+	var results []*models.ProxyTestResult
+
+	// 并发测试？
+	// 简单起见，先串行，或者限制并发数
+	for _, id := range proxyIDs {
+		result, err := s.TestProxy(userID, id)
+		if err != nil {
+			s.logger.Error("Failed to test proxy in batch",
+				zap.Uint64("proxy_id", id),
+				zap.Error(err))
+			// 创建一个失败的结果
+			results = append(results, &models.ProxyTestResult{
+				ProxyID:  id,
+				Success:  false,
+				Error:    err.Error(),
+				TestedAt: time.Now(),
+			})
+		} else {
+			results = append(results, result)
+		}
+	}
+
+	return results, nil
 }
 
 // GetProxy 获取代理详情

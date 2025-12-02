@@ -16,6 +16,7 @@ func SetupProxyRoutes(router *gin.Engine, proxyHandler *handlers.ProxyHandler, a
 	{
 		// 代理基本操作
 		proxyGroup.POST("", proxyHandler.CreateProxy)            // 创建代理
+		proxyGroup.POST("/batch", proxyHandler.BatchCreateProxy) // 批量创建代理
 		proxyGroup.GET("", proxyHandler.GetProxies)              // 获取代理列表
 		proxyGroup.GET("/:id", proxyHandler.GetProxy)            // 获取代理详情
 		proxyGroup.POST("/:id/update", proxyHandler.UpdateProxy) // 更新代理
@@ -27,7 +28,8 @@ func SetupProxyRoutes(router *gin.Engine, proxyHandler *handlers.ProxyHandler, a
 		// 代理统计
 		proxyGroup.GET("/stats", proxyHandler.GetProxyStats) // 获取代理统计
 
-		// 批量操作（需要高级用户权限）
-		proxyGroup.POST("/batch/test", middleware.RequirePermission("advanced_features"), proxyHandler.TestProxy) // 批量测试代理
+		// 批量操作
+		proxyGroup.POST("/batch/delete", proxyHandler.BatchDeleteProxy) // 批量删除代理
+		proxyGroup.POST("/batch/test", proxyHandler.BatchTestProxy)     // 批量测试代理
 	}
 }

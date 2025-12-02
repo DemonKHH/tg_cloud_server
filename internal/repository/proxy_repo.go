@@ -26,6 +26,8 @@ type ProxyRepository interface {
 	UpdateProxyStatus(id uint64, status string) error
 
 	// 批量操作
+	BatchCreate(proxies []*models.ProxyIP) error
+	BatchDelete(ids []uint64) error
 	BulkUpdateStatus(proxyIDs []uint64, status string) error
 }
 
@@ -225,4 +227,14 @@ func (r *proxyRepository) BulkUpdateStatus(proxyIDs []uint64, status string) err
 	return r.db.Model(&models.Proxy{}).
 		Where("id IN ?", proxyIDs).
 		Update("status", status).Error
+}
+
+// BatchCreate 批量创建代理
+func (r *proxyRepository) BatchCreate(proxies []*models.ProxyIP) error {
+	return r.db.Create(proxies).Error
+}
+
+// BatchDelete 批量删除代理
+func (r *proxyRepository) BatchDelete(ids []uint64) error {
+	return r.db.Delete(&models.ProxyIP{}, ids).Error
 }

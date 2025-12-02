@@ -4,7 +4,8 @@ import { toast } from "sonner"
 import { MainLayout } from "@/components/layout/main-layout"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Plus, TestTube, CheckCircle2, XCircle, AlertCircle, Pencil, Trash2, MoreVertical } from "lucide-react"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Plus, TestTube, CheckCircle2, XCircle, AlertCircle, Pencil, Trash2, MoreVertical, Upload } from "lucide-react"
 import { proxyAPI } from "@/lib/api"
 import { useState } from "react"
 import { Badge } from "@/components/ui/badge"
@@ -38,7 +39,9 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import { usePagination } from "@/hooks/use-pagination"
+import { motion, AnimatePresence } from "framer-motion"
 import { PageHeader } from "@/components/common/page-header"
 import { FilterBar } from "@/components/common/filter-bar"
 
@@ -74,6 +77,15 @@ export default function ProxiesPage() {
     country: "",
   })
 
+  // 批量添加相关状态
+  const [batchDialogOpen, setBatchDialogOpen] = useState(false)
+  const [batchInput, setBatchInput] = useState("")
+  const [batchProtocol, setBatchProtocol] = useState("http")
+
+  // 批量操作状态
+  const [selectedProxies, setSelectedProxies] = useState<number[]>([])
+  const [batchActionLoading, setBatchActionLoading] = useState(false)
+
   // 测试代理相关状态
   // 测试代理相关状态
   const [testingProxy, setTestingProxy] = useState<string | null>(null)
@@ -81,6 +93,9 @@ export default function ProxiesPage() {
   // 删除确认对话框状态
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [deletingProxy, setDeletingProxy] = useState<any>(null)
+
+  // 批量删除确认对话框状态
+  const [batchDeleteDialogOpen, setBatchDeleteDialogOpen] = useState(false)
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -245,6 +260,124 @@ export default function ProxiesPage() {
     }
   }
 
+
+  // 批量添加处理
+  const handleBatchSubmit = async () => {
+    if (!batchInput.trim()) {
+      toast.error("请输入代理列表")
+      return
+    }
+
+    const lines = batchInput.trim().split('\n')
+    const proxies: any[] = []
+    const errors: string[] = []
+
+    lines.forEach((line, index) => {
+      const trimmed = line.trim()
+      if (!trimmed) return
+
+      // ip:port:user:pass 或 ip:port
+      let ip, port, username, password
+      const parts = trimmed.split(':')
+      if (parts.length >= 2) {
+        ip = parts[0].trim()
+        port = parts[1].trim()
+        if (parts.length >= 4) {
+          username = parts[2].trim()
+          password = parts.slice(3).join(':').trim()
+        }
+      } else {
+        errors.push(`第 ${index + 1} 行格式错误`)
+        return
+      }
+
+      const portNum = parseInt(port || "")
+      if (!ip || isNaN(portNum)) {
+        errors.push(`第 ${index + 1} 行IP或端口无效`)
+        return
+      }
+
+      proxies.push({
+        name: `Batch Import ${new Date().toLocaleDateString()}`,
+        ip,
+        port: portNum,
+        protocol: batchProtocol,
+        username: username || "",
+        password: password || "",
+        country: "",
+      })
+    })
+
+    if (errors.length > 0) {
+      toast.error(`解析出错:\n${errors.slice(0, 5).join('\n')}${errors.length > 5 ? '...' : ''}`)
+      if (proxies.length === 0) return
+    }
+
+    try {
+      await proxyAPI.batchCreate({ proxies })
+      toast.success(`成功添加 ${proxies.length} 个代理`)
+      setBatchDialogOpen(false)
+      setBatchInput("")
+      refresh()
+    } catch (error: any) {
+      toast.error(error.message || "批量添加失败")
+    }
+  }
+
+  // 批量操作处理
+  const toggleSelectAll = () => {
+    if (selectedProxies.length === proxies.length) {
+      setSelectedProxies([])
+    } else {
+      setSelectedProxies(proxies.map(p => p.id))
+    }
+  }
+
+  const toggleSelect = (id: number) => {
+    if (selectedProxies.includes(id)) {
+      setSelectedProxies(selectedProxies.filter(p => p !== id))
+    } else {
+      setSelectedProxies([...selectedProxies, id])
+    }
+  }
+
+  const handleBatchDelete = () => {
+    if (selectedProxies.length === 0) return
+    setBatchDeleteDialogOpen(true)
+  }
+
+  const confirmBatchDelete = async () => {
+    setBatchActionLoading(true)
+    try {
+      await proxyAPI.batchDelete(selectedProxies)
+      toast.success("批量删除成功")
+      setSelectedProxies([])
+      refresh()
+      setBatchDeleteDialogOpen(false)
+    } catch (error: any) {
+      toast.error(error.message || "批量删除失败")
+    } finally {
+      setBatchActionLoading(false)
+    }
+  }
+
+  const handleBatchTest = async () => {
+    if (selectedProxies.length === 0) return
+
+    setBatchActionLoading(true)
+    try {
+      const res = await proxyAPI.batchTest(selectedProxies)
+      toast.success("批量测试完成")
+      // 刷新列表以显示最新状态
+      refresh()
+      // 可以选择不清除选中状态，方便查看
+    } catch (error: any) {
+      toast.error(error.message || "批量测试失败")
+    } finally {
+      setBatchActionLoading(false)
+    }
+  }
+
   return (
     <MainLayout>
       <div className="space-y-6">
@@ -253,12 +386,71 @@ export default function ProxiesPage() {
           title="代理管理"
           description="管理和测试您的代理IP配置"
           actions={
-            <Button onClick={handleAddProxy}>
-              <Plus className="h-4 w-4 mr-2" />
-              添加代理
-            </Button>
+
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setBatchDialogOpen(true)}>
+                <Upload className="h-4 w-4 mr-2" />
+                批量导入
+              </Button>
+              <Button onClick={handleAddProxy}>
+                <Plus className="h-4 w-4 mr-2" />
+                添加代理
+              </Button>
+            </div>
           }
         />
+
+        {/* Batch Actions Floating Bar */}
+        <AnimatePresence>
+          {selectedProxies.length > 0 && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 20 }}
+              className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-background/95 backdrop-blur-lg border shadow-2xl rounded-2xl p-4 flex flex-col gap-3 min-w-[400px]"
+            >
+              <div className="flex items-center justify-between border-b pb-2">
+                <div className="flex items-center gap-2">
+                  <div className="bg-primary text-primary-foreground text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center">
+                    {selectedProxies.length}
+                  </div>
+                  <span className="text-sm font-medium text-muted-foreground">
+                    已选择代理
+                  </span>
+                </div>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-6 text-xs text-muted-foreground hover:text-foreground px-2"
+                  onClick={() => setSelectedProxies([])}
+                >
+                  取消选择
+                </Button>
+              </div>
+
+              <div className="flex items-center gap-2 justify-center">
+                <Button
+                  variant="destructive"
+                  onClick={handleBatchDelete}
+                  disabled={batchActionLoading}
+                  className="flex-1"
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  删除 ({selectedProxies.length})
+                </Button>
+                <Button
+                  variant="secondary"
+                  onClick={handleBatchTest}
+                  disabled={batchActionLoading}
+                  className="flex-1"
+                >
+                  <TestTube className="h-4 w-4 mr-2" />
+                  测试 ({selectedProxies.length})
+                </Button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Filters */}
         <FilterBar
@@ -290,6 +482,13 @@ export default function ProxiesPage() {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-[50px]">
+                  <Checkbox
+                    checked={proxies.length > 0 && selectedProxies.length === proxies.length}
+                    onCheckedChange={toggleSelectAll}
+                    className="border-2 border-primary data-[state=checked]:bg-primary data-[state=checked]:border-primary"
+                  />
+                </TableHead>
                 <TableHead className="w-[200px]">代理地址</TableHead>
                 <TableHead className="w-[100px]">协议</TableHead>
                 <TableHead className="w-[120px]">状态</TableHead>
@@ -306,6 +505,7 @@ export default function ProxiesPage() {
                 // 加载状态
                 Array.from({ length: 5 }).map((_, index) => (
                   <TableRow key={index}>
+                    <TableCell><div className="h-4 w-4 bg-muted rounded animate-pulse" /></TableCell>
                     <TableCell><div className="h-4 bg-muted rounded animate-pulse" /></TableCell>
                     <TableCell><div className="h-4 bg-muted rounded animate-pulse" /></TableCell>
                     <TableCell><div className="h-4 bg-muted rounded animate-pulse" /></TableCell>
@@ -319,13 +519,26 @@ export default function ProxiesPage() {
                 ))
               ) : proxies.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={9} className="h-24 text-center">
+                  <TableCell colSpan={10} className="h-24 text-center">
                     暂无代理数据
                   </TableCell>
                 </TableRow>
               ) : (
                 proxies.map((record) => (
-                  <TableRow key={record.id}>
+                  <TableRow
+                    key={record.id}
+                    className={cn(
+                      "group transition-colors hover:bg-muted/50",
+                      selectedProxies.includes(record.id) && "bg-primary/5"
+                    )}
+                  >
+                    <TableCell>
+                      <Checkbox
+                        checked={selectedProxies.includes(record.id)}
+                        onCheckedChange={() => toggleSelect(record.id)}
+                        className="border-2 border-primary/60 data-[state=checked]:bg-primary data-[state=checked]:border-primary hover:border-primary"
+                      />
+                    </TableCell>
                     <TableCell>
                       <div className="space-y-1">
                         <div className="font-medium">{record.ip}:{record.port}</div>
@@ -606,7 +819,91 @@ export default function ProxiesPage() {
             </div>
           </DialogContent>
         </Dialog>
+
+        {/* 批量添加对话框 */}
+        <Dialog open={batchDialogOpen} onOpenChange={setBatchDialogOpen}>
+          <DialogContent className="sm:max-w-[600px]">
+            <DialogHeader>
+              <DialogTitle>批量导入代理</DialogTitle>
+              <DialogDescription>
+                每行一个代理，支持格式：<br />
+                1. IP:端口:用户名:密码<br />
+                2. IP:端口
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label>默认协议</Label>
+                <Select
+                  value={batchProtocol}
+                  onValueChange={setBatchProtocol}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="http">HTTP</SelectItem>
+                    <SelectItem value="https">HTTPS</SelectItem>
+                    <SelectItem value="socks5">SOCKS5</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>代理列表</Label>
+                <Textarea
+                  value={batchInput}
+                  onChange={(e) => setBatchInput(e.target.value)}
+                  placeholder={`192.168.1.1:8080:user:pass\n192.168.1.2:8080`}
+                  className="h-[300px] font-mono text-sm"
+                />
+                <p className="text-xs text-muted-foreground">
+                  已输入 {batchInput.split('\n').filter(l => l.trim()).length} 行
+                </p>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setBatchDialogOpen(false)}>
+                取消
+              </Button>
+              <Button onClick={handleBatchSubmit}>
+                导入
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* 批量删除确认对话框 */}
+        <Dialog open={batchDeleteDialogOpen} onOpenChange={setBatchDeleteDialogOpen}>
+          <DialogContent className="sm:max-w-[400px]">
+            <DialogHeader>
+              <DialogTitle className="text-xl text-red-600 flex items-center gap-2">
+                <AlertCircle className="h-5 w-5" />
+                确认批量删除
+              </DialogTitle>
+              <DialogDescription className="pt-2">
+                您确定要删除选中的 <span className="font-semibold text-foreground">{selectedProxies.length}</span> 个代理吗？
+                <br />
+                <span className="text-red-500 text-xs mt-2 block">
+                  此操作将永久删除这些代理配置，且不可恢复。
+                </span>
+              </DialogDescription>
+            </DialogHeader>
+            <div className="flex justify-end gap-2 pt-4">
+              <Button variant="outline" onClick={() => setBatchDeleteDialogOpen(false)} className="btn-modern">
+                取消
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={confirmBatchDelete}
+                disabled={batchActionLoading}
+                className="btn-modern bg-red-600 hover:bg-red-700"
+              >
+                {batchActionLoading ? "删除中..." : "确认删除"}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
-    </MainLayout>
+    </MainLayout >
   )
 }

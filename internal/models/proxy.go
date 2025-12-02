@@ -126,6 +126,16 @@ type CreateProxyRequest struct {
 	Country  string        `json:"country"`
 }
 
+// BatchCreateProxyRequest 批量创建代理请求
+type BatchCreateProxyRequest struct {
+	Proxies []CreateProxyRequest `json:"proxies" binding:"required,dive"`
+}
+
+// BatchDeleteProxyRequest 批量删除代理请求
+type BatchDeleteProxyRequest struct {
+	ProxyIDs []uint64 `json:"proxy_ids" binding:"required"`
+}
+
 // UpdateProxyRequest 更新代理请求
 type UpdateProxyRequest struct {
 	Name     string        `json:"name"`

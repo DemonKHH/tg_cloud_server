@@ -12,7 +12,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import { Plus, CheckCircle2, XCircle, AlertCircle, Upload, FileArchive, Search, Lock, Unlock, LogOut } from "lucide-react"
+import { Plus, CheckCircle2, XCircle, AlertCircle, Upload, FileArchive, Search, Lock, Unlock, LogOut, Copy } from "lucide-react"
 import {
   Tooltip,
   TooltipContent,
@@ -22,7 +22,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { cn } from "@/lib/utils"
-import { accountAPI, proxyAPI } from "@/lib/api"
+import { verifyCodeAPI, accountAPI, proxyAPI } from "@/lib/api"
 import { useState, useEffect, useRef } from "react"
 import {
   Select,
@@ -33,7 +33,7 @@ import {
 } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Pencil, Trash2, Activity, Link2, MessageSquare, Megaphone, Users, ChevronDown, UserPlus } from "lucide-react"
+import { Pencil, Trash2, Activity, Link2, MessageSquare, Megaphone, Users, ChevronDown, UserPlus, Key } from "lucide-react"
 import { usePagination } from "@/hooks/use-pagination"
 import { motion } from "framer-motion"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -107,6 +107,104 @@ export default function AccountsPage() {
     } catch (error: any) {
       toast.error(error.message || "批量设置2FA失败")
     }
+  }
+
+  // 批量生成验证码链接相关状态
+  const [batchGenerateLinkDialogOpen, setBatchGenerateLinkDialogOpen] = useState(false)
+  const [batchGenerateLinkExpiresIn, setBatchGenerateLinkExpiresIn] = useState("3600")
+  const [customExpiresIn, setCustomExpiresIn] = useState("3600")
+  const [batchGenerateLinkLoading, setBatchGenerateLinkLoading] = useState(false)
+  const [generatedLinks, setGeneratedLinks] = useState<{ phone: string; url: string; code: string }[]>([])
+  const [showGeneratedLinksDialog, setShowGeneratedLinksDialog] = useState(false)
+
+  const handleBatchGenerateLinks = async () => {
+    if (selectedAccountIds.length === 0) return
+
+    setBatchGenerateLinkLoading(true)
+    const links: { phone: string; url: string; code: string }[] = []
+    const errors: string[] = []
+
+    try {
+      let expiresInNum = parseInt(batchGenerateLinkExpiresIn)
+      if (batchGenerateLinkExpiresIn === "custom") {
+        expiresInNum = parseInt(customExpiresIn)
+        if (isNaN(expiresInNum) || expiresInNum < 60) {
+          toast.error("自定义过期时间必须大于等于60秒")
+          setBatchGenerateLinkLoading(false)
+          return
+        }
+      }
+
+      // 并发生成链接
+      const promises = selectedAccountIds.map(async (id) => {
+        try {
+          const account = accounts.find(a => String(a.id) === id)
+          if (!account) return null
+
+          const response = await verifyCodeAPI.generate({
+            account_id: parseInt(id),
+            expires_in: expiresInNum,
+          })
+
+          if (response.data) {
+            const { code, url, expires_at, expires_in } = response.data
+            const fullUrl = `${window.location.origin}/verify-code/${code}`
+
+            // 保存到本地存储 (与 verify-codes 页面同步)
+            const newSession = {
+              code,
+              url: fullUrl,
+              account_id: parseInt(id),
+              account_phone: account.phone,
+              expires_at,
+              expires_in,
+              created_at: new Date().toISOString(),
+            }
+
+            // 更新 localStorage
+            const savedSessions = localStorage.getItem('verifyCodeSessions')
+            const sessions = savedSessions ? JSON.parse(savedSessions) : []
+            // 移除旧的同code会话（理论上code唯一）
+            const updatedSessions = [newSession, ...sessions.filter((s: any) => s.code !== code)]
+            localStorage.setItem('verifyCodeSessions', JSON.stringify(updatedSessions))
+
+            return {
+              phone: account.phone,
+              url: fullUrl,
+              code
+            }
+          }
+        } catch (error) {
+          console.error(`Failed to generate link for account ${id}:`, error)
+          return null
+        }
+      })
+
+      const results = await Promise.all(promises)
+      results.forEach(res => {
+        if (res) links.push(res)
+      })
+
+      if (links.length > 0) {
+        setGeneratedLinks(links)
+        setBatchGenerateLinkDialogOpen(false)
+        setShowGeneratedLinksDialog(true)
+        toast.success(`成功生成 ${links.length} 个验证码链接`)
+        setSelectedAccountIds([]) // 清空选择
+      } else {
+        toast.error("未能生成任何链接")
+      }
+    } catch (error: any) {
+      toast.error(error.message || "批量生成链接失败")
+    } finally {
+      setBatchGenerateLinkLoading(false)
+    }
+  }
+
+  const copyLinksToClipboard = () => {
+    const text = generatedLinks.map(l => `${l.phone}: ${l.url}`).join('\n')
+    navigator.clipboard.writeText(text)
+    toast.success("所有链接已复制到剪贴板")
   }
 
 
@@ -876,6 +974,8 @@ export default function AccountsPage() {
                   </div>
                 </div>
 
+
+
                 {/* 账号管理 */}
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-medium text-muted-foreground w-16">账号管理</span>
@@ -895,6 +995,23 @@ export default function AccountsPage() {
                         </TooltipTrigger>
                         <TooltipContent>
                           <p>批量设置 2FA 密码</p>
+                        </TooltipContent>
+                      </Tooltip>
+
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-8 px-3 bg-background/50 hover:bg-blue-500/10 hover:text-blue-600 border-dashed"
+                            onClick={() => setBatchGenerateLinkDialogOpen(true)}
+                          >
+                            <Key className="h-4 w-4 mr-2" />
+                            生成链接
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>批量生成验证码访问链接</p>
                         </TooltipContent>
                       </Tooltip>
                     </TooltipProvider>
@@ -1558,6 +1675,109 @@ export default function AccountsPage() {
                 className="btn-modern bg-red-600 hover:bg-red-700"
               >
                 确认删除
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* 批量生成链接配置对话框 */}
+        <Dialog open={batchGenerateLinkDialogOpen} onOpenChange={setBatchGenerateLinkDialogOpen}>
+          <DialogContent className="sm:max-w-[400px]">
+            <DialogHeader>
+              <DialogTitle>批量生成验证码链接</DialogTitle>
+              <DialogDescription>
+                将为选中的 {selectedAccountIds.length} 个账号生成验证码访问链接。
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label>过期时间</Label>
+                <Select value={batchGenerateLinkExpiresIn} onValueChange={setBatchGenerateLinkExpiresIn}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="3600">1小时</SelectItem>
+                    <SelectItem value="86400">1天</SelectItem>
+                    <SelectItem value="2592000">30天</SelectItem>
+                    <SelectItem value="7776000">90天</SelectItem>
+                    <SelectItem value="custom">自定义 (秒)</SelectItem>
+                  </SelectContent>
+                </Select>
+                {batchGenerateLinkExpiresIn === "custom" && (
+                  <div className="pt-2">
+                    <Input
+                      type="number"
+                      value={customExpiresIn}
+                      onChange={(e) => setCustomExpiresIn(e.target.value)}
+                      placeholder="请输入过期时间（秒）"
+                      min={60}
+                      className="input-modern"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      请输入过期时间，单位为秒，最少60秒。
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setBatchGenerateLinkDialogOpen(false)}>
+                取消
+              </Button>
+              <Button onClick={handleBatchGenerateLinks} disabled={batchGenerateLinkLoading}>
+                {batchGenerateLinkLoading ? (
+                  <>
+                    <Activity className="h-4 w-4 mr-2 animate-spin" />
+                    生成中...
+                  </>
+                ) : (
+                  "确认生成"
+                )}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* 生成结果展示对话框 */}
+        <Dialog open={showGeneratedLinksDialog} onOpenChange={setShowGeneratedLinksDialog}>
+          <DialogContent className="sm:max-w-[700px]">
+            <DialogHeader>
+              <DialogTitle>生成结果</DialogTitle>
+              <DialogDescription>
+                成功生成 {generatedLinks.length} 个链接。您可以复制下方内容。
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="bg-muted p-4 rounded-lg max-h-[400px] overflow-y-auto font-mono text-xs space-y-2">
+                {generatedLinks.map((link, index) => (
+                  <div key={index} className="grid grid-cols-[140px_1fr] gap-4 items-center pb-2 border-b last:border-0 last:pb-0">
+                    <span className="font-semibold text-primary truncate">{link.phone}</span>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-muted-foreground truncate select-all flex-1">{link.url}</span>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6 shrink-0"
+                        onClick={() => {
+                          navigator.clipboard.writeText(link.url)
+                          toast.success("链接已复制")
+                        }}
+                      >
+                        <Copy className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setShowGeneratedLinksDialog(false)}>
+                关闭
+              </Button>
+              <Button onClick={copyLinksToClipboard}>
+                <Copy className="h-4 w-4 mr-2" />
+                复制全部
               </Button>
             </div>
           </DialogContent>

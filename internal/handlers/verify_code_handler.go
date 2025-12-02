@@ -63,7 +63,7 @@ func (h *VerifyCodeHandler) GenerateCode(c *gin.Context) {
 			zap.Uint64("user_id", userID),
 			zap.Uint64("account_id", req.AccountID),
 			zap.Error(err))
-		
+
 		// 根据错误类型返回相应响应
 		if verifyErr, ok := err.(*models.VerifyCodeError); ok {
 			switch verifyErr.Code {
@@ -85,6 +85,55 @@ func (h *VerifyCodeHandler) GenerateCode(c *gin.Context) {
 		zap.Int("expires_in", codeResponse.ExpiresIn))
 
 	response.SuccessWithMessage(c, "验证码访问链接生成成功", codeResponse)
+	response.SuccessWithMessage(c, "验证码访问链接生成成功", codeResponse)
+}
+
+// BatchGenerateCode 批量生成验证码访问链接
+// @Summary 批量生成验证码访问链接
+// @Description 为多个TG账号生成临时的验证码访问链接
+// @Tags 验证码
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param request body models.BatchGenerateCodeRequest true "批量生成验证码链接请求"
+// @Success 201 {object} map[string]interface{} "生成的访问链接信息"
+// @Failure 400 {object} map[string]string "请求错误"
+// @Failure 401 {object} map[string]string "未授权"
+// @Failure 500 {object} map[string]string "服务器错误"
+// @Router /api/v1/verify-code/batch/generate [post]
+func (h *VerifyCodeHandler) BatchGenerateCode(c *gin.Context) {
+	userID, err := utils.GetUserID(c)
+	if err != nil {
+		response.Unauthorized(c, err.Error())
+		return
+	}
+
+	var req models.BatchGenerateCodeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		h.logger.Warn("Invalid batch generate code request",
+			zap.Uint64("user_id", userID),
+			zap.Error(err))
+		response.InvalidParam(c, "请求参数无效："+err.Error())
+		return
+	}
+
+	// 批量生成临时访问代码
+	results, err := h.verifyCodeService.BatchGenerateCode(userID, req.AccountIDs, req.ExpiresIn)
+	if err != nil {
+		h.logger.Error("Failed to batch generate verification codes",
+			zap.Uint64("user_id", userID),
+			zap.Error(err))
+		response.InternalError(c, "批量生成验证码访问链接失败")
+		return
+	}
+
+	h.logger.Info("Batch verification code links generated successfully",
+		zap.Uint64("user_id", userID),
+		zap.Int("count", len(results)))
+
+	response.SuccessWithMessage(c, "批量生成成功", gin.H{
+		"items": results,
+	})
 }
 
 // GetVerifyCode 通过访问码获取验证码 (公开接口，不需要认证)
@@ -126,7 +175,7 @@ func (h *VerifyCodeHandler) GetVerifyCode(c *gin.Context) {
 		h.logger.Warn("Verification code retrieval failed",
 			zap.String("code", code),
 			zap.Error(err))
-		
+
 		// 根据错误类型返回相应响应
 		if verifyErr, ok := err.(*models.VerifyCodeError); ok {
 			switch verifyErr.Code {
@@ -155,13 +204,13 @@ func (h *VerifyCodeHandler) GetVerifyCode(c *gin.Context) {
 			zap.String("verify_code", verifyResult.Code),
 			zap.String("sender", verifyResult.Sender),
 			zap.Int("wait_seconds", verifyResult.WaitSeconds))
-		
+
 		response.SuccessWithMessage(c, "验证码获取成功", verifyResult)
 	} else {
 		h.logger.Warn("Verification code retrieval timeout",
 			zap.String("code", code),
 			zap.Int("wait_seconds", verifyResult.WaitSeconds))
-		
+
 		c.JSON(408, gin.H{
 			"success": false,
 			"message": verifyResult.Message,

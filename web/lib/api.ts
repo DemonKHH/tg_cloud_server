@@ -269,6 +269,18 @@ export const verifyCodeAPI = {
       expires_at: string;
       expires_in: number;
     }>('/verify-code/generate', data),
+  // 批量生成验证码访问链接
+  batchGenerate: (data: { account_ids: number[]; expires_in?: number }) =>
+    apiClient.post<{
+      items: {
+        account_id: number;
+        phone: string;
+        code: string;
+        url: string;
+        expires_at: number;
+        expires_in: number;
+      }[];
+    }>('/verify-code/batch/generate', data),
   // 获取验证码（公开接口，无需认证）
   getCode: (code: string, timeout?: number) => {
     const params = timeout ? { timeout } : {};

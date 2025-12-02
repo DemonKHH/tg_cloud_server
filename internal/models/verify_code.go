@@ -37,6 +37,22 @@ type GenerateCodeResponse struct {
 	ExpiresIn int    `json:"expires_in"` // 过期时间(秒)
 }
 
+// BatchGenerateCodeRequest 批量生成验证码访问链接请求
+type BatchGenerateCodeRequest struct {
+	AccountIDs []uint64 `json:"account_ids" binding:"required"`
+	ExpiresIn  int      `json:"expires_in,omitempty"` // 过期时间(秒)
+}
+
+// BatchGenerateCodeItem 批量生成结果项
+type BatchGenerateCodeItem struct {
+	AccountID uint64 `json:"account_id"`
+	Phone     string `json:"phone"`
+	Code      string `json:"code"`       // 临时访问代码
+	URL       string `json:"url"`        // 完整的访问链接
+	ExpiresAt int64  `json:"expires_at"` // 过期时间戳
+	ExpiresIn int    `json:"expires_in"` // 过期时间(秒)
+}
+
 // VerifyCodeResponse 验证码响应
 type VerifyCodeResponse struct {
 	Success     bool   `json:"success"`               // 是否成功获取到验证码

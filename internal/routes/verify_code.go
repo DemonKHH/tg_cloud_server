@@ -23,11 +23,12 @@ func SetupVerifyCodeRoutes(
 		{
 			// 生成验证码访问链接
 			authenticatedGroup.POST("/generate", verifyCodeHandler.GenerateCode)
-			
+			authenticatedGroup.POST("/batch/generate", verifyCodeHandler.BatchGenerateCode)
+
 			// 获取访问码信息 (调试用)
 			authenticatedGroup.GET("/:code/info", verifyCodeHandler.GetCodeInfo)
 		}
-		
+
 		// 公开接口 (不需要认证)
 		// 通过访问码获取验证码
 		verifyGroup.GET("/:code", verifyCodeHandler.GetVerifyCode)

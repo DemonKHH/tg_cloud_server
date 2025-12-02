@@ -130,6 +130,71 @@ func (s *VerifyCodeService) GenerateCode(userID, accountID uint64, expiresIn int
 	return response, nil
 }
 
+// BatchGenerateCode 批量生成临时访问代码
+func (s *VerifyCodeService) BatchGenerateCode(userID uint64, accountIDs []uint64, expiresIn int) ([]models.BatchGenerateCodeItem, error) {
+	// 验证用户状态
+	user, err := s.userRepo.GetByID(userID)
+	if err != nil {
+		return nil, models.ErrAccountNotFound
+	}
+	if !user.IsValidUser() {
+		return nil, fmt.Errorf("user account is invalid")
+	}
+
+	// 设置默认过期时间
+	if expiresIn <= 0 {
+		expiresIn = 3600 // 默认1小时
+	}
+	if expiresIn > 7776000 { // 90天
+		expiresIn = 7776000
+	}
+
+	var results []models.BatchGenerateCodeItem
+
+	for _, accountID := range accountIDs {
+		// 验证账号权限
+		account, err := s.accountRepo.GetByUserIDAndID(userID, accountID)
+		if err != nil {
+			s.logger.Warn("Account not found or no permission",
+				zap.Uint64("user_id", userID),
+				zap.Uint64("account_id", accountID))
+			continue
+		}
+
+		// 生成唯一代码
+		code, err := s.generateUniqueCode()
+		if err != nil {
+			s.logger.Error("Failed to generate unique code", zap.Error(err))
+			continue
+		}
+
+		// 创建会话
+		session := &models.VerifyCodeSession{
+			Code:      code,
+			AccountID: accountID,
+			UserID:    userID,
+			CreatedAt: time.Now(),
+			ExpiresAt: time.Now().Add(time.Duration(expiresIn) * time.Second),
+		}
+
+		// 存储会话
+		s.mutex.Lock()
+		s.sessions[code] = session
+		s.mutex.Unlock()
+
+		results = append(results, models.BatchGenerateCodeItem{
+			AccountID: accountID,
+			Phone:     account.Phone,
+			Code:      code,
+			URL:       fmt.Sprintf("/api/v1/verify-code/%s", code),
+			ExpiresAt: session.ExpiresAt.Unix(),
+			ExpiresIn: expiresIn,
+		})
+	}
+
+	return results, nil
+}
+
 // GetVerifyCode 通过code获取验证码
 func (s *VerifyCodeService) GetVerifyCode(ctx context.Context, code string, timeoutSeconds int) (*models.VerifyCodeResponse, error) {
 	// 获取会话

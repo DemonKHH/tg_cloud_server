@@ -12,7 +12,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import { Plus, Copy, ExternalLink, Clock, Smartphone, AlertCircle, CheckCircle2, XCircle, Search, RefreshCw } from "lucide-react"
+import { Copy, ExternalLink, Clock, Smartphone, AlertCircle, CheckCircle2, XCircle, Search, RefreshCw } from "lucide-react"
 import {
   Tooltip,
   TooltipContent,
@@ -31,7 +31,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Label } from "@/components/ui/label"
+
 import { PageHeader } from "@/components/common/page-header"
 import { FilterBar } from "@/components/common/filter-bar"
 import { motion } from "framer-motion"
@@ -60,12 +60,7 @@ export default function VerifyCodesPage() {
   const [accounts, setAccounts] = useState<Account[]>([])
   const [sessions, setSessions] = useState<VerifyCodeSession[]>([])
   const [loading, setLoading] = useState(false)
-  const [createDialogOpen, setCreateDialogOpen] = useState(false)
 
-  // 生成表单状态
-  const [selectedAccountId, setSelectedAccountId] = useState<string>("")
-  const [expiresIn, setExpiresIn] = useState<string>("300") // 默认5分钟
-  const [generatingCode, setGeneratingCode] = useState(false)
 
   // 搜索状态
   const [searchKeyword, setSearchKeyword] = useState("")
@@ -119,68 +114,7 @@ export default function VerifyCodesPage() {
     }
   }
 
-  // 生成验证码链接
-  const handleGenerateCode = async () => {
-    if (!selectedAccountId) {
-      toast.error("请选择账号")
-      return
-    }
 
-    const accountIdNum = parseInt(selectedAccountId)
-    const expiresInNum = parseInt(expiresIn)
-
-    if (isNaN(expiresInNum) || expiresInNum < 60 || expiresInNum > 3600) {
-      toast.error("过期时间必须在60-3600秒之间")
-      return
-    }
-
-    try {
-      setGeneratingCode(true)
-      const response = await verifyCodeAPI.generate({
-        account_id: accountIdNum,
-        expires_in: expiresInNum,
-      })
-
-      if (response.data) {
-        const { code, url, expires_at, expires_in } = response.data
-
-        // 找到对应的账号信息
-        const account = accounts.find(acc => acc.id === accountIdNum)
-
-        const newSession: VerifyCodeSession = {
-          code,
-          url: `${window.location.origin}/verify-code/${code}`, // 完整URL
-          account_id: accountIdNum,
-          account_phone: account?.phone || 'Unknown',
-          expires_at,
-          expires_in,
-          created_at: new Date().toISOString(),
-        }
-
-        // 保存到本地存储
-        const existingSessions = sessions.filter(s => s.code !== code) // 防重复
-        const updatedSessions = [newSession, ...existingSessions]
-        localStorage.setItem('verifyCodeSessions', JSON.stringify(updatedSessions))
-        setSessions(updatedSessions)
-
-        // 复制链接到剪贴板
-        await navigator.clipboard.writeText(newSession.url)
-
-        toast.success("验证码链接已生成并复制到剪贴板")
-        setCreateDialogOpen(false)
-
-        // 重置表单
-        setSelectedAccountId("")
-        setExpiresIn("300")
-      }
-    } catch (error: any) {
-      console.error('Generate code error:', error)
-      const errorMessage = error?.response?.data?.msg || error.message || "生成验证码链接失败"
-      toast.error(errorMessage)
-    } finally {
-      setGeneratingCode(false)
-    }
-  }
 
   // 复制链接
   const copyToClipboard = async (text: string, type: string) => {
@@ -335,102 +269,7 @@ export default function VerifyCodesPage() {
               刷新
             </Button>
 
-            <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
-              <DialogTrigger asChild>
-                <Button className="gap-2">
-                  <Plus className="h-4 w-4" />
-                  生成验证码链接
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="sm:max-w-md">
-                <DialogHeader>
-                  <DialogTitle>生成验证码访问链接</DialogTitle>
-                  <DialogDescription>
-                    选择账号并设置链接过期时间，生成后可分享给用户获取验证码
-                  </DialogDescription>
-                </DialogHeader>
 
-                <div className="space-y-4 pt-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="account">选择账号</Label>
-                    <Select value={selectedAccountId} onValueChange={setSelectedAccountId}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="请选择要生成验证码的账号" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {accounts
-                          .filter(account => account.status === 'normal' || account.status === 'new')
-                          .map((account) => (
-                            <SelectItem key={account.id} value={account.id.toString()}>
-                              <div className="flex items-center gap-2">
-                                <span>{account.phone}</span>
-                                <Badge variant={account.status === 'normal' ? 'default' : 'secondary'}>
-                                  {account.status}
-                                </Badge>
-                              </div>
-                            </SelectItem>
-                          ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="expires">过期时间</Label>
-                    <Select value={expiresIn} onValueChange={setExpiresIn}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="300">5分钟</SelectItem>
-                        <SelectItem value="600">10分钟</SelectItem>
-                        <SelectItem value="900">15分钟</SelectItem>
-                        <SelectItem value="1800">30分钟</SelectItem>
-                        <SelectItem value="3600">1小时</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="flex items-start gap-2 p-3 bg-blue-50 rounded-lg">
-                    <AlertCircle className="h-4 w-4 text-blue-600 mt-0.5 shrink-0" />
-                    <div className="text-sm text-blue-800">
-                      <p className="font-medium">使用说明：</p>
-                      <ul className="mt-1 space-y-1 text-xs">
-                        <li>• 生成的链接可以多次使用，直到过期</li>
-                        <li>• 用户访问链接即可获取该账号的验证码</li>
-                        <li>• 建议设置合适的过期时间保证安全</li>
-                      </ul>
-                    </div>
-                  </div>
-
-                  <div className="flex justify-end gap-2 pt-2">
-                    <Button
-                      variant="outline"
-                      onClick={() => setCreateDialogOpen(false)}
-                      disabled={generatingCode}
-                    >
-                      取消
-                    </Button>
-                    <Button
-                      onClick={handleGenerateCode}
-                      disabled={generatingCode || !selectedAccountId}
-                      className="gap-2"
-                    >
-                      {generatingCode ? (
-                        <>
-                          <RefreshCw className="h-4 w-4 animate-spin" />
-                          生成中...
-                        </>
-                      ) : (
-                        <>
-                          <Plus className="h-4 w-4" />
-                          生成链接
-                        </>
-                      )}
-                    </Button>
-                  </div>
-                </div>
-              </DialogContent>
-            </Dialog>
           </div>
         </div>
 

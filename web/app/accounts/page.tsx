@@ -121,8 +121,6 @@ export default function AccountsPage() {
     if (selectedAccountIds.length === 0) return
 
     setBatchGenerateLinkLoading(true)
-    const links: { phone: string; url: string; code: string }[] = []
-    const errors: string[] = []
 
     try {
       let expiresInNum = parseInt(batchGenerateLinkExpiresIn)
@@ -135,58 +133,50 @@ export default function AccountsPage() {
         }
       }
 
-      // 并发生成链接
-      const promises = selectedAccountIds.map(async (id) => {
-        try {
-          const account = accounts.find(a => String(a.id) === id)
-          if (!account) return null
+      // 批量生成链接
+      const response = await verifyCodeAPI.batchGenerate({
+        account_ids: selectedAccountIds.map(id => parseInt(id)),
+        expires_in: expiresInNum,
+      })
 
-          const response = await verifyCodeAPI.generate({
-            account_id: parseInt(id),
-            expires_in: expiresInNum,
-          })
-
-          if (response.data) {
-            const { code, url, expires_at, expires_in } = response.data
-            const fullUrl = `${window.location.origin}/verify-code/${code}`
-
-            // 保存到本地存储 (与 verify-codes 页面同步)
-            const newSession = {
-              code,
-              url: fullUrl,
-              account_id: parseInt(id),
-              account_phone: account.phone,
-              expires_at,
-              expires_in,
-              created_at: new Date().toISOString(),
-            }
-
-            // 更新 localStorage
-            const savedSessions = localStorage.getItem('verifyCodeSessions')
-            const sessions = savedSessions ? JSON.parse(savedSessions) : []
-            // 移除旧的同code会话（理论上code唯一）
-            const updatedSessions = [newSession, ...sessions.filter((s: any) => s.code !== code)]
-            localStorage.setItem('verifyCodeSessions', JSON.stringify(updatedSessions))
-
-            return {
-              phone: account.phone,
-              url: fullUrl,
-              code
-            }
+      if (response.data && response.data.items) {
+        const items = response.data.items
+        const links = items.map(item => {
+          const fullUrl = `${window.location.origin}/verify-code/${item.code}`
+          return {
+            phone: item.phone,
+            url: fullUrl,
+            code: item.code,
+            // 额外字段用于存储
+            account_id: item.account_id,
+            expires_at: new Date(item.expires_at * 1000).toISOString(), // 转换为ISO字符串
+            expires_in: item.expires_in,
           }
-        } catch (error) {
-          console.error(`Failed to generate link for account ${id}:`, error)
-          return null
-        }
-      })
+        })
 
-      const results = await Promise.all(promises)
-      results.forEach(res => {
-        if (res) links.push(res)
-      })
+        // 批量保存到本地存储
+        const savedSessions = localStorage.getItem('verifyCodeSessions')
+        let sessions = savedSessions ? JSON.parse(savedSessions) : []
 
-      if (links.length > 0) {
-        setGeneratedLinks(links)
+        // 添加新会话
+        const newSessions = links.map(link => ({
+          code: link.code,
+          url: link.url,
+          account_id: link.account_id,
+          account_phone: link.phone,
+          expires_at: link.expires_at,
+          expires_in: link.expires_in,
+          created_at: new Date().toISOString(),
+        }))
+
+        // 合并会话，移除旧的同code会话
+        const newCodes = new Set(newSessions.map(s => s.code))
+        sessions = sessions.filter((s: any) => !newCodes.has(s.code))
+        sessions = [...newSessions, ...sessions]
+
+        localStorage.setItem('verifyCodeSessions', JSON.stringify(sessions))
+
+        setGeneratedLinks(links.map(l => ({ phone: l.phone, url: l.url, code: l.code })))
         setBatchGenerateLinkDialogOpen(false)
         setShowGeneratedLinksDialog(true)
         toast.success(`成功生成 ${links.length} 个验证码链接`)

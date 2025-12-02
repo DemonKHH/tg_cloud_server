@@ -235,7 +235,7 @@ export default function VerifyCodesPage() {
     <MainLayout>
       <div className="space-y-6">
         <PageHeader
-          title="验证码管理"
+          title="API链接管理"
           description="管理Telegram账号验证码获取链接"
         />
 

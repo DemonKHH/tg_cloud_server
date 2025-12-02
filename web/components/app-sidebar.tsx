@@ -36,7 +36,7 @@ const navigation = [
   { name: "仪表盘", href: "/dashboard", icon: LayoutDashboard, badge: null },
   { name: "账号管理", href: "/accounts", icon: Users, badge: null },
   { name: "任务管理", href: "/tasks", icon: ListTodo, badge: "3" },
-  { name: "验证码管理", href: "/verify-codes", icon: Shield, badge: null },
+  { name: "API链接管理", href: "/verify-codes", icon: Shield, badge: null },
   { name: "代理管理", href: "/proxies", icon: Globe, badge: null },
   { name: "文件管理", href: "/files", icon: FileText, badge: null },
   { name: "AI服务", href: "/ai", icon: Bot, badge: "新" },
@@ -52,18 +52,18 @@ export function AppSidebar() {
       <Sidebar variant="inset" className="border-r border-sidebar-border">
         {/* Header */}
         <SidebarHeader>
-           <div className="flex items-center gap-2 px-4 py-2">
-             <motion.div
-               className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary"
-               whileHover={{ rotate: 5, scale: 1.1 }}
-               transition={{ type: "spring", stiffness: 400 }}
-             >
-               <Zap className="h-4 w-4 text-primary-foreground" />
-             </motion.div>
-             <h1 className="text-xl font-bold gradient-text group-data-[collapsible=icon]:hidden">
-               TG Cloud
-             </h1>
-           </div>
+          <div className="flex items-center gap-2 px-4 py-2">
+            <motion.div
+              className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary"
+              whileHover={{ rotate: 5, scale: 1.1 }}
+              transition={{ type: "spring", stiffness: 400 }}
+            >
+              <Zap className="h-4 w-4 text-primary-foreground" />
+            </motion.div>
+            <h1 className="text-xl font-bold gradient-text group-data-[collapsible=icon]:hidden">
+              TG Cloud
+            </h1>
+          </div>
         </SidebarHeader>
 
         {/* Content */}
@@ -101,8 +101,8 @@ export function AppSidebar() {
                                 animate={{ scale: 1 }}
                                 transition={{ delay: 0.2 + index * 0.05 }}
                               >
-                                <Badge 
-                                  variant={item.badge === "新" ? "default" : "secondary"} 
+                                <Badge
+                                  variant={item.badge === "新" ? "default" : "secondary"}
                                   className="h-5 text-xs px-1.5"
                                 >
                                   {item.badge}

@@ -1574,43 +1574,7 @@ export default function AccountsPage() {
           }}
         />
 
-        {/* 编辑账号对话框 */}
-        <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>编辑账号</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4 py-4">
-              <div className="space-y-2">
-                <Label htmlFor="edit-phone" className="text-sm font-medium">手机号</Label>
-                <Input
-                  id="edit-phone"
-                  value={editForm.phone}
-                  onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
-                  disabled
-                  className="bg-muted/50 input-modern"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-note" className="text-sm font-medium">备注</Label>
-                <Textarea
-                  id="edit-note"
-                  value={editForm.note}
-                  onChange={(e) => setEditForm({ ...editForm, note: e.target.value })}
-                  placeholder="输入备注信息..."
-                  rows={3}
-                  className="input-modern resize-none"
-                />
-              </div>
-            </div>
-            <div className="flex justify-end gap-2 pt-4 border-t">
-              <Button variant="outline" onClick={() => setEditDialogOpen(false)} className="btn-modern">
-                取消
-              </Button>
-              <Button onClick={handleSaveEdit} className="btn-modern">保存</Button>
-            </div>
-          </DialogContent>
-        </Dialog>
+
 
         {/* 绑定代理对话框 */}
         <Dialog open={bindProxyDialogOpen} onOpenChange={setBindProxyDialogOpen}>

@@ -37,7 +37,7 @@ func InitMySQL(config *config.MySQLConfig) (*gorm.DB, error) {
 	// 配置连接池
 	sqlDB.SetMaxOpenConns(config.MaxOpenConns)
 	sqlDB.SetMaxIdleConns(config.MaxIdleConns)
-	
+
 	if config.MaxLifetime != "" {
 		if lifetime, err := time.ParseDuration(config.MaxLifetime); err == nil {
 			sqlDB.SetConnMaxLifetime(lifetime)
@@ -66,6 +66,7 @@ func autoMigrate(db *gorm.DB) error {
 		&models.TaskLog{},
 		&models.ProxyIP{},
 		&models.RiskLog{},
+		&models.VerifyCodeSession{},
 	)
 }
 

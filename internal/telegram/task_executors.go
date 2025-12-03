@@ -439,18 +439,12 @@ func (t *PrivateMessageTask) Execute(ctx context.Context, api *tg.Client) error 
 			continue
 		}
 
-		// 添加调试日志
-		fmt.Printf("[PrivateMessageTask] Sending to %s (%d/%d)\n", username, i+1, len(targets))
-
-		// 记录发送开始时间
-		sendStartTime := time.Now()
-
 		// 尝试通过用户名解析
+		sendStartTime := time.Now()
 		err := t.sendPrivateMessage(ctx, api, username, message)
 		sendDuration := time.Since(sendStartTime)
 
 		if err != nil {
-			fmt.Printf("[PrivateMessageTask] Failed to send to %s: %v\n", username, err)
 			errorMsg := fmt.Sprintf("failed to send to %s: %v", username, err)
 			errors = append(errors, errorMsg)
 			targetResults[username] = map[string]interface{}{
@@ -460,7 +454,6 @@ func (t *PrivateMessageTask) Execute(ctx context.Context, api *tg.Client) error 
 			}
 			failedCount++
 		} else {
-			fmt.Printf("[PrivateMessageTask] Successfully sent to %s\n", username)
 			sentCount++
 			sentTargets = append(sentTargets, username)
 			targetResults[username] = map[string]interface{}{
@@ -483,10 +476,6 @@ func (t *PrivateMessageTask) Execute(ctx context.Context, api *tg.Client) error 
 	t.task.Result["total_targets"] = len(targets)
 	t.task.Result["success_rate"] = float64(sentCount) / float64(len(targets))
 	t.task.Result["send_time"] = time.Now().Unix()
-
-	// 添加调试日志
-	fmt.Printf("[PrivateMessageTask] Execution completed: sent=%d, failed=%d, total=%d\n",
-		sentCount, failedCount, len(targets))
 
 	return nil
 }
@@ -630,7 +619,6 @@ func (t *BroadcastTask) Execute(ctx context.Context, api *tg.Client) error {
 		logEntry := fmt.Sprintf("[%s] %s", time.Now().Format("15:04:05"), msg)
 		logs = append(logs, logEntry)
 		t.task.Result["logs"] = logs
-		fmt.Println(logEntry)
 	}
 
 	addLog(fmt.Sprintf("开始执行群发任务，目标群组数: %d", len(targetGroups)))

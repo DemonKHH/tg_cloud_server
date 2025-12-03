@@ -99,7 +99,7 @@ func main() {
 	accountRepo := repository.NewAccountRepository(db)
 	taskRepo := repository.NewTaskRepository(db)
 	proxyRepo := repository.NewProxyRepository(db)
-	fileRepo := repository.NewFileRepository(db)
+
 	verifyCodeRepo := repository.NewVerifyCodeRepository(db)
 
 	// 初始化Telegram连接池
@@ -138,12 +138,6 @@ func main() {
 	verifyCodeService := services.NewVerifyCodeService(accountRepo, userRepo, verifyCodeRepo, connectionPool, logger)
 	logger.Info("Verify code service initialized")
 
-	fileService := services.NewFileService(fileRepo, map[string]interface{}{
-		"upload_path":   "./uploads",
-		"base_url":      "http://localhost:8080",
-		"max_file_size": 50 * 1024 * 1024, // 50MB
-	})
-
 	statsService := services.NewStatsService(userRepo, accountRepo, taskRepo, proxyRepo)
 
 	// 初始化定时任务服务
@@ -157,7 +151,7 @@ func main() {
 	proxyHandler := handlers.NewProxyHandler(proxyService)
 	moduleHandler := handlers.NewModuleHandler(taskService, accountService)
 	verifyCodeHandler := handlers.NewVerifyCodeHandler(verifyCodeService)
-	fileHandler := handlers.NewFileHandler(fileService)
+
 	aiHandler := handlers.NewAIHandler(aiService)
 	statsHandler := handlers.NewStatsHandler(statsService)
 
@@ -182,7 +176,7 @@ func main() {
 
 	// 注册路由
 	routes.RegisterAuthRoutes(router, authHandler)
-	routes.RegisterAPIRoutes(router, accountHandler, taskHandler, proxyHandler, moduleHandler, statsHandler, fileHandler, aiHandler, authService, cfg)
+	routes.RegisterAPIRoutes(router, accountHandler, taskHandler, proxyHandler, moduleHandler, statsHandler, aiHandler, authService, cfg)
 	routes.SetupVerifyCodeRoutes(router, verifyCodeHandler, authService)
 	routes.RegisterWebSocketRoutes(router, redisClient, authService)
 

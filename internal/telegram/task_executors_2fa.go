@@ -7,6 +7,7 @@ import (
 
 	"tg_cloud_server/internal/models"
 
+	"github.com/gotd/td/telegram/auth"
 	"github.com/gotd/td/tg"
 )
 
@@ -38,12 +39,7 @@ func (t *Update2FATask) Execute(ctx context.Context, api *tg.Client) error {
 
 	// 1. 获取配置
 	config := t.task.Config
-	newPassword, ok := config["new_password"].(string)
-	if !ok || newPassword == "" {
-		addLog("错误: 未提供新密码")
-		return fmt.Errorf("new_password is required")
-	}
-
+	newPassword, _ := config["new_password"].(string)
 	oldPassword, _ := config["old_password"].(string)
 	hint, _ := config["hint"].(string)
 
@@ -57,44 +53,51 @@ func (t *Update2FATask) Execute(ctx context.Context, api *tg.Client) error {
 	}
 
 	if passwordSettings.HasPassword {
-		addLog("当前账号已设置 2FA 密码")
+		addLog("当前账号已设置 2FA 密码，正在验证旧密码...")
+		if oldPassword == "" {
+			addLog("错误: 未提供旧密码")
+			return fmt.Errorf("old_password is required when 2FA is enabled")
+		}
+
+		// 验证旧密码
+		inputCheck, err := auth.PasswordHash(
+			[]byte(oldPassword),
+			passwordSettings.SRPID,
+			passwordSettings.SRPB,
+			passwordSettings.SecureRandom,
+			passwordSettings.CurrentAlgo,
+		)
+		if err != nil {
+			addLog(fmt.Sprintf("计算密码哈希失败: %v", err))
+			return fmt.Errorf("failed to compute password hash: %w", err)
+		}
+
+		// 验证密码
+		_, err = api.AuthCheckPassword(ctx, inputCheck)
+		if err != nil {
+			addLog(fmt.Sprintf("旧密码验证失败: %v", err))
+			return fmt.Errorf("invalid old password: %w", err)
+		}
+		addLog("旧密码验证成功")
 	} else {
 		addLog("当前账号未设置 2FA 密码")
 	}
 
-	// Prevent unused variable error
-	_ = oldPassword
-	_ = hint
-	_ = passwordSettings
+	// 3. 修改密码
+	if newPassword != "" {
+		addLog("正在设置新密码...")
+		// TODO: 实现 SRP 算法生成新密码的 hash 和 salt
+		// 需要实现 PasswordKdfAlgoSHA256SHA256PBKDF2HMACSHA512iter100000SHA256ModPow
 
-	// 3. 构建新密码设置
-	// gotd/td 的密码处理比较复杂，通常需要使用 KDF 算法计算 hash
-	// 这里我们使用辅助函数来处理密码更新
-	// 注意：gotd 提供了辅助方法来处理密码，我们需要查看文档或源码确认最佳实践
-	// 简单起见，我们假设 api.AccountUpdatePasswordSettings 可以直接使用，但实际上它需要 InputCheckPasswordSRP
+		_ = hint // prevent unused error
 
-	// 由于 gotd 处理 2FA 比较复杂（涉及 SRP 协议），我们需要使用 Auth 接口的高级功能
-	// 或者手动实现 SRP 计算。
-	// 为了简化，这里我们先尝试使用 AccountUpdatePasswordSettings，但通常这需要先验证旧密码
+		addLog("错误: 设置新密码功能暂未实现 (需要 SRP 算法支持)")
+		return fmt.Errorf("setting new password is not yet implemented")
+	} else {
+		addLog("未提供新密码，任务结束")
+	}
 
-	// 如果有旧密码，需要先验证
-	// TODO: 实现完整的 SRP 协议处理
-	// 这里暂时返回一个未实现的错误，或者如果 gotd 有 helper，我们应该使用它
-
-	// 实际上，gotd 的 Auth 客户端通常有 Password 方法
-	// 但在这里我们只有 raw api client
-
-	// 让我们尝试查找是否有现成的 SRP 实现或 helper
-	// 如果没有，我们可能需要引入 crypto/srp 包或类似的
-
-	// 鉴于时间限制和复杂性，我们先实现一个简单的版本，如果遇到 SRP 问题再解决
-	// 或者我们可以查看 AccountService 中是否有现成的密码验证逻辑
-
-	// 假设我们只是调用 API，具体的 SRP 计算可能需要额外的库
-	// 这里我们先占位，提示用户该功能需要完善的 SRP 支持
-
-	addLog("错误: 修改 2FA 需要 SRP 协议支持，当前版本暂未实现")
-	return fmt.Errorf("Update 2FA requires SRP implementation which is complex. Please verify if gotd provides helpers.")
+	return nil
 }
 
 // GetType 获取任务类型

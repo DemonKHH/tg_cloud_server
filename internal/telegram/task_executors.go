@@ -1040,7 +1040,6 @@ func (t *VerifyCodeTask) Execute(ctx context.Context, api *tg.Client) error {
 	return nil
 }
 
-// searchVerifyCode 在对话中搜索验证码
 func (t *VerifyCodeTask) searchVerifyCode(dialogs tg.MessagesDialogsClass, senders []string, startTime time.Time) (code, sender string, receivedTime time.Time, found bool) {
 	if messagesDialogs, ok := dialogs.(*tg.MessagesDialogs); ok {
 		for _, message := range messagesDialogs.Messages {

@@ -138,8 +138,8 @@ export function CreateTaskDialog({
           toast.error("请填写消息内容")
           return null
         }
-        if (!form.broadcast_groups && !form.broadcast_channels) {
-          toast.error("请至少填写一个群组或频道")
+        if (!form.broadcast_groups) {
+          toast.error("请至少填写一个群组")
           return null
         }
         config.message = form.broadcast_message
@@ -147,17 +147,10 @@ export function CreateTaskDialog({
         const allGroups: any[] = []
 
         const processInput = (input: string) => {
-          return input.split(",")
+          return input.split(/[\n,]+/)
             .map(g => {
               let item = g.trim()
               if (!item) return null
-
-              // 尝试解析为数字ID
-              // 使用正则表达式确保只有纯数字才被视为ID
-              if (/^-?\d+$/.test(item)) {
-                const num = parseInt(item)
-                if (!isNaN(num)) return num
-              }
 
               // 处理链接格式 (t.me/username 或 https://t.me/username)
               item = item.replace(/^https?:\/\//, '').replace(/^t\.me\//, '')
@@ -173,12 +166,9 @@ export function CreateTaskDialog({
         if (form.broadcast_groups) {
           allGroups.push(...processInput(form.broadcast_groups))
         }
-        if (form.broadcast_channels) {
-          allGroups.push(...processInput(form.broadcast_channels))
-        }
 
         if (allGroups.length === 0) {
-          toast.error("请至少填写一个有效的群组或频道")
+          toast.error("请至少填写一个有效的群组")
           return null
         }
 
@@ -544,19 +534,12 @@ export function CreateTaskDialog({
             {form.task_type === "broadcast" && (
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <Label>群组 (ID/用户名/链接，逗号分隔)</Label>
-                  <Input
+                  <Label>群组 (用户名/链接，一行一个)</Label>
+                  <Textarea
                     value={form.broadcast_groups}
                     onChange={e => setForm({ ...form, broadcast_groups: e.target.value })}
-                    placeholder="123456, @groupname, t.me/group"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>频道 (ID/用户名/链接，逗号分隔)</Label>
-                  <Input
-                    value={form.broadcast_channels}
-                    onChange={e => setForm({ ...form, broadcast_channels: e.target.value })}
-                    placeholder="123456, @channel, t.me/channel"
+                    placeholder="@groupname&#10;https://t.me/group"
+                    className="min-h-[150px]"
                   />
                 </div>
                 <div className="space-y-2">

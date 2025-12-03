@@ -45,7 +45,7 @@ type Task struct {
 	ID          uint64     `json:"id" gorm:"primaryKey;autoIncrement"`
 	UserID      uint64     `json:"user_id" gorm:"not null;index"`
 	AccountIDs  string     `json:"account_ids" gorm:"type:text;not null"` // 账号ID列表（逗号分隔，如 "1,2,3"）
-	TaskType    TaskType   `json:"task_type" gorm:"type:enum('check','private_message','broadcast','verify_code','group_chat');not null"`
+	TaskType    TaskType   `json:"task_type" gorm:"type:enum('check','private_message','broadcast','verify_code','group_chat','join_group','scenario','force_add_group','terminate_sessions','update_2fa');not null"`
 	Status      TaskStatus `json:"status" gorm:"type:enum('pending','queued','running','completed','failed','cancelled');default:'pending'"`
 	Priority    int        `json:"priority" gorm:"default:5"` // 优先级 1-10
 	Config      TaskConfig `json:"config" gorm:"type:json"`   // 任务配置（JSON格式）

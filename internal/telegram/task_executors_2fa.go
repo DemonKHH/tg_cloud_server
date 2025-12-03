@@ -59,13 +59,13 @@ func (t *Update2FATask) Execute(ctx context.Context, api *tg.Client) error {
 
 	var currentPassword tg.InputCheckPasswordSRPClass
 	if passwordSettings.HasPassword {
-		addLog("当前账号已设置 2FA 密码，正在验证旧密码...")
+		addLog("当前账号已设置 2FA 密码，需要提供旧密码...")
 		if oldPassword == "" {
 			addLog("错误: 未提供旧密码")
 			return fmt.Errorf("old_password is required when 2FA is enabled")
 		}
 
-		// 验证旧密码
+		// 计算旧密码的哈希用于修改密码
 		inputCheck, err := auth.PasswordHash(
 			[]byte(oldPassword),
 			passwordSettings.SRPID,
@@ -77,14 +77,7 @@ func (t *Update2FATask) Execute(ctx context.Context, api *tg.Client) error {
 			addLog(fmt.Sprintf("计算密码哈希失败: %v", err))
 			return fmt.Errorf("failed to compute password hash: %w", err)
 		}
-
-		// 验证密码
-		_, err = api.AuthCheckPassword(ctx, inputCheck)
-		if err != nil {
-			addLog(fmt.Sprintf("旧密码验证失败: %v", err))
-			return fmt.Errorf("invalid old password: %w", err)
-		}
-		addLog("旧密码验证成功")
+		addLog("旧密码哈希计算完成")
 		currentPassword = inputCheck
 	} else {
 		addLog("当前账号未设置 2FA 密码")

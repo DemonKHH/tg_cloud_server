@@ -61,17 +61,40 @@ func (s *statsService) GetSystemOverview(ctx context.Context, userID uint64, per
 	// 获取基本统计
 	totalUsers, _ := s.getUserCount(ctx)
 	totalAccounts, _ := s.accountRepo.CountByUserID(userID)
-	totalTasks, _ := s.getTaskCount(ctx, userID, time.Time{}) // 全部任务
+
+	// 获取任务统计
+	taskStats, err := s.taskRepo.GetTaskStatsByUserID(userID, time.Time{}, time.Time{})
+	if err != nil {
+		s.logger.Error("Failed to get task stats", zap.Error(err))
+	}
+	totalTasks := taskStats.Total
+
 	totalProxies, _ := s.getProxyCount(ctx, userID)
 
 	// 获取周期内统计
 	periodAccounts, _ := s.getAccountCountSince(ctx, userID, periodStart)
-	periodTasks, _ := s.getTaskCount(ctx, userID, periodStart)
+
+	periodTaskStats, _ := s.taskRepo.GetTaskStatsByUserID(userID, periodStart, time.Time{})
+	periodTasks := periodTaskStats.Total
 
 	// 获取状态分布
-	accountsByStatus, _ := s.getAccountStatusDistribution(ctx, userID)
-	tasksByStatus, _ := s.getTaskStatusDistribution(ctx, userID, periodStart)
-	tasksByType, _ := s.getTaskTypeDistribution(ctx, userID, periodStart)
+	accountsByStatus, err := s.accountRepo.GetStatusDistribution(userID)
+	if err != nil {
+		s.logger.Error("Failed to get account status distribution", zap.Error(err))
+		accountsByStatus = make(map[string]int64)
+	}
+
+	tasksByStatus, err := s.taskRepo.GetStatusDistribution(userID, periodStart)
+	if err != nil {
+		s.logger.Error("Failed to get task status distribution", zap.Error(err))
+		tasksByStatus = make(map[string]int64)
+	}
+
+	tasksByType, err := s.taskRepo.GetTypeDistribution(userID, periodStart)
+	if err != nil {
+		s.logger.Error("Failed to get task type distribution", zap.Error(err))
+		tasksByType = make(map[string]int64)
+	}
 
 	// 获取系统健康指标
 	systemHealth, _ := s.GetSystemHealth(ctx)
@@ -81,7 +104,7 @@ func (s *statsService) GetSystemOverview(ctx context.Context, userID uint64, per
 		TotalAccounts:    totalAccounts,
 		TotalTasks:       totalTasks,
 		TotalProxies:     totalProxies,
-		PeriodUsers:      0, // 简化实现，需要根据需求完善
+		PeriodUsers:      0, // 简化实现
 		PeriodAccounts:   periodAccounts,
 		PeriodTasks:      periodTasks,
 		AccountsByStatus: accountsByStatus,
@@ -109,23 +132,30 @@ func (s *statsService) GetAccountStatistics(ctx context.Context, userID uint64, 
 	activeAccounts, _ := s.accountRepo.CountActiveByUserID(userID)
 
 	// 获取状态分布
-	statusDistribution, _ := s.getAccountStatusDistribution(ctx, userID)
+	statusDistribution, err := s.accountRepo.GetStatusDistribution(userID)
+	if err != nil {
+		s.logger.Error("Failed to get status distribution", zap.Error(err))
+		statusDistribution = make(map[string]int64)
+	}
 
 	// 获取代理使用情况
-	proxyUsage := s.getProxyUsageStats(ctx, userID)
+	proxyUsage, err := s.accountRepo.GetProxyUsageStats(userID)
+	if err != nil {
+		s.logger.Error("Failed to get proxy usage stats", zap.Error(err))
+		proxyUsage = &models.ProxyUsageStats{}
+	}
 
-	// 获取活跃度统计
+	// 获取活跃度统计 (简化实现，暂无 repository 支持)
 	activityStats := s.getAccountActivityStats(ctx, userID)
 
-	// 获取风控统计
-	riskStats := s.getAccountRiskStats(ctx, userID)
+	// 获取风控统计 (基于状态分布计算)
+	riskStats := s.calculateRiskStats(statusDistribution)
 
-	// 获取趋势数据（简化实现）
-	trendData := []models.TimeSeriesPoint{
-		{Timestamp: now.AddDate(0, 0, -7), Value: float64(totalAccounts * 8 / 10), Label: "7天前"},
-		{Timestamp: now.AddDate(0, 0, -5), Value: float64(totalAccounts * 9 / 10), Label: "5天前"},
-		{Timestamp: now.AddDate(0, 0, -3), Value: float64(totalAccounts * 95 / 100), Label: "3天前"},
-		{Timestamp: now, Value: float64(totalAccounts), Label: "现在"},
+	// 获取趋势数据
+	trendData, err := s.accountRepo.GetGrowthTrend(userID, 7) // 默认7天
+	if err != nil {
+		s.logger.Error("Failed to get growth trend", zap.Error(err))
+		trendData = []models.TimeSeriesPoint{}
 	}
 
 	statistics := &models.AccountStatistics{
@@ -133,7 +163,7 @@ func (s *statsService) GetAccountStatistics(ctx context.Context, userID uint64, 
 		ActiveAccounts:         activeAccounts,
 		StatusDistribution:     statusDistribution,
 		ConnectionDistribution: make(map[string]int64), // 简化实现
-		ProxyUsage:             proxyUsage,
+		ProxyUsage:             *proxyUsage,
 		ActivityStats:          activityStats,
 		RiskStats:              riskStats,
 		TrendData:              trendData,
@@ -172,40 +202,26 @@ func (s *statsService) GetUserDashboard(ctx context.Context, userID uint64) (*mo
 	recentActivities := []models.DashboardActivity{
 		{
 			ID:          1,
-			Type:        "task_completed",
-			Description: "任务执行完成",
-			Icon:        "check-circle",
-			Color:       "success",
-			CreatedAt:   now.Add(-1 * time.Hour),
-		},
-		{
-			ID:          2,
-			Type:        "account_created",
-			Description: "新增TG账号",
-			Icon:        "user-plus",
+			Type:        "info",
+			Description: "欢迎使用 TG Cloud",
+			Icon:        "info",
 			Color:       "info",
-			CreatedAt:   now.Add(-2 * time.Hour),
+			CreatedAt:   now,
 		},
 	}
 
 	// 获取系统通知（简化实现）
-	systemNotifications := []models.SystemNotification{
-		{
-			ID:        1,
-			Type:      "info",
-			Title:     "系统更新",
-			Message:   "系统将在今晚进行例行维护",
-			IsRead:    false,
-			Priority:  3,
-			CreatedAt: now.Add(-30 * time.Minute),
-		},
-	}
+	systemNotifications := []models.SystemNotification{}
 
-	// 获取性能指标（简化实现）
+	// 获取性能指标
+	tasksPerHour, _ := s.taskRepo.GetTasksPerHourTrend(userID, 24)
+	successRateTrend, _ := s.taskRepo.GetSuccessRateTrend(userID, 24)
+	accountGrowth, _ := s.accountRepo.GetGrowthTrend(userID, 7)
+
 	performanceMetrics := models.DashboardMetrics{
-		TasksPerHour:     s.getTasksPerHourTrend(ctx, userID),
-		SuccessRateTrend: s.getSuccessRateTrend(ctx, userID),
-		AccountGrowth:    s.getAccountGrowthTrend(ctx, userID),
+		TasksPerHour:     tasksPerHour,
+		SuccessRateTrend: successRateTrend,
+		AccountGrowth:    accountGrowth,
 	}
 
 	dashboard := &models.UserDashboard{
@@ -287,44 +303,6 @@ func (s *statsService) getAccountCountSince(ctx context.Context, userID uint64, 
 	return 5, nil
 }
 
-// getAccountStatusDistribution 获取账号状态分布
-func (s *statsService) getAccountStatusDistribution(ctx context.Context, userID uint64) (map[string]int64, error) {
-	// 简化实现
-	return map[string]int64{
-		"normal":      15,
-		"warning":     3,
-		"restricted":  1,
-		"dead":        0,
-		"cooling":     2,
-		"maintenance": 1,
-		"new":         3,
-	}, nil
-}
-
-// getTaskStatusDistribution 获取任务状态分布
-func (s *statsService) getTaskStatusDistribution(ctx context.Context, userID uint64, since time.Time) (map[string]int64, error) {
-	// 简化实现
-	return map[string]int64{
-		"completed": 45,
-		"failed":    3,
-		"running":   2,
-		"pending":   5,
-		"cancelled": 1,
-	}, nil
-}
-
-// getTaskTypeDistribution 获取任务类型分布
-func (s *statsService) getTaskTypeDistribution(ctx context.Context, userID uint64, since time.Time) (map[string]int64, error) {
-	// 简化实现
-	return map[string]int64{
-		"check":     20,
-		"private":   15,
-		"broadcast": 10,
-		"verify":    3,
-		"groupchat": 8,
-	}, nil
-}
-
 // getAccountHealthDistribution 获取账号健康度分布
 func (s *statsService) getAccountHealthDistribution(ctx context.Context, userID uint64) map[string]int64 {
 	// 简化实现
@@ -360,15 +338,15 @@ func (s *statsService) getAccountActivityStats(ctx context.Context, userID uint6
 	}
 }
 
-// getAccountRiskStats 获取账号风控统计
-func (s *statsService) getAccountRiskStats(ctx context.Context, userID uint64) models.AccountRiskStats {
+// calculateRiskStats 根据状态分布计算风控统计
+func (s *statsService) calculateRiskStats(distribution map[string]int64) models.AccountRiskStats {
 	return models.AccountRiskStats{
-		HighRiskAccounts:   2,
-		MediumRiskAccounts: 5,
-		LowRiskAccounts:    18,
-		RestrictedAccounts: 1,
-		DeadAccounts:       0,
-		RecentBans:         0,
+		HighRiskAccounts:   distribution[string(models.AccountStatusFrozen)] + distribution[string(models.AccountStatusDead)],
+		MediumRiskAccounts: distribution[string(models.AccountStatusRestricted)] + distribution[string(models.AccountStatusWarning)],
+		LowRiskAccounts:    distribution[string(models.AccountStatusNormal)] + distribution[string(models.AccountStatusNew)] + distribution[string(models.AccountStatusCooling)],
+		RestrictedAccounts: distribution[string(models.AccountStatusRestricted)],
+		DeadAccounts:       distribution[string(models.AccountStatusDead)],
+		RecentBans:         0, // 需要额外逻辑
 	}
 }
 
@@ -377,46 +355,25 @@ func (s *statsService) getQuickStats(ctx context.Context, userID uint64) models.
 	totalAccounts, _ := s.accountRepo.CountByUserID(userID)
 	activeAccounts, _ := s.accountRepo.CountActiveByUserID(userID)
 
+	taskStats, _ := s.taskRepo.GetTaskStatsByUserID(userID, time.Time{}, time.Time{})
+
+	var successRate float64
+	if taskStats.Total > 0 {
+		successRate = float64(taskStats.Completed) / float64(taskStats.Total) * 100
+	}
+
+	activeProxies, _ := s.getProxyCount(ctx, userID)
+
 	return models.DashboardQuickStats{
 		TotalAccounts:  totalAccounts,
 		ActiveAccounts: activeAccounts,
-		TodayTasks:     15,
-		CompletedTasks: 142,
-		FailedTasks:    8,
-		SuccessRate:    94.7,
-		ActiveProxies:  8,
-	}
-}
-
-// getTrend methods (简化实现)
-func (s *statsService) getTasksPerHourTrend(ctx context.Context, userID uint64) []models.TimeSeriesPoint {
-	now := time.Now()
-	return []models.TimeSeriesPoint{
-		{Timestamp: now.Add(-3 * time.Hour), Value: 12, Label: "3h前"},
-		{Timestamp: now.Add(-2 * time.Hour), Value: 18, Label: "2h前"},
-		{Timestamp: now.Add(-1 * time.Hour), Value: 15, Label: "1h前"},
-		{Timestamp: now, Value: 22, Label: "现在"},
-	}
-}
-
-func (s *statsService) getSuccessRateTrend(ctx context.Context, userID uint64) []models.TimeSeriesPoint {
-	now := time.Now()
-	return []models.TimeSeriesPoint{
-		{Timestamp: now.Add(-24 * time.Hour), Value: 93.2},
-		{Timestamp: now.Add(-18 * time.Hour), Value: 94.1},
-		{Timestamp: now.Add(-12 * time.Hour), Value: 92.8},
-		{Timestamp: now.Add(-6 * time.Hour), Value: 95.2},
-		{Timestamp: now, Value: 94.7},
-	}
-}
-
-func (s *statsService) getAccountGrowthTrend(ctx context.Context, userID uint64) []models.TimeSeriesPoint {
-	now := time.Now()
-	return []models.TimeSeriesPoint{
-		{Timestamp: now.Add(-7 * 24 * time.Hour), Value: 18},
-		{Timestamp: now.Add(-5 * 24 * time.Hour), Value: 20},
-		{Timestamp: now.Add(-3 * 24 * time.Hour), Value: 22},
-		{Timestamp: now.Add(-1 * 24 * time.Hour), Value: 24},
-		{Timestamp: now, Value: 25},
+		TodayTasks:     taskStats.TodayTasks,
+		CompletedTasks: taskStats.Completed,
+		FailedTasks:    taskStats.Failed,
+		PendingTasks:   taskStats.Pending,
+		RunningTasks:   taskStats.Running,
+		CancelledTasks: taskStats.Cancelled,
+		SuccessRate:    successRate,
+		ActiveProxies:  activeProxies,
 	}
 }

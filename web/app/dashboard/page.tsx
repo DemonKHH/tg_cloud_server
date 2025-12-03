@@ -6,12 +6,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Users, ListTodo, Globe, Activity, TrendingUp, AlertCircle, Zap, Shield, Clock, Bot } from "lucide-react"
 import { statsAPI } from "@/lib/api"
 import { useEffect, useState, useMemo } from "react"
-import { 
-  StatsCard, 
-  ModernLineChart, 
-  ModernAreaChart, 
-  ModernBarChart, 
-  ModernPieChart 
+import {
+  StatsCard,
+  ModernLineChart,
+  ModernAreaChart,
+  ModernBarChart,
+  ModernPieChart
 } from "@/components/charts/modern-charts"
 import { Progress } from "@/components/ui/progress"
 import { motion } from "framer-motion"
@@ -32,7 +32,7 @@ export default function DashboardPage() {
         statsAPI.getDashboard(),
         statsAPI.getOverview("week"),
       ])
-      
+
       if (dashboardRes.data) {
         setDashboard(dashboardRes.data)
       }
@@ -48,44 +48,44 @@ export default function DashboardPage() {
   }
 
   // 图表数据使用 useMemo 缓存
-  const activityData = useMemo(() => [
-    { name: '周一', value: 240 },
-    { name: '周二', value: 139 },
-    { name: '周三', value: 360 },
-    { name: '周四', value: 280 },
-    { name: '周五', value: 320 },
-    { name: '周六', value: 180 },
-    { name: '周日', value: 200 },
-  ], [])
+  const activityData = useMemo(() => {
+    if (!dashboard?.performance_metrics?.tasks_per_hour) return []
+    return dashboard.performance_metrics.tasks_per_hour.map((item: any) => ({
+      name: item.label,
+      value: item.value
+    }))
+  }, [dashboard])
 
   const taskStatusData = useMemo(() => [
-    { name: '已完成', value: dashboard?.completed_tasks || overview?.completed_tasks || 0 },
-    { name: '运行中', value: dashboard?.running_tasks || overview?.running_tasks || 0 },
-    { name: '等待中', value: dashboard?.pending_tasks || overview?.pending_tasks || 0 },
-    { name: '失败', value: dashboard?.failed_tasks || overview?.failed_tasks || 0 },
-  ], [dashboard, overview])
+    { name: '已完成', value: dashboard?.quick_stats?.completed_tasks || 0 },
+    { name: '运行中', value: dashboard?.quick_stats?.running_tasks || 0 },
+    { name: '等待中', value: dashboard?.quick_stats?.pending_tasks || 0 },
+    { name: '失败', value: dashboard?.quick_stats?.failed_tasks || 0 },
+  ], [dashboard])
 
-  const growthData = useMemo(() => [
-    { name: '1月', value: 120 },
-    { name: '2月', value: 190 },
-    { name: '3月', value: 300 },
-    { name: '4月', value: 250 },
-    { name: '5月', value: 420 },
-    { name: '6月', value: 380 },
-  ], [])
+  const growthData = useMemo(() => {
+    if (!dashboard?.performance_metrics?.account_growth) return []
+    return dashboard.performance_metrics.account_growth.map((item: any) => ({
+      name: new Date(item.timestamp).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' }),
+      value: item.value
+    }))
+  }, [dashboard])
 
-  const performanceData = useMemo(() => [
-    { name: '性能', value: 85 },
-    { name: '可用性', value: 98 },
-    { name: '安全性', value: 92 },
-    { name: '响应时间', value: 78 },
-  ], [])
+  const performanceData = useMemo(() => {
+    if (!overview?.system_health) return []
+    return [
+      { name: '系统评分', value: overview.system_health.overall_score || 0 },
+      { name: '账号健康', value: overview.system_health.accounts_health || 0 },
+      { name: '任务成功率', value: overview.system_health.tasks_success_rate || 0 },
+      { name: '代理可用率', value: overview.system_health.proxies_active_rate || 0 },
+    ]
+  }, [overview])
 
   if (loading) {
     return (
       <MainLayout>
         <div className="flex items-center justify-center h-64">
-          <motion.div 
+          <motion.div
             animate={{ rotate: 360 }}
             transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
             className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full"
@@ -118,43 +118,45 @@ export default function DashboardPage() {
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
           <StatsCard
             title="总账号数"
-            value={dashboard?.total_accounts || overview?.total_accounts || 0}
-            change={dashboard?.account_growth || overview?.account_growth ? `+${dashboard?.account_growth || overview?.account_growth}% 较上月` : "暂无数据"}
+            value={dashboard?.quick_stats?.total_accounts || overview?.total_accounts || 0}
+            change={dashboard?.performance_metrics?.account_growth?.length > 1 ?
+              `+${(dashboard.performance_metrics.account_growth[dashboard.performance_metrics.account_growth.length - 1].value - dashboard.performance_metrics.account_growth[0].value)} 较7日前` :
+              "暂无数据"}
             changeType="positive"
             icon={<Users className="h-5 w-5" />}
           />
           <StatsCard
-            title="活跃任务"
-            value={dashboard?.active_tasks || overview?.active_tasks || 0}
-            change={dashboard?.running_tasks || overview?.running_tasks ? `${dashboard?.running_tasks || overview?.running_tasks} 运行中` : "暂无数据"}
+            title="今日任务"
+            value={dashboard?.quick_stats?.today_tasks || 0}
+            change={dashboard?.quick_stats?.success_rate ? `${dashboard.quick_stats.success_rate.toFixed(1)}% 成功率` : "暂无数据"}
             changeType="positive"
             icon={<Zap className="h-5 w-5" />}
           />
           <StatsCard
-            title="正常账号"
-            value={dashboard?.normal_accounts || overview?.normal_accounts || 0}
-            change={dashboard?.normal_rate || overview?.normal_rate ? `${(dashboard?.normal_rate || overview?.normal_rate * 100).toFixed(1)}% 正常率` : "暂无数据"}
+            title="活跃账号"
+            value={dashboard?.quick_stats?.active_accounts || 0}
+            change={dashboard?.quick_stats?.total_accounts ? `${((dashboard.quick_stats.active_accounts / dashboard.quick_stats.total_accounts) * 100).toFixed(1)}% 活跃率` : "暂无数据"}
             changeType="positive"
             icon={<Shield className="h-5 w-5" />}
           />
           <StatsCard
             title="完成任务"
-            value={dashboard?.completed_tasks || overview?.completed_tasks || 0}
-            change={dashboard?.today_tasks || overview?.today_tasks ? `${dashboard?.today_tasks || overview?.today_tasks} 今日任务` : "暂无数据"}
-            changeType="positive"
+            value={dashboard?.quick_stats?.completed_tasks || 0}
+            change={dashboard?.quick_stats?.failed_tasks ? `${dashboard.quick_stats.failed_tasks} 失败` : "无失败"}
+            changeType={dashboard?.quick_stats?.failed_tasks > 0 ? "negative" : "positive"}
             icon={<Clock className="h-5 w-5" />}
           />
         </div>
 
         {/* Modern Charts Grid */}
         <div className="grid gap-6 lg:grid-cols-2">
-          <ModernLineChart 
+          <ModernLineChart
             data={activityData}
             title="系统活动趋势"
             description="最近7天的系统使用情况"
             height={300}
           />
-          <ModernPieChart 
+          <ModernPieChart
             data={taskStatusData}
             title="任务状态分布"
             description="当前任务执行状态分析"
@@ -164,13 +166,13 @@ export default function DashboardPage() {
 
         {/* Additional Analytics */}
         <div className="grid gap-6 lg:grid-cols-2">
-          <ModernAreaChart 
+          <ModernAreaChart
             data={growthData}
             title="账号增长趋势"
             description="过去6个月的账号增长情况"
             height={300}
           />
-          <ModernBarChart 
+          <ModernBarChart
             data={performanceData}
             title="系统性能指标"
             description="各项性能指标评分"

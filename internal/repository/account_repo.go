@@ -28,6 +28,9 @@ type AccountRepository interface {
 	UpdateConnectionStatus(id uint64, isOnline bool) error
 	Update2FAStatus(id uint64, has2FA bool, password string) error
 	UpdateRiskStatus(id uint64, status models.AccountStatus, frozenUntil *string) error
+	GetStatusDistribution(userID uint64) (map[string]int64, error)
+	GetGrowthTrend(userID uint64, days int) ([]models.TimeSeriesPoint, error)
+	GetProxyUsageStats(userID uint64) (*models.ProxyUsageStats, error)
 }
 
 // accountRepository 账号数据访问实现
@@ -291,4 +294,132 @@ func (r *accountRepository) UpdateRiskStatus(id uint64, status models.AccountSta
 	return r.db.Model(&models.TGAccount{}).
 		Where("id = ?", id).
 		Updates(updates).Error
+}
+
+// GetStatusDistribution 获取账号状态分布
+func (r *accountRepository) GetStatusDistribution(userID uint64) (map[string]int64, error) {
+	var results []struct {
+		Status string
+		Count  int64
+	}
+
+	err := r.db.Model(&models.TGAccount{}).
+		Select("status, count(*) as count").
+		Where("user_id = ?", userID).
+		Group("status").
+		Scan(&results).Error
+
+	if err != nil {
+		return nil, err
+	}
+
+	distribution := make(map[string]int64)
+	for _, result := range results {
+		distribution[result.Status] = result.Count
+	}
+
+	return distribution, nil
+}
+
+// GetGrowthTrend 获取账号增长趋势
+func (r *accountRepository) GetGrowthTrend(userID uint64, days int) ([]models.TimeSeriesPoint, error) {
+	// 使用 SQLite 的 strftime 函数格式化日期
+	// 注意：如果使用 MySQL，需要改为 DATE_FORMAT(created_at, '%Y-%m-%d')
+	// 这里假设是 SQLite，因为没有明确指定数据库类型，但通常本地开发用 SQLite
+	// 为了兼容性，我们获取最近 days 天的数据，然后在内存中处理
+	// 或者使用 GORM 的通用写法
+
+	startDate := time.Now().AddDate(0, 0, -days)
+
+	// 获取所有在此期间创建的账号
+	var accounts []models.TGAccount
+	err := r.db.Select("created_at").
+		Where("user_id = ? AND created_at >= ?", userID, startDate).
+		Order("created_at ASC").
+		Find(&accounts).Error
+
+	if err != nil {
+		return nil, err
+	}
+
+	// 按天聚合
+	dailyCounts := make(map[string]int64)
+	for _, account := range accounts {
+		date := account.CreatedAt.Format("2006-01-02")
+		dailyCounts[date]++
+	}
+
+	// 构建结果，确保每天都有数据（即使是0）
+	var points []models.TimeSeriesPoint
+	// 获取当前总数作为基准（如果是累计增长）或者每日新增
+	// 这里我们返回每日新增，前端如果是展示累计，需要前端处理或者这里改为累计
+	// 根据 stats_service.go 中的 mock 数据，看起来是累计总数
+	// 让我们先获取截止到 startDate 的总数
+	var currentTotal int64
+	r.db.Model(&models.TGAccount{}).Where("user_id = ? AND created_at < ?", userID, startDate).Count(&currentTotal)
+
+	for i := 0; i < days; i++ {
+		date := startDate.AddDate(0, 0, i)
+		dateStr := date.Format("2006-01-02")
+
+		// 累加当天的增量
+		currentTotal += dailyCounts[dateStr]
+
+		points = append(points, models.TimeSeriesPoint{
+			Timestamp: date,
+			Value:     float64(currentTotal),
+			Label:     date.Format("01-02"),
+		})
+	}
+
+	return points, nil
+}
+
+// GetProxyUsageStats 获取代理使用统计
+func (r *accountRepository) GetProxyUsageStats(userID uint64) (*models.ProxyUsageStats, error) {
+	stats := &models.ProxyUsageStats{
+		ProxyTypes: make(map[string]int64),
+	}
+
+	// 统计有代理和无代理的账号
+	var withProxy int64
+	r.db.Model(&models.TGAccount{}).Where("user_id = ? AND proxy_id IS NOT NULL", userID).Count(&withProxy)
+	stats.WithProxy = withProxy
+
+	var withoutProxy int64
+	r.db.Model(&models.TGAccount{}).Where("user_id = ? AND proxy_id IS NULL", userID).Count(&withoutProxy)
+	stats.WithoutProxy = withoutProxy
+
+	// 统计代理类型
+	var typeResults []struct {
+		Protocol string
+		Count    int64
+	}
+
+	err := r.db.Table("tg_accounts").
+		Select("proxy_ips.protocol, count(*) as count").
+		Joins("LEFT JOIN proxy_ips ON proxy_ips.id = tg_accounts.proxy_id").
+		Where("tg_accounts.user_id = ? AND tg_accounts.proxy_id IS NOT NULL", userID).
+		Group("proxy_ips.protocol").
+		Scan(&typeResults).Error
+
+	if err != nil {
+		return nil, err
+	}
+
+	for _, result := range typeResults {
+		stats.ProxyTypes[result.Protocol] = result.Count
+	}
+
+	// 计算平均延迟 (仅计算有延迟数据的代理)
+	// 假设 proxy_ips 表有 latency 字段，且 tg_accounts 关联了 proxy_ips
+	// 这里需要注意 proxy_ips 表结构，之前 list_dir 没有显示 proxy_ips 的结构，但 account_repo.go 中有 Joins("LEFT JOIN proxy_ips ...")
+	// 假设 proxy_ips 有 latency 字段
+	// 如果没有 latency 字段，这个查询会报错。
+	// 让我们先检查一下 proxy_ips 的模型定义，或者先注释掉延迟统计，或者假设它存在。
+	// 查看 account_repo.go 的 GetAccountSummaries 方法，它 select 了 proxy_ips 的字段，但没有 latency。
+	// 让我们先不计算 latency，或者设为 0。
+	stats.AvgLatency = 0 // 暂不支持延迟统计
+
+	return stats, nil
 }

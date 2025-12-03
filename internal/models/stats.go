@@ -135,6 +135,9 @@ type DashboardQuickStats struct {
 	TodayTasks     int64   `json:"today_tasks"`
 	CompletedTasks int64   `json:"completed_tasks"`
 	FailedTasks    int64   `json:"failed_tasks"`
+	PendingTasks   int64   `json:"pending_tasks"`
+	RunningTasks   int64   `json:"running_tasks"`
+	CancelledTasks int64   `json:"cancelled_tasks"`
 	SuccessRate    float64 `json:"success_rate"`
 	ActiveProxies  int64   `json:"active_proxies"`
 }

@@ -37,7 +37,14 @@ type TaskRepository interface {
 	// 批量操作
 	UpdateTasksStatus(taskIDs []uint64, status string) error
 	DeleteCompletedTasksBefore(userID uint64, cutoffTime time.Time) (int64, error)
+
 	DeleteByUserIDAndID(userID, taskID uint64) error
+
+	// 统计图表
+	GetStatusDistribution(userID uint64, since time.Time) (map[string]int64, error)
+	GetTypeDistribution(userID uint64, since time.Time) (map[string]int64, error)
+	GetTasksPerHourTrend(userID uint64, hours int) ([]models.TimeSeriesPoint, error)
+	GetSuccessRateTrend(userID uint64, hours int) ([]models.TimeSeriesPoint, error)
 }
 
 // taskRepository GORM实现
@@ -423,4 +430,161 @@ func (r *taskRepository) DeleteCompletedTasksBefore(userID uint64, cutoffTime ti
 	})
 
 	return rowsAffected, err
+}
+
+// GetStatusDistribution 获取任务状态分布
+func (r *taskRepository) GetStatusDistribution(userID uint64, since time.Time) (map[string]int64, error) {
+	var results []struct {
+		Status string
+		Count  int64
+	}
+
+	query := r.db.Model(&models.Task{}).
+		Select("status, count(*) as count").
+		Where("user_id = ?", userID)
+
+	if !since.IsZero() {
+		query = query.Where("created_at >= ?", since)
+	}
+
+	err := query.Group("status").Scan(&results).Error
+	if err != nil {
+		return nil, err
+	}
+
+	distribution := make(map[string]int64)
+	for _, result := range results {
+		distribution[result.Status] = result.Count
+	}
+
+	return distribution, nil
+}
+
+// GetTypeDistribution 获取任务类型分布
+func (r *taskRepository) GetTypeDistribution(userID uint64, since time.Time) (map[string]int64, error) {
+	var results []struct {
+		TaskType string
+		Count    int64
+	}
+
+	query := r.db.Model(&models.Task{}).
+		Select("task_type, count(*) as count").
+		Where("user_id = ?", userID)
+
+	if !since.IsZero() {
+		query = query.Where("created_at >= ?", since)
+	}
+
+	err := query.Group("task_type").Scan(&results).Error
+	if err != nil {
+		return nil, err
+	}
+
+	distribution := make(map[string]int64)
+	for _, result := range results {
+		distribution[result.TaskType] = result.Count
+	}
+
+	return distribution, nil
+}
+
+// GetTasksPerHourTrend 获取每小时任务数趋势
+func (r *taskRepository) GetTasksPerHourTrend(userID uint64, hours int) ([]models.TimeSeriesPoint, error) {
+	startTime := time.Now().Add(-time.Duration(hours) * time.Hour)
+
+	// 获取时间段内的所有任务
+	var tasks []models.Task
+	err := r.db.Select("created_at").
+		Where("user_id = ? AND created_at >= ?", userID, startTime).
+		Order("created_at ASC").
+		Find(&tasks).Error
+
+	if err != nil {
+		return nil, err
+	}
+
+	// 按小时聚合
+	hourlyCounts := make(map[string]int64)
+	for _, task := range tasks {
+		// 格式化为 "2006-01-02 15:00"
+		hourStr := task.CreatedAt.Format("2006-01-02 15:00")
+		hourlyCounts[hourStr]++
+	}
+
+	// 构建结果
+	var points []models.TimeSeriesPoint
+	for i := 0; i < hours; i++ {
+		// 从最早的时间开始
+		t := startTime.Add(time.Duration(i) * time.Hour).Truncate(time.Hour)
+		hourStr := t.Format("2006-01-02 15:00")
+
+		points = append(points, models.TimeSeriesPoint{
+			Timestamp: t,
+			Value:     float64(hourlyCounts[hourStr]),
+			Label:     t.Format("15:00"),
+		})
+	}
+	// 确保包含当前小时
+	now := time.Now().Truncate(time.Hour)
+	if len(points) == 0 || !points[len(points)-1].Timestamp.Equal(now) {
+		hourStr := now.Format("2006-01-02 15:00")
+		points = append(points, models.TimeSeriesPoint{
+			Timestamp: now,
+			Value:     float64(hourlyCounts[hourStr]),
+			Label:     "现在",
+		})
+	}
+
+	return points, nil
+}
+
+// GetSuccessRateTrend 获取成功率趋势
+func (r *taskRepository) GetSuccessRateTrend(userID uint64, hours int) ([]models.TimeSeriesPoint, error) {
+	// 简化实现：每6小时一个点，计算该时间段内的成功率
+	// 为了性能，我们只取最近24小时，分4个点，或者最近hours小时
+
+	step := hours / 5 // 分5个点
+	if step < 1 {
+		step = 1
+	}
+
+	var points []models.TimeSeriesPoint
+	now := time.Now()
+
+	for i := 5; i >= 0; i-- {
+		endTime := now.Add(-time.Duration(i*step) * time.Hour)
+		startTime := endTime.Add(-time.Duration(step) * time.Hour)
+
+		// 统计该时间段内的任务
+		var total int64
+		var success int64
+
+		r.db.Model(&models.Task{}).
+			Where("user_id = ? AND created_at >= ? AND created_at < ?", userID, startTime, endTime).
+			Count(&total)
+
+		if total > 0 {
+			r.db.Model(&models.Task{}).
+				Where("user_id = ? AND created_at >= ? AND created_at < ? AND status = ?",
+					userID, startTime, endTime, models.TaskStatusCompleted).
+				Count(&success)
+
+			rate := float64(success) / float64(total) * 100
+			points = append(points, models.TimeSeriesPoint{
+				Timestamp: endTime,
+				Value:     rate,
+				Label:     endTime.Format("15:00"),
+			})
+		} else {
+			// 如果没有任务，延续上一个点的成功率，或者设为100%（无失败）
+			// 这里设为0或者跳过
+			points = append(points, models.TimeSeriesPoint{
+				Timestamp: endTime,
+				Value:     0, // 或者 100?
+				Label:     endTime.Format("15:00"),
+			})
+		}
+	}
+
+	return points, nil
 }

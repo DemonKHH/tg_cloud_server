@@ -211,7 +211,7 @@ func (s *VerifyCodeService) ListSessions(userID uint64, page, limit int, keyword
 	}
 
 	// 转换为响应格式
-	var responses []models.VerifyCodeSessionResponse
+	responses := []models.VerifyCodeSessionResponse{}
 	for _, session := range sessions {
 		// 获取账号信息
 		account, err := s.accountRepo.GetByID(session.AccountID)

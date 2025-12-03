@@ -342,13 +342,16 @@ func (cp *ConnectionPool) ExecuteTask(accountID string, task TaskInterface) erro
 	conn.logger.Debug("Executing task", zap.String("task_type", task.GetType()))
 
 	// 执行任务并捕获错误
-	taskErr := conn.client.Run(context.Background(), func(ctx context.Context) error {
+	// 注意：不要再次调用 conn.client.Run，因为 maintainConnection 已经在运行它了
+	// 直接执行任务逻辑
+	taskErr := func() error {
+		ctx := context.Background()
 		if advancedTask, ok := task.(AdvancedTaskInterface); ok {
 			return advancedTask.ExecuteAdvanced(ctx, conn.client)
 		}
 		api := conn.client.API()
 		return task.Execute(ctx, api)
-	})
+	}()
 
 	// 根据任务执行结果更新账号状态
 	if taskErr != nil {

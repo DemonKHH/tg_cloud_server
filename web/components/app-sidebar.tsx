@@ -38,7 +38,7 @@ const navigation = [
   { name: "任务管理", href: "/tasks", icon: ListTodo, badge: "3" },
   { name: "API链接管理", href: "/verify-codes", icon: Shield, badge: null },
   { name: "代理管理", href: "/proxies", icon: Globe, badge: null },
-  { name: "文件管理", href: "/files", icon: FileText, badge: null },
+
   { name: "AI服务", href: "/ai", icon: Bot, badge: "新" },
   { name: "统计分析", href: "/stats", icon: BarChart3, badge: null },
   { name: "系统设置", href: "/settings", icon: Settings, badge: null },

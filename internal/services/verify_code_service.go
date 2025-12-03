@@ -121,7 +121,7 @@ func (s *VerifyCodeService) GenerateCode(userID, accountID uint64, expiresIn int
 	// 构造响应
 	response := &models.GenerateCodeResponse{
 		Code:      code,
-		URL:       fmt.Sprintf("/api/v1/verify-code/%s", code),
+		URL:       fmt.Sprintf("/verify-code/%s", code),
 		ExpiresAt: session.ExpiresAt.Unix(),
 		ExpiresIn: expiresIn,
 	}
@@ -186,7 +186,7 @@ func (s *VerifyCodeService) BatchGenerateCode(userID uint64, accountIDs []uint64
 			AccountID: accountID,
 			Phone:     account.Phone,
 			Code:      code,
-			URL:       fmt.Sprintf("/api/v1/verify-code/%s", code),
+			URL:       fmt.Sprintf("/verify-code/%s", code),
 			ExpiresAt: session.ExpiresAt.Unix(),
 			ExpiresIn: expiresIn,
 		})
@@ -233,7 +233,7 @@ func (s *VerifyCodeService) ListSessions(userID uint64, page, limit int, keyword
 			Code:         session.Code,
 			AccountID:    session.AccountID,
 			AccountPhone: accountPhone,
-			URL:          fmt.Sprintf("/api/v1/verify-code/%s", session.Code),
+			URL:          fmt.Sprintf("/verify-code/%s", session.Code),
 			ExpiresAt:    session.ExpiresAt.Unix(),
 			ExpiresIn:    int(session.ExpiresAt.Sub(session.CreatedAt).Seconds()),
 			CreatedAt:    session.CreatedAt.Unix(),

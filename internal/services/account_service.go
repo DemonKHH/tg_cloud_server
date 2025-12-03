@@ -563,7 +563,7 @@ func (s *AccountService) BatchSet2FA(userID uint64, req *models.BatchSet2FAReque
 
 		account.TwoFAPassword = req.Password
 		account.Has2FA = true
-		account.Is2FACorrect = true // 假设用户提供的密码是正确的
+		account.Is2FACorrect = false // 需要等待实际验证
 
 		if err := s.accountRepo.Update(account); err != nil {
 			s.logger.Error("Failed to update 2FA password",
@@ -605,7 +605,7 @@ func (s *AccountService) BatchUpdate2FA(userID uint64, req *models.BatchUpdate2F
 		// 临时逻辑：只更新本地记录
 		account.TwoFAPassword = req.NewPassword
 		account.Has2FA = true
-		account.Is2FACorrect = true
+		account.Is2FACorrect = false // 修改后需要重新验证
 
 		if err := s.accountRepo.Update(account); err != nil {
 			results[accountID] = fmt.Sprintf("更新本地记录失败: %v", err)

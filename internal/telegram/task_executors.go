@@ -405,10 +405,6 @@ func (t *PrivateMessageTask) Execute(ctx context.Context, api *tg.Client) error 
 		return fmt.Errorf("invalid or empty message configuration")
 	}
 
-	// 添加调试日志
-	fmt.Printf("[PrivateMessageTask] Task ID: %d, Targets: %d, Message length: %d\n",
-		t.task.ID, len(targets), len(message))
-
 	// 获取发送间隔 (防止频繁发送被限制)
 	intervalSec := 2 // 默认2秒间隔
 	if interval, exists := config["interval_seconds"]; exists {
@@ -586,9 +582,6 @@ func (t *BroadcastTask) Execute(ctx context.Context, api *tg.Client) error {
 	var targetGroups []interface{}
 
 	// 使用 task.Result 中的 next_group_index 来追踪进度
-	// 注意：这里依赖于 TaskScheduler 是顺序执行每个账号的
-	// 由于 TaskScheduler 是单线程循环执行 accounts，这里是安全的
-
 	startIndex := 0
 	if val, ok := t.task.Result["next_group_index"].(float64); ok {
 		startIndex = int(val)
@@ -623,6 +616,25 @@ func (t *BroadcastTask) Execute(ctx context.Context, api *tg.Client) error {
 		}
 	}
 
+	// 初始化日志
+	var logs []string
+	if existingLogs, ok := t.task.Result["logs"].([]interface{}); ok {
+		for _, l := range existingLogs {
+			if str, ok := l.(string); ok {
+				logs = append(logs, str)
+			}
+		}
+	}
+
+	addLog := func(msg string) {
+		logEntry := fmt.Sprintf("[%s] %s", time.Now().Format("15:04:05"), msg)
+		logs = append(logs, logEntry)
+		t.task.Result["logs"] = logs
+		fmt.Println(logEntry)
+	}
+
+	addLog(fmt.Sprintf("开始执行群发任务，目标群组数: %d", len(targetGroups)))
+
 	sentCount := 0
 	failedCount := 0
 	var errors []string
@@ -635,22 +647,31 @@ func (t *BroadcastTask) Execute(ctx context.Context, api *tg.Client) error {
 			time.Sleep(time.Duration(intervalSec) * time.Second)
 		}
 
+		var explicitPeer tg.InputPeerClass
+		var joinErr error
+
 		// 如果开启了自动加群，尝试先加入
 		if autoJoin {
-			if err := t.joinGroup(ctx, api, group); err != nil {
+			addLog(fmt.Sprintf("尝试自动加入群组: %v", group))
+			explicitPeer, joinErr = t.joinGroup(ctx, api, group)
+			if joinErr != nil {
 				// 记录加群失败，但仍尝试发送（可能已经在群里了）
-				fmt.Printf("[BroadcastTask] Failed to auto-join group %v: %v\n", group, err)
+				addLog(fmt.Sprintf("自动加群失败: %v, 尝试直接发送", joinErr))
 			} else {
+				addLog(fmt.Sprintf("自动加群成功: %v", group))
 				// 加群成功后稍微等待一下，确保状态同步
 				time.Sleep(1 * time.Second)
 			}
 		}
 
-		err := t.sendBroadcastMessage(ctx, api, group, message)
+		err := t.sendBroadcastMessage(ctx, api, group, message, explicitPeer)
 		if err != nil {
-			errors = append(errors, fmt.Sprintf("failed to send to group %v: %v", group, err))
+			errMsg := fmt.Sprintf("发送失败 [%v]: %v", group, err)
+			addLog(errMsg)
+			errors = append(errors, errMsg)
 			failedCount++
 		} else {
+			addLog(fmt.Sprintf("发送成功: %v", group))
 			sentCount++
 			sentGroups = append(sentGroups, fmt.Sprintf("%v", group))
 		}
@@ -661,21 +682,12 @@ func (t *BroadcastTask) Execute(ctx context.Context, api *tg.Client) error {
 		t.task.Result = make(models.TaskResult)
 	}
 
-	// 注意：这里的 sent_count 是当前账号的发送数量
-	// 如果需要总数，TaskScheduler 会在最后汇总（但目前 TaskScheduler 只是简单的覆盖/合并？）
-	// TaskScheduler 的逻辑是：
-	// task.Result["success_count"] = successCount (账号维度的成功数)
-	// task.Result["account_results"][accountID] = accountResult
-	// 所以我们需要把 sent_count 放到 accountResult 中，或者累加？
-	// TaskExecutors.go 里的 Execute 方法是直接修改 t.task.Result
-	// 而 TaskScheduler 在调用 Execute 后，会提取 t.task.Result 中的字段到 accountResult
-	// 所以这里修改 t.task.Result 是对的，它会被提取并保存为该账号的执行结果
-
 	t.task.Result["sent_count"] = sentCount
 	t.task.Result["failed_count"] = failedCount
 	t.task.Result["errors"] = errors
+	t.task.Result["logs"] = logs
 	t.task.Result["sent_groups"] = sentGroups
-	t.task.Result["total_groups"] = len(targetGroups) // 本次尝试发送的总数
+	t.task.Result["total_groups"] = len(targetGroups)
 	if len(targetGroups) > 0 {
 		t.task.Result["success_rate"] = float64(sentCount) / float64(len(targetGroups))
 	} else {
@@ -683,15 +695,16 @@ func (t *BroadcastTask) Execute(ctx context.Context, api *tg.Client) error {
 	}
 	t.task.Result["send_time"] = time.Now().Unix()
 
+	addLog(fmt.Sprintf("任务执行完成: 成功 %d, 失败 %d", sentCount, failedCount))
+
 	return nil
 }
 
-// joinGroup 尝试加入群组
-func (t *BroadcastTask) joinGroup(ctx context.Context, api *tg.Client, group interface{}) error {
+// joinGroup 尝试加入群组，并返回 InputPeer
+func (t *BroadcastTask) joinGroup(ctx context.Context, api *tg.Client, group interface{}) (tg.InputPeerClass, error) {
 	groupStr, ok := group.(string)
 	if !ok {
-		// 如果不是字符串（例如是ID），通常意味着已经在群里或者是私有群ID，无法通过ID加入
-		return nil
+		return nil, nil // 非字符串无法通过此方法加入
 	}
 
 	// 处理链接或用户名
@@ -704,10 +717,21 @@ func (t *BroadcastTask) joinGroup(ctx context.Context, api *tg.Client, group int
 	if strings.Contains(cleanGroupname, "joinchat/") {
 		hash := cleanGroupname[strings.Index(cleanGroupname, "joinchat/")+9:]
 		if hash == "" {
-			return fmt.Errorf("invalid join link")
+			return nil, fmt.Errorf("invalid join link")
 		}
-		_, err := api.MessagesImportChatInvite(ctx, hash)
-		return err
+		updates, err := api.MessagesImportChatInvite(ctx, hash)
+		if err != nil {
+			if strings.Contains(err.Error(), "USER_ALREADY_PARTICIPANT") {
+				// 如果已经在群里，我们无法直接获取 InputPeer，因为 CheckChatInvite 不返回 ID
+				// 只能返回 nil，让 sendBroadcastMessage 尝试通过其他方式（如 Dialogs）解决
+				// 或者这里可以尝试 Search?
+				return nil, nil
+			}
+			return nil, err
+		}
+
+		// 从 Updates 中提取 Chat/Channel
+		return t.extractInputPeerFromUpdates(updates)
 	}
 
 	// 移除其他链接前缀
@@ -722,86 +746,128 @@ func (t *BroadcastTask) joinGroup(ctx context.Context, api *tg.Client, group int
 		Username: cleanGroupname,
 	})
 	if err != nil {
-		return fmt.Errorf("failed to resolve group: %w", err)
+		return nil, fmt.Errorf("failed to resolve group: %w", err)
 	}
 
 	// 尝试加入
 	if len(resolved.Chats) > 0 {
 		if channel, ok := resolved.Chats[0].(*tg.Channel); ok {
-			// 检查是否已经在群里 (Left=false)
-			if !channel.Left {
-				return nil // 已经在群里
-			}
-
 			inputChannel := &tg.InputChannel{
 				ChannelID:  channel.ID,
 				AccessHash: channel.AccessHash,
 			}
+
+			// 检查是否已经在群里 (Left=false)
+			if !channel.Left {
+				return &tg.InputPeerChannel{
+					ChannelID:  channel.ID,
+					AccessHash: channel.AccessHash,
+				}, nil
+			}
+
 			_, err := api.ChannelsJoinChannel(ctx, inputChannel)
-			return err
-		} else if _, ok := resolved.Chats[0].(*tg.Chat); ok {
-			// 普通群组通常不能直接通过用户名加入，除非是公开的，但API通常通过ImportChatInvite或AddChatUser
-			// 对于公开群组，通常是Channel类型（supergroup）
-			// 如果是普通Chat，尝试 AddChatUser (如果是自己加自己?) -> 通常 API 不支持直接 Join Chat via Username unless it's a supergroup/channel
-			return nil
+			if err != nil {
+				return nil, err
+			}
+
+			return &tg.InputPeerChannel{
+				ChannelID:  channel.ID,
+				AccessHash: channel.AccessHash,
+			}, nil
 		}
 	}
 
-	return fmt.Errorf("group not found or not a channel/supergroup")
+	return nil, fmt.Errorf("group not found or not a channel/supergroup")
+}
+
+// extractInputPeerFromUpdates 从 Updates 中提取 InputPeer
+func (t *BroadcastTask) extractInputPeerFromUpdates(updates tg.UpdatesClass) (tg.InputPeerClass, error) {
+	var chats []tg.ChatClass
+
+	switch v := updates.(type) {
+	case *tg.Updates:
+		chats = v.Chats
+	case *tg.UpdatesCombined:
+		chats = v.Chats
+	}
+
+	if len(chats) > 0 {
+		return t.extractInputPeerFromChat(chats[0])
+	}
+	return nil, fmt.Errorf("no chats found in updates")
+}
+
+// extractInputPeerFromChat 从 ChatClass 提取 InputPeer
+func (t *BroadcastTask) extractInputPeerFromChat(chat tg.ChatClass) (tg.InputPeerClass, error) {
+	switch c := chat.(type) {
+	case *tg.Chat:
+		return &tg.InputPeerChat{ChatID: c.ID}, nil
+	case *tg.Channel:
+		return &tg.InputPeerChannel{
+			ChannelID:  c.ID,
+			AccessHash: c.AccessHash,
+		}, nil
+	}
+	return nil, fmt.Errorf("unknown chat type")
 }
 
 // sendBroadcastMessage 发送群发消息到指定群组
-func (t *BroadcastTask) sendBroadcastMessage(ctx context.Context, api *tg.Client, group interface{}, message string) error {
+func (t *BroadcastTask) sendBroadcastMessage(ctx context.Context, api *tg.Client, group interface{}, message string, explicitPeer tg.InputPeerClass) error {
 	var inputPeer tg.InputPeerClass
 
-	switch v := group.(type) {
-	case int64:
-		// 如果是数字ID，尝试作为ChatID
-		// 注意：对于Channel/Supergroup，仅有ID是不够的，通常需要AccessHash
-		// 除非已经在缓存中或者作为 InputPeerChat (仅限普通群)
-		// 这里假设是普通群ID，或者调用者知道自己在做什么
-		inputPeer = &tg.InputPeerChat{ChatID: v}
-	case float64:
-		// JSON解码数字可能是float64
-		inputPeer = &tg.InputPeerChat{ChatID: int64(v)}
-	case string:
-		// 如果是字符串，尝试解析为群组用户名
-		cleanGroupname := v
-		if len(v) > 0 && v[0] == '@' {
-			cleanGroupname = v[1:]
-		}
+	// 如果提供了明确的 Peer (通常来自 joinGroup)，直接使用
+	if explicitPeer != nil {
+		inputPeer = explicitPeer
+	} else {
+		switch v := group.(type) {
+		case int64:
+			inputPeer = &tg.InputPeerChat{ChatID: v}
+		case float64:
+			inputPeer = &tg.InputPeerChat{ChatID: int64(v)}
+		case string:
+			// 如果是字符串，尝试解析为群组用户名
+			cleanGroupname := v
+			if len(v) > 0 && v[0] == '@' {
+				cleanGroupname = v[1:]
+			}
 
-		// 移除可能的链接前缀
-		if len(cleanGroupname) > 13 && cleanGroupname[:13] == "https://t.me/" {
-			cleanGroupname = cleanGroupname[13:]
-		} else if len(cleanGroupname) > 5 && cleanGroupname[:5] == "t.me/" {
-			cleanGroupname = cleanGroupname[5:]
-		}
+			// 移除可能的链接前缀
+			if len(cleanGroupname) > 13 && cleanGroupname[:13] == "https://t.me/" {
+				cleanGroupname = cleanGroupname[13:]
+			} else if len(cleanGroupname) > 5 && cleanGroupname[:5] == "t.me/" {
+				cleanGroupname = cleanGroupname[5:]
+			}
 
-		resolved, err := api.ContactsResolveUsername(ctx, &tg.ContactsResolveUsernameRequest{
-			Username: cleanGroupname,
-		})
-		if err != nil {
-			return fmt.Errorf("group not found: %w", err)
-		}
+			// 移除 joinchat 前缀
+			if strings.Contains(cleanGroupname, "joinchat/") {
+				return fmt.Errorf("cannot send message to invite link directly, please ensure auto_join is enabled and successful")
+			}
 
-		// 从解析结果中获取群组信息
-		if len(resolved.Chats) > 0 {
-			if chat, ok := resolved.Chats[0].(*tg.Chat); ok {
-				inputPeer = &tg.InputPeerChat{ChatID: chat.ID}
-			} else if channel, ok := resolved.Chats[0].(*tg.Channel); ok {
-				inputPeer = &tg.InputPeerChannel{
-					ChannelID:  channel.ID,
-					AccessHash: channel.AccessHash,
+			resolved, err := api.ContactsResolveUsername(ctx, &tg.ContactsResolveUsernameRequest{
+				Username: cleanGroupname,
+			})
+			if err != nil {
+				return fmt.Errorf("group not found: %w", err)
+			}
+
+			// 从解析结果中获取群组信息
+			if len(resolved.Chats) > 0 {
+				if chat, ok := resolved.Chats[0].(*tg.Chat); ok {
+					inputPeer = &tg.InputPeerChat{ChatID: chat.ID}
+				} else if channel, ok := resolved.Chats[0].(*tg.Channel); ok {
+					inputPeer = &tg.InputPeerChannel{
+						ChannelID:  channel.ID,
+						AccessHash: channel.AccessHash,
+					}
+				} else {
+					return fmt.Errorf("unsupported chat type")
 				}
 			} else {
-				return fmt.Errorf("unsupported chat type")
+				return fmt.Errorf("group not found: %s", cleanGroupname)
 			}
-		} else {
-			return fmt.Errorf("group not found: %s", cleanGroupname)
+		default:
+			return fmt.Errorf("unsupported group identifier type: %T", group)
 		}
-	default:
-		return fmt.Errorf("unsupported group identifier type: %T", group)
 	}
 
 	// 发送消息

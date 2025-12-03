@@ -3,6 +3,7 @@ package telegram
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"tg_cloud_server/internal/models"
 
@@ -21,10 +22,25 @@ func NewUpdate2FATask(task *models.Task) *Update2FATask {
 
 // Execute 执行修改2FA密码
 func (t *Update2FATask) Execute(ctx context.Context, api *tg.Client) error {
+	// 初始化日志
+	var logs []string
+	if t.task.Result == nil {
+		t.task.Result = make(models.TaskResult)
+	}
+
+	addLog := func(msg string) {
+		logEntry := fmt.Sprintf("[%s] %s", time.Now().Format("15:04:05"), msg)
+		logs = append(logs, logEntry)
+		t.task.Result["logs"] = logs
+	}
+
+	addLog("开始执行修改 2FA 密码任务...")
+
 	// 1. 获取配置
 	config := t.task.Config
 	newPassword, ok := config["new_password"].(string)
 	if !ok || newPassword == "" {
+		addLog("错误: 未提供新密码")
 		return fmt.Errorf("new_password is required")
 	}
 
@@ -32,10 +48,18 @@ func (t *Update2FATask) Execute(ctx context.Context, api *tg.Client) error {
 	hint, _ := config["hint"].(string)
 
 	// 2. 获取当前密码设置
+	addLog("正在获取当前密码设置...")
 	// AccountGetPasswordSettings 获取当前密码信息
 	passwordSettings, err := api.AccountGetPassword(ctx)
 	if err != nil {
+		addLog(fmt.Sprintf("获取密码设置失败: %v", err))
 		return fmt.Errorf("failed to get password settings: %w", err)
+	}
+
+	if passwordSettings.HasPassword {
+		addLog("当前账号已设置 2FA 密码")
+	} else {
+		addLog("当前账号未设置 2FA 密码")
 	}
 
 	// Prevent unused variable error
@@ -69,6 +93,7 @@ func (t *Update2FATask) Execute(ctx context.Context, api *tg.Client) error {
 	// 假设我们只是调用 API，具体的 SRP 计算可能需要额外的库
 	// 这里我们先占位，提示用户该功能需要完善的 SRP 支持
 
+	addLog("错误: 修改 2FA 需要 SRP 协议支持，当前版本暂未实现")
 	return fmt.Errorf("Update 2FA requires SRP implementation which is complex. Please verify if gotd provides helpers.")
 }
 

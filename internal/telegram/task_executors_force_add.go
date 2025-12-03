@@ -35,6 +35,18 @@ func (t *ForceAddGroupTask) Execute(ctx context.Context, api *tg.Client) error {
 		return fmt.Errorf("task config is nil")
 	}
 
+	// 初始化日志
+	var logs []string
+	if t.task.Result == nil {
+		t.task.Result = make(models.TaskResult)
+	}
+
+	addLog := func(msg string) {
+		logEntry := fmt.Sprintf("[%s] %s", time.Now().Format("15:04:05"), msg)
+		logs = append(logs, logEntry)
+		t.task.Result["logs"] = logs
+	}
+
 	// 获取目标用户列表
 	allTargets, ok := config["targets"].([]interface{})
 	if !ok || len(allTargets) == 0 {
@@ -84,6 +96,7 @@ func (t *ForceAddGroupTask) Execute(ctx context.Context, api *tg.Client) error {
 		if start >= len(allTargets) {
 			// 该账号没有分配到任务
 			t.updateResult(0, 0, nil, nil, nil)
+			addLog("该账号未分配到任务目标 (超出范围)")
 			return nil
 		}
 
@@ -133,12 +146,16 @@ func (t *ForceAddGroupTask) Execute(ctx context.Context, api *tg.Client) error {
 
 	if len(myTargets) == 0 {
 		t.updateResult(0, 0, nil, nil, nil)
+		addLog("该账号未分配到任务目标")
 		return nil
 	}
+
+	addLog(fmt.Sprintf("开始执行强拉任务，目标数: %d，间隔: %d秒", len(myTargets), intervalSec))
 
 	// 解析目标群组
 	var inputPeer tg.InputPeerClass
 	var isChannel bool // 区分 Channel/Supergroup 和 Basic Group
+	var targetGroupName string
 
 	if groupID, ok := config["group_id"].(float64); ok && groupID > 0 {
 		// 尝试作为 Channel
@@ -149,7 +166,9 @@ func (t *ForceAddGroupTask) Execute(ctx context.Context, api *tg.Client) error {
 		// 如果必须使用 ID，通常需要先缓存了 AccessHash。
 		// 这里为了稳健性，建议用户提供 group_name 或 invite link，或者我们尝试通过 ID 获取（如果已经在对话列表中）。
 		inputPeer = &tg.InputPeerChat{ChatID: int64(groupID)}
+		targetGroupName = fmt.Sprintf("ID: %d", int64(groupID))
 	} else if groupName, ok := config["group_name"].(string); ok && groupName != "" {
+		targetGroupName = groupName
 		// 解析群组用户名
 		resolved, err := api.ContactsResolveUsername(ctx, &tg.ContactsResolveUsernameRequest{
 			Username: groupName,
@@ -176,6 +195,8 @@ func (t *ForceAddGroupTask) Execute(ctx context.Context, api *tg.Client) error {
 	if inputPeer == nil {
 		return fmt.Errorf("failed to resolve target group")
 	}
+
+	addLog(fmt.Sprintf("目标群组: %s", targetGroupName))
 
 	successCount := 0
 	failedCount := 0
@@ -256,6 +277,7 @@ func (t *ForceAddGroupTask) Execute(ctx context.Context, api *tg.Client) error {
 					"note":     "already participant",
 					"duration": duration.String(),
 				}
+				addLog(fmt.Sprintf("用户已在群中: %s", targetStr))
 			} else {
 				errorMsg := fmt.Sprintf("failed to add %s: %v", targetStr, err)
 				errors = append(errors, errorMsg)
@@ -265,6 +287,7 @@ func (t *ForceAddGroupTask) Execute(ctx context.Context, api *tg.Client) error {
 					"duration": duration.String(),
 				}
 				failedCount++
+				addLog(fmt.Sprintf("拉人失败 [%s]: %v", targetStr, err))
 			}
 		} else {
 			successCount++
@@ -273,10 +296,13 @@ func (t *ForceAddGroupTask) Execute(ctx context.Context, api *tg.Client) error {
 				"status":   "success",
 				"duration": duration.String(),
 			}
+			addLog(fmt.Sprintf("拉人成功: %s", targetStr))
 		}
 	}
 
 	t.updateResult(successCount, failedCount, errors, addedTargets, targetResults)
+	addLog(fmt.Sprintf("任务执行完成: 成功 %d, 失败 %d", successCount, failedCount))
+
 	return nil
 }
 

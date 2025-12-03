@@ -42,36 +42,57 @@ func (t *AccountCheckTask) Execute(ctx context.Context, api *tg.Client) error {
 		t.task.Result = make(models.TaskResult)
 	}
 
+	// 初始化日志
+	var logs []string
+	addLog := func(msg string) {
+		logEntry := fmt.Sprintf("[%s] %s", time.Now().Format("15:04:05"), msg)
+		logs = append(logs, logEntry)
+		t.task.Result["logs"] = logs
+	}
+
+	addLog("开始执行账号检查任务...")
+
 	checkResults := make(map[string]interface{})
 	checkScore := 100.0
 	var issues []string
 	var suggestions []string
 
 	// 1. 基本账号信息检查
-	_, err := api.UsersGetFullUser(ctx, &tg.InputUserSelf{})
+	addLog("正在获取基本账号信息...")
+	user, err := api.UsersGetFullUser(ctx, &tg.InputUserSelf{})
 	if err != nil {
 		checkScore -= 50
 		issues = append(issues, "无法获取账号基本信息")
 		suggestions = append(suggestions, "检查账号登录状态")
 		checkResults["basic_info_check"] = "failed"
 		checkResults["error"] = err.Error()
+		addLog(fmt.Sprintf("基本信息获取失败: %v", err))
 	} else {
 		checkResults["basic_info_check"] = "passed"
 		checkResults["user_retrieved"] = true
+		if len(user.Users) > 0 {
+			if u, ok := user.Users[0].(*tg.User); ok {
+				addLog(fmt.Sprintf("基本信息获取成功: %s %s (ID: %d)", u.FirstName, u.LastName, u.ID))
+			}
+		}
 	}
 
 	// 2. 连接状态检查
+	addLog("正在检查连接状态...")
 	_, err = api.HelpGetConfig(ctx)
 	if err != nil {
 		checkScore -= 30
 		issues = append(issues, "Telegram服务连接异常")
 		suggestions = append(suggestions, "检查网络连接和代理设置")
 		checkResults["connection_check"] = "failed"
+		addLog(fmt.Sprintf("连接状态异常: %v", err))
 	} else {
 		checkResults["connection_check"] = "passed"
+		addLog("连接状态正常")
 	}
 
 	// 3. 对话列表检查 (检查账号是否能正常获取数据)
+	addLog("正在检查对话列表...")
 	dialogs, err := api.MessagesGetDialogs(ctx, &tg.MessagesGetDialogsRequest{
 		Limit: 5,
 	})
@@ -80,76 +101,83 @@ func (t *AccountCheckTask) Execute(ctx context.Context, api *tg.Client) error {
 		issues = append(issues, "无法获取对话列表")
 		suggestions = append(suggestions, "检查账号是否被限制")
 		checkResults["dialogs_check"] = "failed"
+		addLog(fmt.Sprintf("无法获取对话列表: %v", err))
 	} else {
 		checkResults["dialogs_check"] = "passed"
 		if messagesDialogs, ok := dialogs.(*tg.MessagesDialogs); ok {
-			checkResults["dialogs_count"] = len(messagesDialogs.Dialogs)
+			count := len(messagesDialogs.Dialogs)
+			checkResults["dialogs_count"] = count
+			addLog(fmt.Sprintf("对话列表获取成功，最近对话数: %d", count))
+		} else if messagesDialogsSlice, ok := dialogs.(*tg.MessagesDialogsSlice); ok {
+			count := len(messagesDialogsSlice.Dialogs)
+			checkResults["dialogs_count"] = count
+			addLog(fmt.Sprintf("对话列表获取成功，最近对话数: %d", count))
 		}
 	}
 
 	// 4. 发送能力检查 (尝试获取应用配置)
+	addLog("正在检查应用配置...")
 	_, err = api.HelpGetAppConfig(ctx, 0)
 	if err != nil {
 		checkResults["limits_check"] = "skipped"
+		addLog("应用配置获取失败 (跳过)")
 	} else {
 		checkResults["limits_check"] = "passed"
 		checkResults["config_retrieved"] = true
+		addLog("应用配置获取成功")
 	}
 
 	// 5. 2FA 检查 (可选)
 	if check2FA, ok := t.task.Config["check_2fa"].(bool); ok && check2FA {
+		addLog("正在检查 2FA 状态...")
 		password, err := api.AccountGetPassword(ctx)
 		if err != nil {
 			checkScore -= 10
 			issues = append(issues, fmt.Sprintf("无法获取2FA状态: %v", err))
 			checkResults["2fa_check"] = "failed"
+			addLog(fmt.Sprintf("2FA 状态获取失败: %v", err))
 		} else {
 			has2FA := password.HasPassword
 			checkResults["has_2fa"] = has2FA
 			checkResults["2fa_check"] = "passed"
 
-			// 如果开启了2FA，检查密码是否正确
 			if has2FA {
-				// 获取配置中的密码
+				addLog("账号已开启 2FA")
+				// 如果开启了2FA，检查密码是否正确
 				twoFAPassword, _ := t.task.Config["two_fa_password"].(string)
 				checkResults["two_fa_password"] = twoFAPassword
 
 				if twoFAPassword != "" {
-					// 验证密码
-					// 注意：这里需要使用 gotd 的 auth helper 来验证密码
-					// 由于这比较复杂且需要完整的 auth flow，这里简化为仅记录密码存在
-					// 实际验证需要: client.Auth().Password(ctx, twoFAPassword) 但这通常用于登录流程
-					// 对于已登录的客户端，验证密码正确性比较困难，通常不需要验证，除非是为了确认密码是否匹配记录
-
-					// 尝试使用 CheckPassword (如果可用)
-					// api.AuthCheckPassword(ctx, &tg.AuthCheckPasswordRequest{Password: ...})
-					// 但这需要计算 InputCheckPasswordSRP，比较复杂
-
-					// 暂时只标记为已配置密码
 					checkResults["is_2fa_correct"] = "unchecked"
 					suggestions = append(suggestions, "账号已开启2FA，请确保记录了正确的密码")
+					addLog("已配置 2FA 密码 (未验证正确性)")
 				} else {
 					checkScore -= 10
 					issues = append(issues, "账号开启了2FA但未提供密码")
 					suggestions = append(suggestions, "请补充2FA密码")
 					checkResults["is_2fa_correct"] = "missing"
+					addLog("警告: 账号开启了 2FA 但未提供密码")
 				}
 			} else {
 				suggestions = append(suggestions, "建议开启2FA以提高账号安全性")
+				addLog("账号未开启 2FA")
 			}
 		}
 	}
 
 	// 6. SpamBot 检查 (可选)
 	if checkSpamBot, ok := t.task.Config["check_spam_bot"].(bool); ok && checkSpamBot {
+		addLog("正在执行 SpamBot 检查...")
 		messageText, err := t.checkSpamBot(ctx, api)
 		if err != nil {
 			checkScore -= 20
 			issues = append(issues, fmt.Sprintf("SpamBot检查失败: %v", err))
 			checkResults["spam_bot_check"] = "failed"
+			addLog(fmt.Sprintf("SpamBot 检查失败: %v", err))
 		} else {
 			checkResults["spam_bot_check"] = "passed"
 			checkResults["spambot_response"] = messageText
+			addLog("SpamBot 响应获取成功")
 
 			// 转换为小写以便匹配
 			messageTextLower := strings.ToLower(messageText)
@@ -212,18 +240,22 @@ func (t *AccountCheckTask) Execute(ctx context.Context, api *tg.Client) error {
 				issues = append(issues, "账号已被冻结或严重受限")
 				suggestions = append(suggestions, "建议将账号状态设置为: 冻结 (Frozen)")
 				checkResults["suggested_status"] = "frozen"
+				addLog("检测结果: 账号已被冻结")
 			} else if isBidirectional {
 				checkScore -= 50
 				issues = append(issues, "账号处于双向限制状态")
 				suggestions = append(suggestions, "建议将账号状态设置为: 双向 (Two-way)")
 				checkResults["suggested_status"] = "two_way"
+				addLog("检测结果: 账号处于双向限制状态")
 			} else if strings.Contains(messageTextLower, "good news, no limits are currently applied") {
 				// 账号正常
+				addLog("检测结果: 账号状态正常")
 			} else {
 				// 其他未知限制
 				checkScore -= 20
 				issues = append(issues, "账号存在未知限制")
 				checkResults["unknown_limits"] = true
+				addLog("检测结果: 账号存在未知限制")
 			}
 		}
 	}
@@ -238,6 +270,8 @@ func (t *AccountCheckTask) Execute(ctx context.Context, api *tg.Client) error {
 	} else {
 		checkResults["account_status"] = "critical"
 	}
+
+	addLog(fmt.Sprintf("检查完成，综合评分: %.0f", checkScore))
 
 	// 更新任务结果
 	t.task.Result["check_score"] = checkScore
@@ -393,6 +427,18 @@ func (t *PrivateMessageTask) Execute(ctx context.Context, api *tg.Client) error 
 		return fmt.Errorf("task config is nil")
 	}
 
+	// 初始化日志
+	var logs []string
+	if t.task.Result == nil {
+		t.task.Result = make(models.TaskResult)
+	}
+
+	addLog := func(msg string) {
+		logEntry := fmt.Sprintf("[%s] %s", time.Now().Format("15:04:05"), msg)
+		logs = append(logs, logEntry)
+		t.task.Result["logs"] = logs
+	}
+
 	// 获取目标用户列表
 	targets, ok := config["targets"].([]interface{})
 	if !ok || len(targets) == 0 {
@@ -412,6 +458,8 @@ func (t *PrivateMessageTask) Execute(ctx context.Context, api *tg.Client) error 
 			intervalSec = int(intervalFloat)
 		}
 	}
+
+	addLog(fmt.Sprintf("开始执行私信任务，目标用户数: %d，间隔: %d秒", len(targets), intervalSec))
 
 	sentCount := 0
 	failedCount := 0
@@ -436,6 +484,7 @@ func (t *PrivateMessageTask) Execute(ctx context.Context, api *tg.Client) error 
 				"error":  errorMsg,
 			}
 			failedCount++
+			addLog(fmt.Sprintf("目标格式错误: %v", target))
 			continue
 		}
 
@@ -453,6 +502,7 @@ func (t *PrivateMessageTask) Execute(ctx context.Context, api *tg.Client) error 
 				"duration": sendDuration.String(),
 			}
 			failedCount++
+			addLog(fmt.Sprintf("发送失败 [%s]: %v", username, err))
 		} else {
 			sentCount++
 			sentTargets = append(sentTargets, username)
@@ -460,14 +510,11 @@ func (t *PrivateMessageTask) Execute(ctx context.Context, api *tg.Client) error 
 				"status":   "success",
 				"duration": sendDuration.String(),
 			}
+			addLog(fmt.Sprintf("发送成功: %s", username))
 		}
 	}
 
 	// 更新任务结果
-	if t.task.Result == nil {
-		t.task.Result = make(models.TaskResult)
-	}
-
 	t.task.Result["sent_count"] = sentCount
 	t.task.Result["failed_count"] = failedCount
 	t.task.Result["errors"] = errors
@@ -476,6 +523,8 @@ func (t *PrivateMessageTask) Execute(ctx context.Context, api *tg.Client) error 
 	t.task.Result["total_targets"] = len(targets)
 	t.task.Result["success_rate"] = float64(sentCount) / float64(len(targets))
 	t.task.Result["send_time"] = time.Now().Unix()
+
+	addLog(fmt.Sprintf("任务执行完成: 成功 %d, 失败 %d", sentCount, failedCount))
 
 	return nil
 }
@@ -892,6 +941,18 @@ func (t *VerifyCodeTask) Execute(ctx context.Context, api *tg.Client) error {
 		return fmt.Errorf("task config is nil")
 	}
 
+	// 初始化日志
+	var logs []string
+	if t.task.Result == nil {
+		t.task.Result = make(models.TaskResult)
+	}
+
+	addLog := func(msg string) {
+		logEntry := fmt.Sprintf("[%s] %s", time.Now().Format("15:04:05"), msg)
+		logs = append(logs, logEntry)
+		t.task.Result["logs"] = logs
+	}
+
 	// 获取监听的发送者列表 (可以是官方验证服务、特定用户等)
 	senders := []string{"777000", "Telegram"} // 默认Telegram官方
 	if configSenders, exists := config["senders"]; exists {
@@ -920,13 +981,23 @@ func (t *VerifyCodeTask) Execute(ctx context.Context, api *tg.Client) error {
 		timeoutSec = 600 // 最多10分钟
 	}
 
+	addLog(fmt.Sprintf("开始监听验证码，超时时间: %d秒", timeoutSec))
+	addLog(fmt.Sprintf("监听发送者: %v", senders))
+
 	startTime := time.Now()
 	var verifyCode string
 	var receivedAt time.Time
 	var senderInfo string
 
 	// 轮询检查新消息
+	lastLogTime := time.Now()
 	for time.Since(startTime) < time.Duration(timeoutSec)*time.Second {
+		// 每30秒打印一次心跳日志
+		if time.Since(lastLogTime) > 30*time.Second {
+			addLog(fmt.Sprintf("正在监听中... (已等待 %d 秒)", int(time.Since(startTime).Seconds())))
+			lastLogTime = time.Now()
+		}
+
 		// 获取最新对话
 		dialogs, err := api.MessagesGetDialogs(ctx, &tg.MessagesGetDialogsRequest{
 			Limit: 20,
@@ -942,6 +1013,7 @@ func (t *VerifyCodeTask) Execute(ctx context.Context, api *tg.Client) error {
 			verifyCode = code
 			senderInfo = sender
 			receivedAt = receivedTime
+			addLog(fmt.Sprintf("成功接收到验证码: %s (来自: %s)", code, sender))
 			break
 		}
 
@@ -950,10 +1022,6 @@ func (t *VerifyCodeTask) Execute(ctx context.Context, api *tg.Client) error {
 	}
 
 	// 更新任务结果
-	if t.task.Result == nil {
-		t.task.Result = make(models.TaskResult)
-	}
-
 	if verifyCode != "" {
 		t.task.Result["verify_code"] = verifyCode
 		t.task.Result["sender"] = senderInfo
@@ -963,6 +1031,7 @@ func (t *VerifyCodeTask) Execute(ctx context.Context, api *tg.Client) error {
 		t.task.Result["verify_code"] = ""
 		t.task.Result["status"] = "timeout"
 		t.task.Result["error"] = "verification code not received within timeout"
+		addLog("监听超时，未收到验证码")
 	}
 
 	t.task.Result["timeout_seconds"] = timeoutSec
@@ -1115,16 +1184,35 @@ func (t *GroupChatTask) Execute(ctx context.Context, api *tg.Client) error {
 		return fmt.Errorf("task config is nil")
 	}
 
+	// 初始化日志
+	var logs []string
+	if t.task.Result == nil {
+		t.task.Result = make(models.TaskResult)
+	}
+
+	addLog := func(msg string) {
+		logEntry := fmt.Sprintf("[%s] %s", time.Now().Format("15:04:05"), msg)
+		logs = append(logs, logEntry)
+		t.task.Result["logs"] = logs
+	}
+
+	addLog("开始执行 AI 炒群任务...")
+
 	// 获取目标群组（支持ID和用户名）
 	var inputPeer tg.InputPeerClass
+	var targetGroupName string
+
 	if groupID, ok := config["group_id"].(float64); ok && groupID > 0 {
 		inputPeer = &tg.InputPeerChat{ChatID: int64(groupID)}
+		targetGroupName = fmt.Sprintf("ID: %d", int64(groupID))
 	} else if groupName, ok := config["group_name"].(string); ok && groupName != "" {
+		targetGroupName = groupName
 		// 解析群组用户名
 		resolved, err := api.ContactsResolveUsername(ctx, &tg.ContactsResolveUsernameRequest{
 			Username: groupName,
 		})
 		if err != nil {
+			addLog(fmt.Sprintf("无法解析群组 %s: %v", groupName, err))
 			return fmt.Errorf("failed to resolve group: %w", err)
 		}
 		if len(resolved.Chats) > 0 {
@@ -1141,6 +1229,8 @@ func (t *GroupChatTask) Execute(ctx context.Context, api *tg.Client) error {
 		return fmt.Errorf("missing group_id or group_name configuration")
 	}
 
+	addLog(fmt.Sprintf("目标群组: %s", targetGroupName))
+
 	// 获取AI配置
 	aiConfig, ok := config["ai_config"].(map[string]interface{})
 	if !ok {
@@ -1152,6 +1242,10 @@ func (t *GroupChatTask) Execute(ctx context.Context, api *tg.Client) error {
 		}
 	}
 
+	if personality, ok := aiConfig["personality"].(string); ok {
+		addLog(fmt.Sprintf("AI 人格: %s", personality))
+	}
+
 	// 获取监控时长
 	monitorDuration := 300 // 默认5分钟
 	if duration, exists := config["monitor_duration_seconds"]; exists {
@@ -1159,6 +1253,8 @@ func (t *GroupChatTask) Execute(ctx context.Context, api *tg.Client) error {
 			monitorDuration = int(durationFloat)
 		}
 	}
+
+	addLog(fmt.Sprintf("任务持续时间: %d 秒", monitorDuration))
 
 	responseSent := 0
 	messagesProcessed := 0
@@ -1169,11 +1265,13 @@ func (t *GroupChatTask) Execute(ctx context.Context, api *tg.Client) error {
 		Limit: 5,
 	})
 	if err != nil {
+		addLog(fmt.Sprintf("获取历史消息失败: %v", err))
 		return fmt.Errorf("failed to get chat history: %w", err)
 	}
 
 	// 分析群聊上下文并可能发送回复
 	if messages, ok := history.(*tg.MessagesMessages); ok {
+		addLog(fmt.Sprintf("获取到 %d 条历史消息，正在分析...", len(messages.Messages)))
 		for _, msg := range messages.Messages {
 			if message, ok := msg.(*tg.Message); ok {
 				messagesProcessed++
@@ -1182,6 +1280,7 @@ func (t *GroupChatTask) Execute(ctx context.Context, api *tg.Client) error {
 				if t.shouldRespondSimple(message, aiConfig) {
 					response := t.generateSimpleAIResponse(message, aiConfig)
 					if response != "" {
+						addLog(fmt.Sprintf("触发回复规则 (原文: %s...)", t.truncateString(message.Message, 20)))
 						_, err = api.MessagesSendMessage(ctx, &tg.MessagesSendMessageRequest{
 							Peer:     inputPeer,
 							Message:  response,
@@ -1189,6 +1288,9 @@ func (t *GroupChatTask) Execute(ctx context.Context, api *tg.Client) error {
 						})
 						if err == nil {
 							responseSent++
+							addLog(fmt.Sprintf("发送回复成功: %s", response))
+						} else {
+							addLog(fmt.Sprintf("发送回复失败: %v", err))
 						}
 						break // 只发送一个回复
 					}
@@ -1197,17 +1299,26 @@ func (t *GroupChatTask) Execute(ctx context.Context, api *tg.Client) error {
 		}
 	}
 
-	// 更新任务结果
-	if t.task.Result == nil {
-		t.task.Result = make(models.TaskResult)
+	if responseSent == 0 {
+		addLog("本次检查未触发回复")
 	}
 
+	// 更新任务结果
 	t.task.Result["messages_processed"] = messagesProcessed
 	t.task.Result["responses_sent"] = responseSent
 	t.task.Result["monitor_duration"] = monitorDuration
 	t.task.Result["completion_time"] = time.Now().Unix()
 
+	addLog(fmt.Sprintf("任务完成，处理消息: %d, 发送回复: %d", messagesProcessed, responseSent))
+
 	return nil
+}
+
+func (t *GroupChatTask) truncateString(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen]
 }
 
 // shouldRespondSimple 简单的回复决策逻辑

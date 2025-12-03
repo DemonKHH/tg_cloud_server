@@ -30,6 +30,18 @@ func (t *JoinGroupTask) Execute(ctx context.Context, api *tg.Client) error {
 		return fmt.Errorf("task config is nil")
 	}
 
+	// 初始化日志
+	var logs []string
+	if t.task.Result == nil {
+		t.task.Result = make(models.TaskResult)
+	}
+
+	addLog := func(msg string) {
+		logEntry := fmt.Sprintf("[%s] %s", time.Now().Format("15:04:05"), msg)
+		logs = append(logs, logEntry)
+		t.task.Result["logs"] = logs
+	}
+
 	// 获取目标群组列表
 	groups, ok := config["groups"].([]interface{})
 	if !ok || len(groups) == 0 {
@@ -43,6 +55,8 @@ func (t *JoinGroupTask) Execute(ctx context.Context, api *tg.Client) error {
 			intervalSec = int(intervalFloat)
 		}
 	}
+
+	addLog(fmt.Sprintf("开始执行批量加群任务，目标群组数: %d，间隔: %d秒", len(groups), intervalSec))
 
 	successCount := 0
 	failedCount := 0
@@ -62,6 +76,7 @@ func (t *JoinGroupTask) Execute(ctx context.Context, api *tg.Client) error {
 			errorMsg := fmt.Sprintf("invalid group format: %v", group)
 			errors = append(errors, errorMsg)
 			failedCount++
+			addLog(fmt.Sprintf("群组格式错误: %v", group))
 			continue
 		}
 
@@ -81,6 +96,7 @@ func (t *JoinGroupTask) Execute(ctx context.Context, api *tg.Client) error {
 				"duration": duration.String(),
 			}
 			failedCount++
+			addLog(fmt.Sprintf("加入失败 [%s]: %v", groupStr, err))
 		} else {
 			successCount++
 			joinedGroups = append(joinedGroups, groupStr)
@@ -88,14 +104,11 @@ func (t *JoinGroupTask) Execute(ctx context.Context, api *tg.Client) error {
 				"status":   "success",
 				"duration": duration.String(),
 			}
+			addLog(fmt.Sprintf("加入成功: %s", groupStr))
 		}
 	}
 
 	// 更新任务结果
-	if t.task.Result == nil {
-		t.task.Result = make(models.TaskResult)
-	}
-
 	t.task.Result["joined_count"] = successCount
 	t.task.Result["failed_count"] = failedCount
 	t.task.Result["errors"] = errors
@@ -104,6 +117,8 @@ func (t *JoinGroupTask) Execute(ctx context.Context, api *tg.Client) error {
 	t.task.Result["total_groups"] = len(groups)
 	t.task.Result["success_rate"] = float64(successCount) / float64(len(groups))
 	t.task.Result["completion_time"] = time.Now().Unix()
+
+	addLog(fmt.Sprintf("任务执行完成: 成功 %d, 失败 %d", successCount, failedCount))
 
 	return nil
 }

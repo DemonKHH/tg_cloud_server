@@ -52,6 +52,8 @@ export function CreateTaskDialog({
     broadcast_groups: "",
     broadcast_channels: "",
     broadcast_delay: "",
+    broadcast_auto_join: false,
+    broadcast_limit_per_account: "",
     verify_timeout: "30",
     verify_source: "",
     verify_pattern: "",
@@ -185,6 +187,15 @@ export function CreateTaskDialog({
           const delay = parseInt(form.broadcast_delay)
           if (!isNaN(delay) && delay > 0) {
             config.interval_seconds = delay
+          }
+        }
+        if (form.broadcast_auto_join) {
+          config.auto_join = true
+        }
+        if (form.broadcast_limit_per_account) {
+          const limit = parseInt(form.broadcast_limit_per_account)
+          if (!isNaN(limit) && limit > 0) {
+            config.limit_per_account = limit
           }
         }
         break
@@ -564,6 +575,26 @@ export function CreateTaskDialog({
                     onChange={e => setForm({ ...form, broadcast_delay: e.target.value })}
                     placeholder="默认无间隔"
                   />
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    id="broadcast-auto-join"
+                    checked={form.broadcast_auto_join}
+                    onCheckedChange={checked => setForm({ ...form, broadcast_auto_join: checked })}
+                  />
+                  <Label htmlFor="broadcast-auto-join">自动加群 (如果未加入)</Label>
+                </div>
+                <div className="space-y-2">
+                  <Label>单号限制 (可选)</Label>
+                  <Input
+                    type="number"
+                    value={form.broadcast_limit_per_account}
+                    onChange={e => setForm({ ...form, broadcast_limit_per_account: e.target.value })}
+                    placeholder="每个账号发送的群组数量限制"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    如果设置，将自动分配群组给多个账号
+                  </p>
                 </div>
               </div>
             )}

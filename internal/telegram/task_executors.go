@@ -569,6 +569,52 @@ func (t *BroadcastTask) Execute(ctx context.Context, api *tg.Client) error {
 		return fmt.Errorf("invalid or empty message configuration")
 	}
 
+	// 获取自动加群配置
+	autoJoin := false
+	if val, ok := config["auto_join"].(bool); ok {
+		autoJoin = val
+	}
+
+	// 获取单号限制
+	limitPerAccount := 0
+	if val, ok := config["limit_per_account"].(float64); ok {
+		limitPerAccount = int(val)
+	} else if val, ok := config["limit_per_account"].(int); ok {
+		limitPerAccount = int(val)
+	}
+	// 计算当前账号需要发送的群组范围
+	var targetGroups []interface{}
+
+	// 使用 task.Result 中的 next_group_index 来追踪进度
+	// 注意：这里依赖于 TaskScheduler 是顺序执行每个账号的
+	// 由于 TaskScheduler 是单线程循环执行 accounts，这里是安全的
+
+	startIndex := 0
+	if val, ok := t.task.Result["next_group_index"].(float64); ok {
+		startIndex = int(val)
+	}
+
+	if limitPerAccount > 0 {
+		endIndex := startIndex + limitPerAccount
+		if endIndex > len(groups) {
+			endIndex = len(groups)
+		}
+
+		if startIndex < len(groups) {
+			targetGroups = groups[startIndex:endIndex]
+			// 更新进度
+			t.task.Result["next_group_index"] = float64(endIndex)
+		} else {
+			targetGroups = []interface{}{}
+		}
+	} else {
+		// 如果没有限制，发送给所有群组
+		targetGroups = groups
+	}
+
+	// 记录本次执行的范围，便于调试
+	t.task.Result[fmt.Sprintf("account_range_%d", time.Now().UnixNano())] = fmt.Sprintf("%d-%d", startIndex, startIndex+len(targetGroups))
+
 	// 获取发送间隔 (防止被限制)
 	intervalSec := 3 // 默认3秒间隔，群发更谨慎
 	if interval, exists := config["interval_seconds"]; exists {
@@ -583,10 +629,21 @@ func (t *BroadcastTask) Execute(ctx context.Context, api *tg.Client) error {
 	var sentGroups []string
 
 	// 发送消息到每个群组
-	for i, group := range groups {
+	for i, group := range targetGroups {
 		// 添加发送间隔（除了第一个消息）
 		if i > 0 && intervalSec > 0 {
 			time.Sleep(time.Duration(intervalSec) * time.Second)
+		}
+
+		// 如果开启了自动加群，尝试先加入
+		if autoJoin {
+			if err := t.joinGroup(ctx, api, group); err != nil {
+				// 记录加群失败，但仍尝试发送（可能已经在群里了）
+				fmt.Printf("[BroadcastTask] Failed to auto-join group %v: %v\n", group, err)
+			} else {
+				// 加群成功后稍微等待一下，确保状态同步
+				time.Sleep(1 * time.Second)
+			}
 		}
 
 		err := t.sendBroadcastMessage(ctx, api, group, message)
@@ -604,15 +661,93 @@ func (t *BroadcastTask) Execute(ctx context.Context, api *tg.Client) error {
 		t.task.Result = make(models.TaskResult)
 	}
 
+	// 注意：这里的 sent_count 是当前账号的发送数量
+	// 如果需要总数，TaskScheduler 会在最后汇总（但目前 TaskScheduler 只是简单的覆盖/合并？）
+	// TaskScheduler 的逻辑是：
+	// task.Result["success_count"] = successCount (账号维度的成功数)
+	// task.Result["account_results"][accountID] = accountResult
+	// 所以我们需要把 sent_count 放到 accountResult 中，或者累加？
+	// TaskExecutors.go 里的 Execute 方法是直接修改 t.task.Result
+	// 而 TaskScheduler 在调用 Execute 后，会提取 t.task.Result 中的字段到 accountResult
+	// 所以这里修改 t.task.Result 是对的，它会被提取并保存为该账号的执行结果
+
 	t.task.Result["sent_count"] = sentCount
 	t.task.Result["failed_count"] = failedCount
 	t.task.Result["errors"] = errors
 	t.task.Result["sent_groups"] = sentGroups
-	t.task.Result["total_groups"] = len(groups)
-	t.task.Result["success_rate"] = float64(sentCount) / float64(len(groups))
+	t.task.Result["total_groups"] = len(targetGroups) // 本次尝试发送的总数
+	if len(targetGroups) > 0 {
+		t.task.Result["success_rate"] = float64(sentCount) / float64(len(targetGroups))
+	} else {
+		t.task.Result["success_rate"] = 0
+	}
 	t.task.Result["send_time"] = time.Now().Unix()
 
 	return nil
+}
+
+// joinGroup 尝试加入群组
+func (t *BroadcastTask) joinGroup(ctx context.Context, api *tg.Client, group interface{}) error {
+	groupStr, ok := group.(string)
+	if !ok {
+		// 如果不是字符串（例如是ID），通常意味着已经在群里或者是私有群ID，无法通过ID加入
+		return nil
+	}
+
+	// 处理链接或用户名
+	cleanGroupname := groupStr
+	if len(groupStr) > 0 && groupStr[0] == '@' {
+		cleanGroupname = groupStr[1:]
+	}
+
+	// 检查是否是邀请链接 (t.me/joinchat/...)
+	if strings.Contains(cleanGroupname, "joinchat/") {
+		hash := cleanGroupname[strings.Index(cleanGroupname, "joinchat/")+9:]
+		if hash == "" {
+			return fmt.Errorf("invalid join link")
+		}
+		_, err := api.MessagesImportChatInvite(ctx, hash)
+		return err
+	}
+
+	// 移除其他链接前缀
+	if len(cleanGroupname) > 13 && cleanGroupname[:13] == "https://t.me/" {
+		cleanGroupname = cleanGroupname[13:]
+	} else if len(cleanGroupname) > 5 && cleanGroupname[:5] == "t.me/" {
+		cleanGroupname = cleanGroupname[5:]
+	}
+
+	// 解析用户名
+	resolved, err := api.ContactsResolveUsername(ctx, &tg.ContactsResolveUsernameRequest{
+		Username: cleanGroupname,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to resolve group: %w", err)
+	}
+
+	// 尝试加入
+	if len(resolved.Chats) > 0 {
+		if channel, ok := resolved.Chats[0].(*tg.Channel); ok {
+			// 检查是否已经在群里 (Left=false)
+			if !channel.Left {
+				return nil // 已经在群里
+			}
+
+			inputChannel := &tg.InputChannel{
+				ChannelID:  channel.ID,
+				AccessHash: channel.AccessHash,
+			}
+			_, err := api.ChannelsJoinChannel(ctx, inputChannel)
+			return err
+		} else if _, ok := resolved.Chats[0].(*tg.Chat); ok {
+			// 普通群组通常不能直接通过用户名加入，除非是公开的，但API通常通过ImportChatInvite或AddChatUser
+			// 对于公开群组，通常是Channel类型（supergroup）
+			// 如果是普通Chat，尝试 AddChatUser (如果是自己加自己?) -> 通常 API 不支持直接 Join Chat via Username unless it's a supergroup/channel
+			return nil
+		}
+	}
+
+	return fmt.Errorf("group not found or not a channel/supergroup")
 }
 
 // sendBroadcastMessage 发送群发消息到指定群组
@@ -622,6 +757,9 @@ func (t *BroadcastTask) sendBroadcastMessage(ctx context.Context, api *tg.Client
 	switch v := group.(type) {
 	case int64:
 		// 如果是数字ID，尝试作为ChatID
+		// 注意：对于Channel/Supergroup，仅有ID是不够的，通常需要AccessHash
+		// 除非已经在缓存中或者作为 InputPeerChat (仅限普通群)
+		// 这里假设是普通群ID，或者调用者知道自己在做什么
 		inputPeer = &tg.InputPeerChat{ChatID: v}
 	case float64:
 		// JSON解码数字可能是float64

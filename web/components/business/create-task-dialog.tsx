@@ -68,6 +68,7 @@ export function CreateTaskDialog({
     force_add_group_username: "",
     force_add_group_targets: "",
     force_add_group_limit: "",
+    force_add_group_auto_join: false,
     check_spam_bot: false,
     check_2fa: false,
     two_fa_password: "",
@@ -249,6 +250,9 @@ export function CreateTaskDialog({
           if (!isNaN(limit) && limit > 0) {
             config.limit_per_account = limit
           }
+        }
+        if (form.force_add_group_auto_join) {
+          config.auto_join = true
         }
         break
 
@@ -697,6 +701,14 @@ export function CreateTaskDialog({
                   <p className="text-xs text-muted-foreground">
                     限制每个账号拉入群组的人数，留空则不限制
                   </p>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    id="force-add-auto-join"
+                    checked={form.force_add_group_auto_join}
+                    onCheckedChange={checked => setForm({ ...form, force_add_group_auto_join: checked })}
+                  />
+                  <Label htmlFor="force-add-auto-join">自动加群 (如果未加入)</Label>
                 </div>
               </div>
             )}

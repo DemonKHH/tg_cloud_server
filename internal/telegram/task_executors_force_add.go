@@ -157,39 +157,66 @@ func (t *ForceAddGroupTask) Execute(ctx context.Context, api *tg.Client) error {
 	var isChannel bool // 区分 Channel/Supergroup 和 Basic Group
 	var targetGroupName string
 
-	if groupID, ok := config["group_id"].(float64); ok && groupID > 0 {
-		// 尝试作为 Channel
-		// 注意：这里我们无法直接知道是 Chat 还是 Channel，通常需要 Resolve 或者 Check
-		// 简单起见，我们先假设 ID 可能是 ChatID。如果是 ChannelID，通常需要 AccessHash。
-		// 如果只有 ID，我们可能需要先 GetChats 来获取 AccessHash，或者假设它是一个 Basic Group。
-		// 更好的方式是通过 Invite Link 或 Username 解析。
-		// 如果必须使用 ID，通常需要先缓存了 AccessHash。
-		// 这里为了稳健性，建议用户提供 group_name 或 invite link，或者我们尝试通过 ID 获取（如果已经在对话列表中）。
-		inputPeer = &tg.InputPeerChat{ChatID: int64(groupID)}
-		targetGroupName = fmt.Sprintf("ID: %d", int64(groupID))
-	} else if groupName, ok := config["group_name"].(string); ok && groupName != "" {
-		targetGroupName = groupName
-		// 解析群组用户名
-		resolved, err := api.ContactsResolveUsername(ctx, &tg.ContactsResolveUsernameRequest{
-			Username: groupName,
-		})
-		if err != nil {
-			return fmt.Errorf("failed to resolve group: %w", err)
+	// 自动加群逻辑
+	autoJoin := false
+	if val, ok := config["auto_join"].(bool); ok {
+		autoJoin = val
+	}
+
+	if autoJoin {
+		var groupToJoin interface{}
+		if name, ok := config["group_name"].(string); ok && name != "" {
+			groupToJoin = name
 		}
-		if len(resolved.Chats) > 0 {
-			if chat, ok := resolved.Chats[0].(*tg.Chat); ok {
-				inputPeer = &tg.InputPeerChat{ChatID: chat.ID}
-				isChannel = false
-			} else if channel, ok := resolved.Chats[0].(*tg.Channel); ok {
-				inputPeer = &tg.InputPeerChannel{
-					ChannelID:  channel.ID,
-					AccessHash: channel.AccessHash,
+
+		if groupToJoin != nil {
+			addLog(fmt.Sprintf("正在尝试自动加群: %v", groupToJoin))
+			peer, err := t.joinGroup(ctx, api, groupToJoin)
+			if err != nil {
+				// 即使加群失败（可能是已经在群里，或者其他原因），也尝试继续解析
+				addLog(fmt.Sprintf("自动加群尝试结束: %v", err))
+			} else if peer != nil {
+				inputPeer = peer
+				targetGroupName = fmt.Sprintf("%v", groupToJoin)
+
+				// 判断是否为频道/超级群
+				switch peer.(type) {
+				case *tg.InputPeerChannel:
+					isChannel = true
+				default:
+					isChannel = false
 				}
-				isChannel = true
+				addLog("自动加群成功或已获取群组信息")
 			}
 		}
-	} else {
-		return fmt.Errorf("missing group_id or group_name configuration")
+	}
+
+	if inputPeer == nil {
+
+		if groupName, ok := config["group_name"].(string); ok && groupName != "" {
+			targetGroupName = groupName
+			// 解析群组用户名
+			resolved, err := api.ContactsResolveUsername(ctx, &tg.ContactsResolveUsernameRequest{
+				Username: groupName,
+			})
+			if err != nil {
+				return fmt.Errorf("failed to resolve group: %w", err)
+			}
+			if len(resolved.Chats) > 0 {
+				if chat, ok := resolved.Chats[0].(*tg.Chat); ok {
+					inputPeer = &tg.InputPeerChat{ChatID: chat.ID}
+					isChannel = false
+				} else if channel, ok := resolved.Chats[0].(*tg.Channel); ok {
+					inputPeer = &tg.InputPeerChannel{
+						ChannelID:  channel.ID,
+						AccessHash: channel.AccessHash,
+					}
+					isChannel = true
+				}
+			}
+		} else {
+			return fmt.Errorf("missing group_name configuration")
+		}
 	}
 
 	if inputPeer == nil {
@@ -329,4 +356,114 @@ func (t *ForceAddGroupTask) updateResult(success, failed int, errors []string, a
 // GetType 获取任务类型
 func (t *ForceAddGroupTask) GetType() string {
 	return "force_add_group"
+}
+
+// joinGroup 尝试加入群组，并返回 InputPeer
+func (t *ForceAddGroupTask) joinGroup(ctx context.Context, api *tg.Client, group interface{}) (tg.InputPeerClass, error) {
+	groupStr, ok := group.(string)
+	if !ok {
+		return nil, nil // 非字符串无法通过此方法加入
+	}
+
+	// 处理链接或用户名
+	cleanGroupname := groupStr
+	if len(groupStr) > 0 && groupStr[0] == '@' {
+		cleanGroupname = groupStr[1:]
+	}
+
+	// 检查是否是邀请链接 (t.me/joinchat/...)
+	if strings.Contains(cleanGroupname, "joinchat/") {
+		hash := cleanGroupname[strings.Index(cleanGroupname, "joinchat/")+9:]
+		if hash == "" {
+			return nil, fmt.Errorf("invalid join link")
+		}
+		updates, err := api.MessagesImportChatInvite(ctx, hash)
+		if err != nil {
+			if strings.Contains(err.Error(), "USER_ALREADY_PARTICIPANT") {
+				// 如果已经在群里，我们无法直接获取 InputPeer，因为 CheckChatInvite 不返回 ID
+				// 只能返回 nil，让外部尝试通过其他方式（如 Dialogs）解决
+				return nil, nil
+			}
+			return nil, err
+		}
+
+		// 从 Updates 中提取 Chat/Channel
+		return t.extractInputPeerFromUpdates(updates)
+	}
+
+	// 移除其他链接前缀
+	if len(cleanGroupname) > 13 && cleanGroupname[:13] == "https://t.me/" {
+		cleanGroupname = cleanGroupname[13:]
+	} else if len(cleanGroupname) > 5 && cleanGroupname[:5] == "t.me/" {
+		cleanGroupname = cleanGroupname[5:]
+	}
+
+	// 解析用户名
+	resolved, err := api.ContactsResolveUsername(ctx, &tg.ContactsResolveUsernameRequest{
+		Username: cleanGroupname,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve group: %w", err)
+	}
+
+	// 尝试加入
+	if len(resolved.Chats) > 0 {
+		if channel, ok := resolved.Chats[0].(*tg.Channel); ok {
+			inputChannel := &tg.InputChannel{
+				ChannelID:  channel.ID,
+				AccessHash: channel.AccessHash,
+			}
+
+			// 检查是否已经在群里 (Left=false)
+			if !channel.Left {
+				return &tg.InputPeerChannel{
+					ChannelID:  channel.ID,
+					AccessHash: channel.AccessHash,
+				}, nil
+			}
+
+			_, err := api.ChannelsJoinChannel(ctx, inputChannel)
+			if err != nil {
+				return nil, err
+			}
+
+			return &tg.InputPeerChannel{
+				ChannelID:  channel.ID,
+				AccessHash: channel.AccessHash,
+			}, nil
+		}
+	}
+
+	return nil, fmt.Errorf("group not found or not a channel/supergroup")
+}
+
+// extractInputPeerFromUpdates 从 Updates 中提取 InputPeer
+func (t *ForceAddGroupTask) extractInputPeerFromUpdates(updates tg.UpdatesClass) (tg.InputPeerClass, error) {
+	var chats []tg.ChatClass
+
+	switch v := updates.(type) {
+	case *tg.Updates:
+		chats = v.Chats
+	case *tg.UpdatesCombined:
+		chats = v.Chats
+	}
+
+	if len(chats) > 0 {
+		return t.extractInputPeerFromChat(chats[0])
+	}
+	return nil, fmt.Errorf("no chats found in updates")
+}
+
+// extractInputPeerFromChat 从 ChatClass 提取 InputPeer
+func (t *ForceAddGroupTask) extractInputPeerFromChat(chat tg.ChatClass) (tg.InputPeerClass, error) {
+	switch c := chat.(type) {
+	case *tg.Chat:
+		return &tg.InputPeerChat{ChatID: c.ID}, nil
+	case *tg.Channel:
+		return &tg.InputPeerChannel{
+			ChannelID:  c.ID,
+			AccessHash: c.AccessHash,
+		}, nil
+	}
+	return nil, fmt.Errorf("unknown chat type")
 }

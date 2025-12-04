@@ -933,7 +933,7 @@ export default function AccountsPage() {
                             }}
                           >
                             <LogOut className="h-4 w-4 mr-2" />
-                            踢设备
+                            踢出其他设备
                           </Button>
                         </TooltipTrigger>
                         <TooltipContent>

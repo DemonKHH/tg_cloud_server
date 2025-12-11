@@ -1,6 +1,5 @@
 # TG Cloud Server Docker 环境配置文件
 # 此文件用于 Docker 环境，数据库和 Redis 使用服务名连接
-# 用法：在 docker-compose.yml 中挂载此文件，或修改 web-api 服务的 CONFIG_PATH 环境变量
 
 # 服务配置
 server:
@@ -14,7 +13,7 @@ database:
     host: "mysql"  # Docker Compose 服务名
     port: 3306
     username: "tg_user"
-    password: "tg_pass123"  # 对应 docker-compose.yml 默认值
+    password: "tg_pass123"
     database: "tg_manager"
     max_open_conns: 100
     max_idle_conns: 10
@@ -42,7 +41,7 @@ telegram:
 # AI配置
 ai:
   openai:
-    api_key: "${OPENAI_API_KEY}"  # 从环境变量读取
+    api_key: "${OPENAI_API_KEY}"
     model: "gpt-3.5-turbo"
     max_tokens: 1000
     temperature: 0.7
@@ -65,156 +64,17 @@ logging:
   max_size: 100
   max_backups: 3
   max_age: 28
+  compress: true
+  files:
+    error_log: "logs/error.log"
+    warn_log: "logs/warn.log"
+    info_log: "logs/info.log"
+    debug_log: "logs/debug.log"
+    task_log: "logs/task.log"
+    api_log: "logs/api.log"
 
 # JWT配置
 jwt:
   secret_key: "your_jwt_secret_key_change_this_in_production"
   expiration_time: "24h"
   refresh_time: "168h"
-
-# 任务配置
-tasks:
-  intervals:
-    check: 30
-    private: 60
-    broadcast: 120
-    verify: 0
-    group_chat: 300
-  timeouts:
-    check: "2m"
-    private: "5m"
-    broadcast: "10m"
-    verify: "30s"
-    group_chat: "3m"
-  retry:
-    max_attempts: 3
-    initial_delay: "5s"
-    max_delay: "5m"
-    backoff_factor: 2.0
-
-# 代理配置
-proxy:
-  test:
-    timeout: "10s"
-    test_url: "https://api.telegram.org"
-    max_retries: 3
-  quality:
-    min_success_rate: 80.0
-    max_latency: 5000
-
-# 监控配置
-monitoring:
-  metrics:
-    enabled: true
-    path: "/metrics"
-    port: 9091
-  health:
-    enabled: true
-    path: "/health"
-    interval: "30s"
-  pprof:
-    enabled: false
-    port: 6060
-
-# 安全配置
-security:
-  cors:
-    allowed_origins:
-      - "http://localhost:3000"
-      - "https://yourdomain.com"
-    allowed_methods:
-      - "GET"
-      - "POST"
-      - "PUT"
-      - "DELETE"
-      - "OPTIONS"
-    allowed_headers:
-      - "Content-Type"
-      - "Authorization"
-    max_age: 86400
-  limits:
-    max_request_size: "10MB"
-    max_upload_size: "100MB"
-    request_timeout: "30s"
-  rate_limit:
-    enabled: true
-    requests_per_minute: 100
-    burst_size: 20
-    cleanup_interval: "1m"
-
-# WebSocket配置
-websocket:
-  enabled: true
-  path: "/ws"
-  read_buffer_size: 1024
-  write_buffer_size: 1024
-  check_origin: false
-  ping_period: "54s"
-  pong_wait: "60s"
-  write_wait: "10s"
-  max_message_size: 512
-
-# 文件存储配置
-storage:
-  local:
-    upload_path: "uploads"
-    max_file_size: "100MB"
-    allowed_extensions:
-      - ".jpg"
-      - ".jpeg"
-      - ".png"
-      - ".gif"
-      - ".mp4"
-      - ".pdf"
-      - ".doc"
-      - ".docx"
-  sessions:
-    path: "sessions"
-    backup_enabled: true
-    backup_interval: "1h"
-
-# 通知配置
-notifications:
-  email:
-    enabled: false
-    smtp_host: "smtp.gmail.com"
-    smtp_port: 587
-    username: "your_email@gmail.com"
-    password: "your_email_password"
-    from: "noreply@yourdomain.com"
-    to: "admin@yourdomain.com"
-  webhook:
-    enabled: false
-    url: "https://your-webhook-url.com/notify"
-    timeout: "10s"
-    secret: "your_webhook_secret"
-
-# 备份配置
-backup:
-  enabled: true
-  interval: "24h"
-  retention: "7d"
-  path: "backups"
-  compress: true
-
-# 开发配置
-development:
-  debug: false
-  hot_reload: false
-  docs:
-    enabled: true
-    path: "/docs"
-    title: "TG Cloud Server API"
-    version: "1.0.0"
-
-# 生产配置
-production:
-  performance:
-    gomaxprocs: 0
-    gogc: 100
-  graceful_shutdown:
-    timeout: "30s"
-  limits:
-    max_goroutines: 10000
-    max_memory: "2GB"
-

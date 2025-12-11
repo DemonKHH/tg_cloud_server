@@ -21,7 +21,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Switch } from "@/components/ui/switch"
-import { taskAPI, accountAPI } from "@/lib/api"
+import { taskAPI } from "@/lib/api"
 
 interface CreateTaskDialogProps {
   open: boolean
@@ -50,13 +50,11 @@ export function CreateTaskDialog({
     private_delay: "",
     broadcast_message: "",
     broadcast_groups: "",
-    broadcast_channels: "",
     broadcast_delay: "",
     broadcast_auto_join: false,
     broadcast_limit_per_account: "",
-    verify_timeout: "30",
+    verify_timeout: "300",
     verify_source: "",
-    verify_pattern: "",
     group_chat_group_id: "",
     group_chat_duration: "",
 

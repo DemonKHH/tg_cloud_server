@@ -244,6 +244,9 @@ func (cp *ConnectionPool) maintainConnection(accountID string, conn *ManagedConn
 		conn.status = StatusError
 		conn.mu.Unlock()
 
+		// 确保在线状态为离线（连接错误时）
+		cp.updateConnectionStatus(accountID, false)
+
 		// 更新账号状态
 		cp.updateAccountStatusOnError(accountID, err)
 
@@ -413,6 +416,8 @@ func (cp *ConnectionPool) RemoveConnection(accountID string) {
 		conn.logger.Info("Removing connection")
 		conn.cancel()
 		delete(cp.connections, accountID)
+		// 确保更新在线状态为离线
+		go cp.updateConnectionStatus(accountID, false)
 	}
 
 	delete(cp.configs, accountID)
@@ -472,6 +477,8 @@ func (cp *ConnectionPool) cleanupIdleConnections() {
 
 	for _, accountID := range toRemove {
 		delete(cp.connections, accountID)
+		// 确保更新在线状态为离线
+		go cp.updateConnectionStatus(accountID, false)
 	}
 
 	if len(toRemove) > 0 {

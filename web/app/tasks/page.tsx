@@ -97,6 +97,11 @@ export default function TasksPage() {
       broadcast: "群发消息",
       verify_code: "验证码接收",
       group_chat: "AI炒群",
+      join_group: "批量加群",
+      scenario: "场景炒群",
+      force_add_group: "强拉进群",
+      terminate_sessions: "踢出设备",
+      update_2fa: "修改2FA",
     }
     return typeMap[type] || type
   }

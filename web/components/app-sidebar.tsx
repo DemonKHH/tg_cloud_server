@@ -8,7 +8,6 @@ import {
   ListTodo,
   Globe,
   Bot,
-  BarChart3,
   Settings,
   Zap,
   Shield,
@@ -36,8 +35,7 @@ const navigation = [
   { name: "任务管理", href: "/tasks", icon: ListTodo, badge: null },
   { name: "API链接", href: "/verify-codes", icon: Shield, badge: null },
   { name: "代理管理", href: "/proxies", icon: Globe, badge: null },
-  { name: "AI服务", href: "/ai", icon: Bot, badge: "新" },
-  { name: "统计分析", href: "/stats", icon: BarChart3, badge: null },
+  // { name: "AI服务", href: "/ai", icon: Bot, badge: "新" },
 ]
 
 const bottomNavigation = [

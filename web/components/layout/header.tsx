@@ -1,6 +1,6 @@
 "use client"
 
-import { Bell, Moon, Sun, Settings, User, LogOut, HelpCircle } from "lucide-react"
+import { Moon, Sun, Settings, User, LogOut } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -15,7 +15,7 @@ import { SidebarTrigger } from "@/components/ui/sidebar"
 import { useTheme } from "next-themes"
 import { motion } from "framer-motion"
 import { useUser } from "@/contexts/user-context"
-import { Badge } from "@/components/ui/badge"
+import Link from "next/link"
 
 export function Header() {
   const { theme, setTheme } = useTheme()
@@ -55,29 +55,7 @@ export function Header() {
           <span className="sr-only">切换主题</span>
         </Button>
 
-        {/* 帮助 */}
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-9 w-9 rounded-lg hover:bg-muted transition-colors"
-        >
-          <HelpCircle className="h-[18px] w-[18px] text-muted-foreground" />
-          <span className="sr-only">帮助</span>
-        </Button>
 
-        {/* 通知 */}
-        <Button 
-          variant="ghost" 
-          size="icon" 
-          className="h-9 w-9 rounded-lg hover:bg-muted transition-colors relative"
-        >
-          <Bell className="h-[18px] w-[18px] text-muted-foreground" />
-          <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-primary" />
-          <span className="sr-only">通知</span>
-        </Button>
-
-        {/* 分隔线 */}
-        <div className="h-6 w-px bg-border mx-2" />
 
         {/* 用户菜单 */}
         <DropdownMenu>
@@ -112,13 +90,17 @@ export function Header() {
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem className="gap-2 px-3 py-2 cursor-pointer">
-              <User className="h-4 w-4 text-muted-foreground" />
-              <span>个人资料</span>
+            <DropdownMenuItem asChild className="gap-2 px-3 py-2 cursor-pointer">
+              <Link href="/profile">
+                <User className="h-4 w-4 text-muted-foreground" />
+                <span>个人资料</span>
+              </Link>
             </DropdownMenuItem>
-            <DropdownMenuItem className="gap-2 px-3 py-2 cursor-pointer">
-              <Settings className="h-4 w-4 text-muted-foreground" />
-              <span>账号设置</span>
+            <DropdownMenuItem asChild className="gap-2 px-3 py-2 cursor-pointer">
+              <Link href="/settings">
+                <Settings className="h-4 w-4 text-muted-foreground" />
+                <span>系统设置</span>
+              </Link>
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem 

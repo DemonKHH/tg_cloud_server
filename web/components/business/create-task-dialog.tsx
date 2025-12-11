@@ -302,9 +302,26 @@ export function CreateTaskDialog({
         config.ai_config = aiConfig
         break
 
+      case "verify_code":
+        if (form.verify_timeout) {
+          const timeout = parseInt(form.verify_timeout)
+          if (!isNaN(timeout) && timeout > 0) {
+            config.timeout_seconds = timeout
+          }
+        }
+        if (form.verify_source) {
+          config.senders = form.verify_source.split(",").map(s => s.trim()).filter(s => s)
+        }
+        break
+
       case "terminate_sessions":
         // No specific config needed
         break
+
+      case "scenario":
+        // Scenario task requires complex configuration, skip for now
+        toast.error("场景炒群任务需要通过API创建")
+        return null
 
       case "update_2fa":
         if (!form.update_2fa_new_password) {
@@ -392,10 +409,12 @@ export function CreateTaskDialog({
                   <SelectItem value="check">账号检查</SelectItem>
                   <SelectItem value="private_message">私信发送</SelectItem>
                   <SelectItem value="broadcast">群发消息</SelectItem>
+                  <SelectItem value="verify_code">验证码接收</SelectItem>
                   <SelectItem value="join_group">批量加群</SelectItem>
-                  <SelectItem value="force_add_group">强拉</SelectItem>
+                  <SelectItem value="force_add_group">强拉进群</SelectItem>
                   <SelectItem value="terminate_sessions">踢出其他设备</SelectItem>
                   <SelectItem value="group_chat">AI炒群</SelectItem>
+                  <SelectItem value="scenario">场景炒群</SelectItem>
                   <SelectItem value="update_2fa">修改2FA密码</SelectItem>
                 </SelectContent>
               </Select>
@@ -667,6 +686,54 @@ export function CreateTaskDialog({
                     onChange={e => setForm({ ...form, join_group_delay: e.target.value })}
                     placeholder="默认5秒"
                   />
+                </div>
+              </div>
+            )}
+
+            {form.task_type === "verify_code" && (
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>超时时间 (秒)</Label>
+                  <Input
+                    type="number"
+                    value={form.verify_timeout}
+                    onChange={e => setForm({ ...form, verify_timeout: e.target.value })}
+                    placeholder="默认300秒 (5分钟)"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    等待验证码的最长时间，范围 30-600 秒
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label>发送者 (可选)</Label>
+                  <Input
+                    value={form.verify_source}
+                    onChange={e => setForm({ ...form, verify_source: e.target.value })}
+                    placeholder="777000, Telegram"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    监听的发送者，多个用逗号分隔，留空则监听 Telegram 官方
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {form.task_type === "terminate_sessions" && (
+              <div className="space-y-4">
+                <div className="p-4 bg-muted/50 rounded-lg">
+                  <p className="text-sm text-muted-foreground">
+                    此任务将踢出除当前会话外的所有其他设备登录，无需额外配置。
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {form.task_type === "scenario" && (
+              <div className="space-y-4">
+                <div className="p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border border-yellow-200 dark:border-yellow-800">
+                  <p className="text-sm text-yellow-700 dark:text-yellow-300">
+                    场景炒群任务配置较为复杂，需要配置多个智能体的人设和目标。请通过 API 接口创建此类任务。
+                  </p>
                 </div>
               </div>
             )}

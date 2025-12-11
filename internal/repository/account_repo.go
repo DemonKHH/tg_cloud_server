@@ -130,7 +130,14 @@ func (r *accountRepository) UpdateStatus(id uint64, status models.AccountStatus)
 
 // Delete 删除账号
 func (r *accountRepository) Delete(id uint64) error {
-	return r.db.Delete(&models.TGAccount{}, id).Error
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		// 先将关联的任务日志中的 account_id 设为 NULL
+		if err := tx.Model(&models.TaskLog{}).Where("account_id = ?", id).Update("account_id", nil).Error; err != nil {
+			return err
+		}
+		// 再删除账号
+		return tx.Delete(&models.TGAccount{}, id).Error
+	})
 }
 
 // GetAccountsByStatus 根据状态获取账号列表

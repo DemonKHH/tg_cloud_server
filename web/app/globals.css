@@ -41,108 +41,113 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
 }
 
 :root {
-  --radius: 0.625rem;
+  --radius: 0.75rem;
 
-  /* Light theme - 优化的白色主题 */
-  --background: oklch(1 0 0); /* 纯白色背景 */
-  --foreground: oklch(0.15 0 0); /* 深灰色文字，确保对比度 */
-  --card: oklch(1 0 0); /* 纯白色卡片 */
-  --card-foreground: oklch(0.15 0 0); /* 深灰色文字 */
-  --popover: oklch(1 0 0); /* 纯白色弹窗 */
-  --popover-foreground: oklch(0.15 0 0); /* 深灰色文字 */
+  /* Light theme - 现代简约白色主题 */
+  --background: oklch(0.985 0 0); /* 微灰白背景，减少刺眼 */
+  --foreground: oklch(0.145 0.005 285); /* 深色文字带微蓝 */
+  --card: oklch(1 0 0); /* 纯白卡片 */
+  --card-foreground: oklch(0.145 0.005 285);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0.005 285);
   
-  /* 品牌主色 - 保持蓝色作为强调色 */
-  --primary: oklch(0.486 0.165 244.531); /* 现代蓝色 */
-  --primary-foreground: oklch(1 0 0); /* 纯白色文字 */
+  /* 品牌主色 - 现代靛蓝色 */
+  --primary: oklch(0.55 0.18 260); /* 靛蓝色 */
+  --primary-foreground: oklch(1 0 0);
   
-  --secondary: oklch(0.96 0 0); /* 浅灰色背景，有足够对比度 */
-  --secondary-foreground: oklch(0.15 0 0); /* 深灰色文字 */
-  --muted: oklch(0.94 0 0); /* 更明显的浅灰色 */
-  --muted-foreground: oklch(0.5 0 0); /* 中等灰色文字 */
-  --accent: oklch(0.96 0 0); /* 浅灰色强调 */
-  --accent-foreground: oklch(0.15 0 0); /* 深灰色文字 */
-  --destructive: oklch(0.647 0.176 21.651); /* 保持红色 */
-  --destructive-foreground: oklch(1 0 0); /* 纯白色文字 */
+  --secondary: oklch(0.965 0.002 285); /* 微蓝灰 */
+  --secondary-foreground: oklch(0.25 0.005 285);
+  --muted: oklch(0.955 0.003 285);
+  --muted-foreground: oklch(0.45 0.01 285);
+  --accent: oklch(0.96 0.015 260); /* 淡靛蓝强调 */
+  --accent-foreground: oklch(0.25 0.005 285);
+  --destructive: oklch(0.58 0.22 25); /* 现代红 */
+  --destructive-foreground: oklch(1 0 0);
   
-  --border: oklch(0.85 0 0); /* 更明显的边框灰色 */
-  --input: oklch(0.98 0 0); /* 输入框浅灰背景 */
-  --ring: oklch(0.486 0.165 244.531);
+  --border: oklch(0.91 0.003 285);
+  --input: oklch(0.97 0.002 285);
+  --ring: oklch(0.55 0.18 260);
 
-  /* 现代化图表颜色 */
-  --chart-1: oklch(0.486 0.165 244.531); /* 主蓝色 */
-  --chart-2: oklch(0.647 0.176 21.651);  /* 橙红色 */
-  --chart-3: oklch(0.557 0.147 163.837); /* 青绿色 */
-  --chart-4: oklch(0.749 0.134 85.887);  /* 黄绿色 */
-  --chart-5: oklch(0.647 0.165 328.363); /* 紫红色 */
+  /* 现代图表颜色 - 更鲜艳 */
+  --chart-1: oklch(0.55 0.18 260); /* 靛蓝 */
+  --chart-2: oklch(0.65 0.2 145);  /* 翠绿 */
+  --chart-3: oklch(0.7 0.18 45);   /* 琥珀 */
+  --chart-4: oklch(0.6 0.22 330);  /* 玫红 */
+  --chart-5: oklch(0.58 0.2 200);  /* 青色 */
 
-  /* 现代化侧边栏 - 优化的白色主题 */
-  --sidebar: oklch(1 0 0); /* 纯白色侧边栏 */
-  --sidebar-foreground: oklch(0.15 0 0); /* 深灰色文字，确保对比度 */
-  --sidebar-primary: oklch(0.486 0.165 244.531); /* 蓝色保持 */
-  --sidebar-primary-foreground: oklch(1 0 0); /* 纯白色文字 */
-  --sidebar-accent: oklch(0.95 0 0); /* 更明显的浅灰色强调 */
-  --sidebar-accent-foreground: oklch(0.15 0 0); /* 深灰色文字 */
-  --sidebar-border: oklch(0.85 0 0); /* 更明显的边框灰色 */
-  --sidebar-ring: oklch(0.486 0.165 244.531); /* 蓝色保持 */
+  /* 侧边栏 - 简约风格 */
+  --sidebar: oklch(0.99 0 0);
+  --sidebar-foreground: oklch(0.25 0.005 285);
+  --sidebar-primary: oklch(0.55 0.18 260);
+  --sidebar-primary-foreground: oklch(1 0 0);
+  --sidebar-accent: oklch(0.96 0.015 260);
+  --sidebar-accent-foreground: oklch(0.25 0.005 285);
+  --sidebar-border: oklch(0.93 0.003 285);
+  --sidebar-ring: oklch(0.55 0.18 260);
 
-  /* 成功、警告色彩 */
-  --success: oklch(0.557 0.147 163.837);
-  --success-foreground: oklch(1 0 0); /* 白色文字 */
-  --warning: oklch(0.749 0.134 85.887);
-  --warning-foreground: oklch(1 0 0); /* 白色文字 */
+  /* 语义色彩 */
+  --success: oklch(0.65 0.2 145);
+  --success-foreground: oklch(1 0 0);
+  --warning: oklch(0.75 0.15 70);
+  --warning-foreground: oklch(0.25 0.05 70);
+  --info: oklch(0.6 0.15 230);
+  --info-foreground: oklch(1 0 0);
 }
 
 .dark {
-  /* Dark theme - 优化的暗色系 */
-  --background: oklch(0.08 0.005 240.146); /* 深色背景 */
-  --foreground: oklch(0.95 0 0); /* 纯白色文字，确保对比度 */
-  --card: oklch(0.12 0.008 240.146);
-  --card-foreground: oklch(0.95 0 0); /* 纯白色文字 */
-  --popover: oklch(0.12 0.008 240.146);
-  --popover-foreground: oklch(0.95 0 0); /* 纯白色文字 */
+  /* Dark theme - 现代深色主题 */
+  --background: oklch(0.13 0.015 260); /* 深靛蓝背景 */
+  --foreground: oklch(0.93 0.005 260);
+  --card: oklch(0.17 0.018 260);
+  --card-foreground: oklch(0.93 0.005 260);
+  --popover: oklch(0.17 0.018 260);
+  --popover-foreground: oklch(0.93 0.005 260);
   
-  /* 暗色主题品牌色 */
-  --primary: oklch(0.628 0.185 244.531); /* 更亮的蓝色 */
-  --primary-foreground: oklch(0.08 0.005 240.146);
+  /* 暗色品牌色 - 更亮的靛蓝 */
+  --primary: oklch(0.68 0.17 260);
+  --primary-foreground: oklch(0.13 0.015 260);
   
-  --secondary: oklch(0.18 0.012 240.146);
-  --secondary-foreground: oklch(0.9 0 0); /* 纯浅色文字 */
-  --muted: oklch(0.18 0.012 240.146);
-  --muted-foreground: oklch(0.7 0 0); /* 更明显的灰色文字 */
-  --accent: oklch(0.22 0.015 240.146);
-  --accent-foreground: oklch(0.9 0 0); /* 纯浅色文字 */
-  --destructive: oklch(0.747 0.196 21.651); /* 暗色红色 */
-  --destructive-foreground: oklch(0.08 0.005 240.146);
+  --secondary: oklch(0.22 0.02 260);
+  --secondary-foreground: oklch(0.88 0.005 260);
+  --muted: oklch(0.22 0.02 260);
+  --muted-foreground: oklch(0.65 0.01 260);
+  --accent: oklch(0.25 0.04 260);
+  --accent-foreground: oklch(0.88 0.005 260);
+  --destructive: oklch(0.65 0.22 25);
+  --destructive-foreground: oklch(0.98 0 0);
   
-  --border: oklch(0.3 0.015 240.146); /* 更明显的边框 */
-  --input: oklch(0.2 0.015 240.146); /* 更明显的输入框背景 */
-  --ring: oklch(0.628 0.185 244.531);
+  --border: oklch(0.28 0.025 260);
+  --input: oklch(0.2 0.02 260);
+  --ring: oklch(0.68 0.17 260);
 
   /* 暗色图表颜色 */
-  --chart-1: oklch(0.628 0.185 244.531); /* 主蓝色 */
-  --chart-2: oklch(0.747 0.196 21.651);  /* 橙红色 */
-  --chart-3: oklch(0.667 0.167 163.837); /* 青绿色 */
-  --chart-4: oklch(0.829 0.154 85.887);  /* 黄绿色 */
-  --chart-5: oklch(0.767 0.185 328.363); /* 紫红色 */
+  --chart-1: oklch(0.68 0.17 260);
+  --chart-2: oklch(0.72 0.18 145);
+  --chart-3: oklch(0.78 0.16 45);
+  --chart-4: oklch(0.68 0.2 330);
+  --chart-5: oklch(0.65 0.18 200);
 
-  /* 暗色侧边栏 - 优化对比度 */
-  --sidebar: oklch(0.1 0.006 240.146);
-  --sidebar-foreground: oklch(0.95 0 0); /* 纯白色文字 */
-  --sidebar-primary: oklch(0.628 0.185 244.531);
-  --sidebar-primary-foreground: oklch(0.08 0.005 240.146);
-  --sidebar-accent: oklch(0.22 0.015 240.146);
-  --sidebar-accent-foreground: oklch(0.9 0 0); /* 纯浅色文字 */
-  --sidebar-border: oklch(0.3 0.015 240.146); /* 更明显的边框 */
-  --sidebar-ring: oklch(0.628 0.185 244.531);
+  /* 暗色侧边栏 */
+  --sidebar: oklch(0.15 0.018 260);
+  --sidebar-foreground: oklch(0.88 0.005 260);
+  --sidebar-primary: oklch(0.68 0.17 260);
+  --sidebar-primary-foreground: oklch(0.13 0.015 260);
+  --sidebar-accent: oklch(0.25 0.04 260);
+  --sidebar-accent-foreground: oklch(0.88 0.005 260);
+  --sidebar-border: oklch(0.28 0.025 260);
+  --sidebar-ring: oklch(0.68 0.17 260);
 
-  /* 暗色成功、警告 */
-  --success: oklch(0.667 0.167 163.837);
-  --success-foreground: oklch(0.08 0.005 240.146);
-  --warning: oklch(0.829 0.154 85.887);
-  --warning-foreground: oklch(0.08 0.005 240.146);
+  /* 暗色语义色彩 */
+  --success: oklch(0.72 0.18 145);
+  --success-foreground: oklch(0.13 0.015 260);
+  --warning: oklch(0.8 0.14 70);
+  --warning-foreground: oklch(0.2 0.05 70);
+  --info: oklch(0.68 0.15 230);
+  --info-foreground: oklch(0.13 0.015 260);
 }
 
 @layer base {
@@ -155,125 +160,239 @@
 }
 
 @layer utilities {
-  /* 现代化渐变背景 - 纯白色系 */
+  /* 现代渐变背景 */
   .gradient-bg {
     background: linear-gradient(135deg, 
-      oklch(1 0 0), 
-      oklch(0.99 0 0)
+      oklch(0.985 0 0), 
+      oklch(0.97 0.01 260)
     );
   }
 
   .dark .gradient-bg {
     background: linear-gradient(135deg, 
-      oklch(0.08 0.005 240.146), 
-      oklch(0.12 0.015 244.531)
+      oklch(0.13 0.015 260), 
+      oklch(0.16 0.025 260)
     );
   }
 
-  /* 现代化卡片阴影 - 白色主题优化 */
+  /* 现代卡片阴影 */
   .card-shadow {
     box-shadow: 
-      0 1px 3px 0 oklch(0.3 0 0 / 0.08),
-      0 1px 2px -1px oklch(0.3 0 0 / 0.08);
+      0 1px 2px 0 oklch(0.3 0.02 260 / 0.04),
+      0 1px 3px 0 oklch(0.3 0.02 260 / 0.08);
   }
 
   .card-shadow-lg {
     box-shadow: 
-      0 10px 15px -3px oklch(0.3 0 0 / 0.12),
-      0 4px 6px -4px oklch(0.3 0 0 / 0.08);
+      0 4px 6px -1px oklch(0.3 0.02 260 / 0.08),
+      0 10px 20px -2px oklch(0.3 0.02 260 / 0.1);
+  }
+
+  .card-shadow-xl {
+    box-shadow: 
+      0 8px 16px -4px oklch(0.3 0.02 260 / 0.1),
+      0 20px 40px -8px oklch(0.3 0.02 260 / 0.15);
   }
 
   .dark .card-shadow {
     box-shadow: 
-      0 1px 3px 0 oklch(0 0 0 / 0.3),
-      0 1px 2px -1px oklch(0 0 0 / 0.3);
+      0 1px 2px 0 oklch(0 0 0 / 0.2),
+      0 1px 3px 0 oklch(0 0 0 / 0.3);
   }
 
   .dark .card-shadow-lg {
     box-shadow: 
-      0 10px 15px -3px oklch(0 0 0 / 0.3),
-      0 4px 6px -4px oklch(0 0 0 / 0.3);
+      0 4px 6px -1px oklch(0 0 0 / 0.25),
+      0 10px 20px -2px oklch(0 0 0 / 0.35);
   }
 
-  /* 现代化玻璃效果 - 优化主题适配 */
+  .dark .card-shadow-xl {
+    box-shadow: 
+      0 8px 16px -4px oklch(0 0 0 / 0.3),
+      0 20px 40px -8px oklch(0 0 0 / 0.4);
+  }
+
+  /* 玻璃效果 */
   .glass-effect {
-    background: oklch(1 0 0 / 0.9);
-    backdrop-filter: blur(12px);
-    border: 1px solid oklch(0.85 0 0 / 0.3);
+    background: oklch(1 0 0 / 0.85);
+    backdrop-filter: blur(16px) saturate(180%);
+    border: 1px solid oklch(0.9 0.005 260 / 0.5);
   }
   
   .dark .glass-effect {
-    background: oklch(0.08 0.005 240.146 / 0.85);
-    border: 1px solid oklch(0.3 0.015 240.146 / 0.3);
+    background: oklch(0.17 0.018 260 / 0.8);
+    border: 1px solid oklch(0.35 0.03 260 / 0.4);
   }
 
-  /* 现代化按钮动效 */
+  /* 现代按钮效果 */
   .btn-modern {
-    @apply transition-all duration-200 ease-in-out;
-    @apply hover:scale-[1.02] hover:shadow-lg active:scale-[0.98];
+    @apply transition-all duration-200 ease-out;
+    @apply hover:translate-y-[-1px] hover:shadow-md active:translate-y-0 active:shadow-sm;
   }
 
-  /* 现代化输入框样式 */
+  /* 输入框样式 */
   .input-modern {
-    @apply transition-all duration-200 ease-in-out;
-    @apply focus:ring-2 focus:ring-primary/20 focus:border-primary;
+    @apply transition-all duration-200 ease-out;
+    @apply focus:ring-2 focus:ring-primary/25 focus:border-primary/50;
   }
 
   /* 微交互动画 */
   @keyframes float {
     0%, 100% { transform: translateY(0px); }
-    50% { transform: translateY(-4px); }
+    50% { transform: translateY(-3px); }
   }
 
   .float-animation {
     animation: float 3s ease-in-out infinite;
   }
 
-  @keyframes pulse-glow {
-    0%, 100% { 
-      box-shadow: 0 0 5px oklch(var(--primary) / 0.5);
-    }
-    50% { 
-      box-shadow: 0 0 20px oklch(var(--primary) / 0.8);
-    }
+  @keyframes shimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
   }
 
-  .pulse-glow {
-    animation: pulse-glow 2s ease-in-out infinite;
+  .shimmer {
+    background: linear-gradient(90deg, 
+      transparent 0%, 
+      oklch(1 0 0 / 0.4) 50%, 
+      transparent 100%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 2s infinite;
   }
 
-  /* 现代化状态指示器 */
+  /* 状态指示器 */
   .status-indicator {
-    @apply relative inline-flex h-3 w-3 rounded-full;
+    @apply relative inline-flex h-2.5 w-2.5 rounded-full;
   }
 
   .status-indicator::after {
     content: '';
-    @apply absolute top-0 left-0 h-full w-full rounded-full animate-ping;
+    @apply absolute inset-0 rounded-full animate-ping;
     background-color: inherit;
-    opacity: 0.6;
+    opacity: 0.5;
+  }
+
+  .status-online {
+    @apply bg-green-500;
+  }
+
+  .status-offline {
+    @apply bg-gray-400;
+  }
+
+  .status-warning {
+    @apply bg-amber-500;
+  }
+
+  .status-error {
+    @apply bg-red-500;
   }
 
   /* 响应式网格 */
   .responsive-grid {
-    @apply grid gap-4;
+    @apply grid gap-5;
     @apply grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4;
   }
 
   .responsive-grid-2 {
-    @apply grid gap-4;
+    @apply grid gap-5;
     @apply grid-cols-1 md:grid-cols-2;
   }
 
-  /* 渐变文字效果 - 直接使用主色确保在所有主题下都可见 */
+  .responsive-grid-3 {
+    @apply grid gap-5;
+    @apply grid-cols-1 md:grid-cols-2 lg:grid-cols-3;
+  }
+
+  /* 渐变文字 */
   .gradient-text {
-    /* 直接使用主色，确保文字始终可见 */
-    color: oklch(0.486 0.165 244.531);
+    background: linear-gradient(135deg, 
+      oklch(0.55 0.18 260), 
+      oklch(0.6 0.2 290)
+    );
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
     font-weight: 700;
   }
   
-  /* 暗色模式下使用更亮的蓝色 */
   .dark .gradient-text {
-    color: oklch(0.628 0.185 244.531);
+    background: linear-gradient(135deg, 
+      oklch(0.72 0.16 260), 
+      oklch(0.75 0.18 290)
+    );
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* 悬浮卡片效果 */
+  .hover-card {
+    @apply transition-all duration-300 ease-out;
+    @apply hover:translate-y-[-2px] hover:shadow-lg;
+  }
+
+  /* 表格行悬浮效果 */
+  .table-row-hover {
+    @apply transition-colors duration-150;
+    @apply hover:bg-muted/50;
+  }
+
+  /* 滚动条美化 */
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: oklch(0.7 0 0 / 0.3);
+    border-radius: 3px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: oklch(0.6 0 0 / 0.5);
+  }
+
+  .dark .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: oklch(0.4 0 0 / 0.4);
+  }
+
+  .dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: oklch(0.5 0 0 / 0.6);
+  }
+
+  /* 页面标题样式 */
+  .page-title {
+    @apply text-2xl font-bold tracking-tight;
+  }
+
+  .page-subtitle {
+    @apply text-sm text-muted-foreground mt-1;
+  }
+
+  /* 统计卡片渐变背景 */
+  .stat-card-blue {
+    @apply bg-gradient-to-br from-blue-50 to-indigo-50/50 dark:from-blue-950/40 dark:to-indigo-950/30;
+  }
+
+  .stat-card-green {
+    @apply bg-gradient-to-br from-emerald-50 to-green-50/50 dark:from-emerald-950/40 dark:to-green-950/30;
+  }
+
+  .stat-card-purple {
+    @apply bg-gradient-to-br from-violet-50 to-purple-50/50 dark:from-violet-950/40 dark:to-purple-950/30;
+  }
+
+  .stat-card-amber {
+    @apply bg-gradient-to-br from-amber-50 to-orange-50/50 dark:from-amber-950/40 dark:to-orange-950/30;
+  }
+
+  .stat-card-rose {
+    @apply bg-gradient-to-br from-rose-50 to-pink-50/50 dark:from-rose-950/40 dark:to-pink-950/30;
   }
 }

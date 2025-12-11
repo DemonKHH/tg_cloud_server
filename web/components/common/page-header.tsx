@@ -1,4 +1,6 @@
-import { Button } from "@/components/ui/button"
+"use client"
+
+import { motion } from "framer-motion"
 import { ReactNode } from "react"
 
 interface PageHeaderProps {
@@ -9,15 +11,23 @@ interface PageHeaderProps {
 
 export function PageHeader({ title, description, actions }: PageHeaderProps) {
   return (
-    <div className="flex items-center justify-between">
+    <motion.div
+      initial={{ opacity: 0, y: -10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3 }}
+      className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between"
+    >
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">{title}</h1>
+        <h1 className="page-title gradient-text">{title}</h1>
         {description && (
-          <p className="text-muted-foreground mt-1">{description}</p>
+          <p className="page-subtitle">{description}</p>
         )}
       </div>
-      {actions && <div className="flex items-center gap-2">{actions}</div>}
-    </div>
+      {actions && (
+        <div className="flex flex-wrap items-center gap-2 mt-3 md:mt-0">
+          {actions}
+        </div>
+      )}
+    </motion.div>
   )
 }
-

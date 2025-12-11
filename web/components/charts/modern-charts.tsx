@@ -21,43 +21,32 @@ import {
 } from "recharts"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { motion } from "framer-motion"
+import { TrendingUp, TrendingDown, Minus } from "lucide-react"
 
 // 日间模式颜色
 const LIGHT_COLORS = {
-  primary: 'oklch(0.486 0.165 244.531)',
-  foreground: 'oklch(0.15 0 0)',
-  card: 'oklch(1 0 0)',
-  cardForeground: 'oklch(0.15 0 0)',
-  popover: 'oklch(1 0 0)',
-  popoverForeground: 'oklch(0.15 0 0)',
-  border: 'oklch(0.85 0 0)',
-  mutedForeground: 'oklch(0.5 0 0)',
-  chart: [
-    'oklch(0.486 0.165 244.531)',
-    'oklch(0.647 0.176 21.651)',
-    'oklch(0.557 0.147 163.837)',
-    'oklch(0.749 0.134 85.887)',
-    'oklch(0.647 0.165 328.363)',
-  ],
+  primary: '#4f46e5',
+  foreground: '#1e1b4b',
+  card: '#ffffff',
+  cardForeground: '#1e1b4b',
+  popover: '#ffffff',
+  popoverForeground: '#1e1b4b',
+  border: '#e5e7eb',
+  mutedForeground: '#6b7280',
+  chart: ['#4f46e5', '#10b981', '#f59e0b', '#ec4899', '#06b6d4'],
 }
 
 // 夜间模式颜色
 const DARK_COLORS = {
-  primary: 'oklch(0.628 0.185 244.531)',
-  foreground: 'oklch(0.95 0 0)',
-  card: 'oklch(0.12 0.008 240.146)',
-  cardForeground: 'oklch(0.95 0 0)',
-  popover: 'oklch(0.12 0.008 240.146)',
-  popoverForeground: 'oklch(0.95 0 0)',
-  border: 'oklch(0.3 0.015 240.146)',
-  mutedForeground: 'oklch(0.7 0 0)',
-  chart: [
-    'oklch(0.628 0.185 244.531)',
-    'oklch(0.747 0.196 21.651)',
-    'oklch(0.667 0.167 163.837)',
-    'oklch(0.829 0.154 85.887)',
-    'oklch(0.767 0.185 328.363)',
-  ],
+  primary: '#818cf8',
+  foreground: '#e0e7ff',
+  card: '#1e1b4b',
+  cardForeground: '#e0e7ff',
+  popover: '#1e1b4b',
+  popoverForeground: '#e0e7ff',
+  border: '#3730a3',
+  mutedForeground: '#a5b4fc',
+  chart: ['#818cf8', '#34d399', '#fbbf24', '#f472b6', '#22d3ee'],
 }
 
 interface ChartProps {
@@ -68,288 +57,236 @@ interface ChartProps {
   className?: string
 }
 
-export const ModernLineChart = memo(function ModernLineChart({ data, title, description, height = 300, className }: ChartProps) {
-  const { theme, resolvedTheme } = useTheme()
-  const isDark = resolvedTheme === 'dark' || theme === 'dark'
+export const ModernLineChart = memo(function ModernLineChart({ data, title, description, height = 280, className }: ChartProps) {
+  const { resolvedTheme } = useTheme()
+  const isDark = resolvedTheme === 'dark'
   const colors = isDark ? DARK_COLORS : LIGHT_COLORS
-
-  const chartComponent = useMemo(() => (
-    <ResponsiveContainer width="100%" height={height} debounce={100}>
-      <LineChart data={data}>
-        <defs>
-          <linearGradient id="colorGradient" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="5%" stopColor={colors.primary} stopOpacity={0.8}/>
-            <stop offset="95%" stopColor={colors.primary} stopOpacity={0.1}/>
-          </linearGradient>
-        </defs>
-        <CartesianGrid 
-          strokeDasharray="3 3" 
-          stroke={colors.border} 
-          opacity={0.4}
-        />
-        <XAxis 
-          dataKey="name" 
-          stroke={colors.foreground}
-          tick={{ fill: colors.foreground }}
-          fontSize={12}
-        />
-        <YAxis 
-          stroke={colors.foreground}
-          tick={{ fill: colors.foreground }}
-          fontSize={12}
-        />
-        <Tooltip
-          contentStyle={{
-            backgroundColor: colors.popover,
-            color: colors.popoverForeground,
-            border: `1px solid ${colors.border}`,
-            borderRadius: '8px',
-            padding: '8px 12px',
-            boxShadow: '0 4px 12px oklch(0 0 0 / 0.15)',
-          }}
-          itemStyle={{
-            color: colors.popoverForeground,
-          }}
-          labelStyle={{
-            color: colors.popoverForeground,
-          }}
-          cursor={{ stroke: colors.border, strokeWidth: 1 }}
-        />
-        <Line
-          type="monotone"
-          dataKey="value"
-          stroke={colors.primary}
-          strokeWidth={2}
-          dot={{ fill: colors.primary, strokeWidth: 2, r: 4 }}
-          activeDot={{ r: 6, stroke: colors.primary, strokeWidth: 2 }}
-        />
-      </LineChart>
-    </ResponsiveContainer>
-  ), [data, height, colors])
 
   return (
-    <div className={className}>
-      <Card className="card-shadow hover:card-shadow-lg transition-all duration-300">
-        {(title || description) && (
-          <CardHeader>
-            {title && <CardTitle>{title}</CardTitle>}
-            {description && <CardDescription>{description}</CardDescription>}
-          </CardHeader>
-        )}
-        <CardContent>
-          {chartComponent}
-        </CardContent>
-      </Card>
-    </div>
-  )
-})
-
-export const ModernAreaChart = memo(function ModernAreaChart({ data, title, description, height = 300, className }: ChartProps) {
-  const { theme, resolvedTheme } = useTheme()
-  const isDark = resolvedTheme === 'dark' || theme === 'dark'
-  const colors = isDark ? DARK_COLORS : LIGHT_COLORS
-
-  const chartComponent = useMemo(() => (
-    <ResponsiveContainer width="100%" height={height} debounce={100}>
-      <AreaChart data={data}>
-        <defs>
-          <linearGradient id="colorUv" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="5%" stopColor={colors.primary} stopOpacity={0.6}/>
-            <stop offset="95%" stopColor={colors.primary} stopOpacity={0.1}/>
-          </linearGradient>
-        </defs>
-        <XAxis 
-          dataKey="name" 
-          stroke={colors.foreground}
-          tick={{ fill: colors.foreground }}
-          fontSize={12}
-        />
-        <YAxis 
-          stroke={colors.foreground}
-          tick={{ fill: colors.foreground }}
-          fontSize={12}
-        />
-        <CartesianGrid 
-          strokeDasharray="3 3" 
-          stroke={colors.border} 
-          opacity={0.4}
-        />
-        <Tooltip
-          contentStyle={{
-            backgroundColor: colors.popover,
-            color: colors.popoverForeground,
-            border: `1px solid ${colors.border}`,
-            borderRadius: '8px',
-            padding: '8px 12px',
-            boxShadow: '0 4px 12px oklch(0 0 0 / 0.15)',
-          }}
-          itemStyle={{
-            color: colors.popoverForeground,
-          }}
-          labelStyle={{
-            color: colors.popoverForeground,
-          }}
-          cursor={{ stroke: colors.border, strokeWidth: 1 }}
-        />
-        <Area
-          type="monotone"
-          dataKey="value"
-          stroke={colors.primary}
-          fillOpacity={1}
-          fill="url(#colorUv)"
-        />
-      </AreaChart>
-    </ResponsiveContainer>
-  ), [data, height, colors])
-
-  return (
-    <div className={className}>
-      <Card className="card-shadow hover:card-shadow-lg transition-all duration-300">
-        {(title || description) && (
-          <CardHeader>
-            {title && <CardTitle>{title}</CardTitle>}
-            {description && <CardDescription>{description}</CardDescription>}
-          </CardHeader>
-        )}
-        <CardContent>
-          {chartComponent}
-        </CardContent>
-      </Card>
-    </div>
-  )
-})
-
-export const ModernBarChart = memo(function ModernBarChart({ data, title, description, height = 300, className }: ChartProps) {
-  const { theme, resolvedTheme } = useTheme()
-  const isDark = resolvedTheme === 'dark' || theme === 'dark'
-  const colors = isDark ? DARK_COLORS : LIGHT_COLORS
-
-  const chartComponent = useMemo(() => (
-    <ResponsiveContainer width="100%" height={height} debounce={100}>
-      <BarChart data={data}>
-        <CartesianGrid 
-          strokeDasharray="3 3" 
-          stroke={colors.border} 
-          opacity={0.4}
-        />
-        <XAxis 
-          dataKey="name" 
-          stroke={colors.foreground}
-          tick={{ fill: colors.foreground }}
-          fontSize={12}
-        />
-        <YAxis 
-          stroke={colors.foreground}
-          tick={{ fill: colors.foreground }}
-          fontSize={12}
-        />
-        <Tooltip
-          contentStyle={{
-            backgroundColor: colors.popover,
-            color: colors.popoverForeground,
-            border: `1px solid ${colors.border}`,
-            borderRadius: '8px',
-            padding: '8px 12px',
-            boxShadow: '0 4px 12px oklch(0 0 0 / 0.15)',
-          }}
-          itemStyle={{
-            color: colors.popoverForeground,
-          }}
-          labelStyle={{
-            color: colors.popoverForeground,
-          }}
-          cursor={{ stroke: colors.border, strokeWidth: 1 }}
-        />
-        <Bar 
-          dataKey="value" 
-          fill={colors.primary}
-          radius={[4, 4, 0, 0]}
-        />
-      </BarChart>
-    </ResponsiveContainer>
-  ), [data, height, colors]);
-
-  return (
-    <div className={className}>
-      <Card className="card-shadow hover:card-shadow-lg transition-all duration-300">
-        {(title || description) && (
-          <CardHeader>
-            {title && <CardTitle>{title}</CardTitle>}
-            {description && <CardDescription>{description}</CardDescription>}
-          </CardHeader>
-        )}
-        <CardContent>
-          {chartComponent}
-        </CardContent>
-      </Card>
-    </div>
-  )
-})
-
-export const ModernPieChart = memo(function ModernPieChart({ data, title, description, height = 300, className }: ChartProps) {
-  const { theme, resolvedTheme } = useTheme()
-  const isDark = resolvedTheme === 'dark' || theme === 'dark'
-  const colors = isDark ? DARK_COLORS : LIGHT_COLORS
-
-  const chartComponent = useMemo(() => (
-    <ResponsiveContainer width="100%" height={height} debounce={100}>
-      <PieChart>
-        <Pie
-          data={data}
-          cx="50%"
-          cy="50%"
-          innerRadius={60}
-          outerRadius={100}
-          paddingAngle={5}
-          dataKey="value"
-        >
-          {data.map((entry, index) => (
-            <Cell 
-              key={`cell-${index}`} 
-              fill={colors.chart[index % colors.chart.length]} 
+    <Card className={`border-border/50 ${className}`}>
+      {(title || description) && (
+        <CardHeader className="pb-2">
+          {title && <CardTitle className="text-base font-semibold">{title}</CardTitle>}
+          {description && <CardDescription className="text-xs">{description}</CardDescription>}
+        </CardHeader>
+      )}
+      <CardContent className="pt-0">
+        <ResponsiveContainer width="100%" height={height}>
+          <LineChart data={data} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+            <defs>
+              <linearGradient id="lineGradient" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor={colors.primary} stopOpacity={0.3}/>
+                <stop offset="95%" stopColor={colors.primary} stopOpacity={0}/>
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" stroke={colors.border} opacity={0.5} vertical={false} />
+            <XAxis 
+              dataKey="name" 
+              stroke={colors.mutedForeground}
+              tick={{ fill: colors.mutedForeground, fontSize: 11 }}
+              axisLine={false}
+              tickLine={false}
             />
-          ))}
-        </Pie>
-        <Tooltip
-          contentStyle={{
-            backgroundColor: colors.popover,
-            color: colors.popoverForeground,
-            border: `1px solid ${colors.border}`,
-            borderRadius: '8px',
-            padding: '8px 12px',
-            boxShadow: '0 4px 12px oklch(0 0 0 / 0.15)',
-          }}
-          itemStyle={{
-            color: colors.popoverForeground,
-          }}
-          labelStyle={{
-            color: colors.popoverForeground,
-          }}
-          cursor={{ stroke: colors.border, strokeWidth: 1 }}
-        />
-        <Legend 
-          wrapperStyle={{
-            color: colors.cardForeground,
-          }}
-        />
-      </PieChart>
-    </ResponsiveContainer>
-  ), [data, height, colors]);
+            <YAxis 
+              stroke={colors.mutedForeground}
+              tick={{ fill: colors.mutedForeground, fontSize: 11 }}
+              axisLine={false}
+              tickLine={false}
+            />
+            <Tooltip
+              contentStyle={{
+                backgroundColor: colors.popover,
+                color: colors.popoverForeground,
+                border: `1px solid ${colors.border}`,
+                borderRadius: '8px',
+                padding: '8px 12px',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                fontSize: '12px',
+              }}
+            />
+            <Line
+              type="monotone"
+              dataKey="value"
+              stroke={colors.primary}
+              strokeWidth={2}
+              dot={false}
+              activeDot={{ r: 4, fill: colors.primary, strokeWidth: 0 }}
+            />
+          </LineChart>
+        </ResponsiveContainer>
+      </CardContent>
+    </Card>
+  )
+})
+
+export const ModernAreaChart = memo(function ModernAreaChart({ data, title, description, height = 280, className }: ChartProps) {
+  const { resolvedTheme } = useTheme()
+  const isDark = resolvedTheme === 'dark'
+  const colors = isDark ? DARK_COLORS : LIGHT_COLORS
 
   return (
-    <div className={className}>
-      <Card className="card-shadow hover:card-shadow-lg transition-all duration-300">
-        {(title || description) && (
-          <CardHeader>
-            {title && <CardTitle>{title}</CardTitle>}
-            {description && <CardDescription>{description}</CardDescription>}
-          </CardHeader>
-        )}
-        <CardContent>
-          {chartComponent}
-        </CardContent>
-      </Card>
-    </div>
+    <Card className={`border-border/50 ${className}`}>
+      {(title || description) && (
+        <CardHeader className="pb-2">
+          {title && <CardTitle className="text-base font-semibold">{title}</CardTitle>}
+          {description && <CardDescription className="text-xs">{description}</CardDescription>}
+        </CardHeader>
+      )}
+      <CardContent className="pt-0">
+        <ResponsiveContainer width="100%" height={height}>
+          <AreaChart data={data} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+            <defs>
+              <linearGradient id="areaGradient" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor={colors.primary} stopOpacity={0.4}/>
+                <stop offset="95%" stopColor={colors.primary} stopOpacity={0.05}/>
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" stroke={colors.border} opacity={0.5} vertical={false} />
+            <XAxis 
+              dataKey="name" 
+              stroke={colors.mutedForeground}
+              tick={{ fill: colors.mutedForeground, fontSize: 11 }}
+              axisLine={false}
+              tickLine={false}
+            />
+            <YAxis 
+              stroke={colors.mutedForeground}
+              tick={{ fill: colors.mutedForeground, fontSize: 11 }}
+              axisLine={false}
+              tickLine={false}
+            />
+            <Tooltip
+              contentStyle={{
+                backgroundColor: colors.popover,
+                color: colors.popoverForeground,
+                border: `1px solid ${colors.border}`,
+                borderRadius: '8px',
+                padding: '8px 12px',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                fontSize: '12px',
+              }}
+            />
+            <Area
+              type="monotone"
+              dataKey="value"
+              stroke={colors.primary}
+              strokeWidth={2}
+              fill="url(#areaGradient)"
+            />
+          </AreaChart>
+        </ResponsiveContainer>
+      </CardContent>
+    </Card>
+  )
+})
+
+export const ModernBarChart = memo(function ModernBarChart({ data, title, description, height = 280, className }: ChartProps) {
+  const { resolvedTheme } = useTheme()
+  const isDark = resolvedTheme === 'dark'
+  const colors = isDark ? DARK_COLORS : LIGHT_COLORS
+
+  return (
+    <Card className={`border-border/50 ${className}`}>
+      {(title || description) && (
+        <CardHeader className="pb-2">
+          {title && <CardTitle className="text-base font-semibold">{title}</CardTitle>}
+          {description && <CardDescription className="text-xs">{description}</CardDescription>}
+        </CardHeader>
+      )}
+      <CardContent className="pt-0">
+        <ResponsiveContainer width="100%" height={height}>
+          <BarChart data={data} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke={colors.border} opacity={0.5} vertical={false} />
+            <XAxis 
+              dataKey="name" 
+              stroke={colors.mutedForeground}
+              tick={{ fill: colors.mutedForeground, fontSize: 11 }}
+              axisLine={false}
+              tickLine={false}
+            />
+            <YAxis 
+              stroke={colors.mutedForeground}
+              tick={{ fill: colors.mutedForeground, fontSize: 11 }}
+              axisLine={false}
+              tickLine={false}
+            />
+            <Tooltip
+              contentStyle={{
+                backgroundColor: colors.popover,
+                color: colors.popoverForeground,
+                border: `1px solid ${colors.border}`,
+                borderRadius: '8px',
+                padding: '8px 12px',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                fontSize: '12px',
+              }}
+            />
+            <Bar 
+              dataKey="value" 
+              fill={colors.primary}
+              radius={[4, 4, 0, 0]}
+              maxBarSize={40}
+            />
+          </BarChart>
+        </ResponsiveContainer>
+      </CardContent>
+    </Card>
+  )
+})
+
+export const ModernPieChart = memo(function ModernPieChart({ data, title, description, height = 280, className }: ChartProps) {
+  const { resolvedTheme } = useTheme()
+  const isDark = resolvedTheme === 'dark'
+  const colors = isDark ? DARK_COLORS : LIGHT_COLORS
+
+  return (
+    <Card className={`border-border/50 ${className}`}>
+      {(title || description) && (
+        <CardHeader className="pb-2">
+          {title && <CardTitle className="text-base font-semibold">{title}</CardTitle>}
+          {description && <CardDescription className="text-xs">{description}</CardDescription>}
+        </CardHeader>
+      )}
+      <CardContent className="pt-0">
+        <ResponsiveContainer width="100%" height={height}>
+          <PieChart>
+            <Pie
+              data={data}
+              cx="50%"
+              cy="50%"
+              innerRadius={55}
+              outerRadius={85}
+              paddingAngle={3}
+              dataKey="value"
+              strokeWidth={0}
+            >
+              {data.map((_, index) => (
+                <Cell 
+                  key={`cell-${index}`} 
+                  fill={colors.chart[index % colors.chart.length]} 
+                />
+              ))}
+            </Pie>
+            <Tooltip
+              contentStyle={{
+                backgroundColor: colors.popover,
+                color: colors.popoverForeground,
+                border: `1px solid ${colors.border}`,
+                borderRadius: '8px',
+                padding: '8px 12px',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                fontSize: '12px',
+              }}
+            />
+            <Legend 
+              iconType="circle"
+              iconSize={8}
+              wrapperStyle={{ fontSize: '12px', color: colors.cardForeground }}
+            />
+          </PieChart>
+        </ResponsiveContainer>
+      </CardContent>
+    </Card>
   )
 })
 
@@ -371,41 +308,35 @@ export const StatsCard = memo(function StatsCard({
   icon, 
   className 
 }: StatsCardProps) {
-  const changeColor = useMemo(() => ({
-    positive: 'text-green-600 dark:text-green-400',
-    negative: 'text-red-600 dark:text-red-400',
-    neutral: 'text-muted-foreground'
-  }), [])
+  const changeStyles = {
+    positive: 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50',
+    negative: 'text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/50',
+    neutral: 'text-muted-foreground bg-muted/50'
+  }
+
+  const ChangeIcon = changeType === 'positive' ? TrendingUp : changeType === 'negative' ? TrendingDown : Minus
 
   return (
-    <motion.div
-      whileHover={{ scale: 1.02, y: -2 }}
-      transition={{ type: "spring", stiffness: 400 }}
-      className={className}
-    >
-      <Card className="card-shadow hover:card-shadow-lg transition-all duration-300 hover:border-primary/20">
-        <CardContent className="p-6">
-          <div className="flex items-center justify-between">
-            <div className="space-y-1">
-              <p className="text-sm font-medium text-muted-foreground">{title}</p>
-              <p className="text-3xl font-bold tracking-tight">{value}</p>
-              {change && (
-                <p className={`text-xs ${changeColor[changeType]} flex items-center gap-1`}>
-                  {change}
-                </p>
-              )}
-            </div>
-            {icon && (
-              <motion.div
-                whileHover={{ scale: 1.1, rotate: 5 }}
-                className="p-3 rounded-full bg-primary/10 text-primary"
-              >
-                {icon}
-              </motion.div>
+    <Card className={`border-border/50 hover-card ${className}`}>
+      <CardContent className="p-5">
+        <div className="flex items-start justify-between">
+          <div className="space-y-2">
+            <p className="text-sm text-muted-foreground">{title}</p>
+            <p className="text-2xl font-bold tracking-tight">{value}</p>
+            {change && (
+              <div className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${changeStyles[changeType]}`}>
+                <ChangeIcon className="h-3 w-3" />
+                {change}
+              </div>
             )}
           </div>
-        </CardContent>
-      </Card>
-    </motion.div>
+          {icon && (
+            <div className="p-2.5 rounded-xl bg-primary/10 text-primary">
+              {icon}
+            </div>
+          )}
+        </div>
+      </CardContent>
+    </Card>
   )
 })

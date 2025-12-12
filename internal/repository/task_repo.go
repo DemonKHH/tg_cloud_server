@@ -13,6 +13,8 @@ import (
 // TaskRepository 任务仓库接口
 type TaskRepository interface {
 	Create(task *models.Task) error
+	BatchCreate(tasks []*models.Task) error
+	BatchDelete(taskIDs []uint64) error
 	GetByID(id uint64) (*models.Task, error)
 	GetByUserIDAndID(userID, taskID uint64) (*models.Task, error)
 	Update(task *models.Task) error
@@ -386,11 +388,46 @@ func (r *taskRepository) GetQueueInfoByAccountID(accountID uint64) (*models.Queu
 	return &info, nil
 }
 
-// UpdateTasksStatus 批量更新任务状态
+// UpdateTasksStatus 批量更新任务状态（使用事务）
 func (r *taskRepository) UpdateTasksStatus(taskIDs []uint64, status string) error {
-	return r.db.Model(&models.Task{}).
-		Where("id IN ?", taskIDs).
-		Update("status", status).Error
+	if len(taskIDs) == 0 {
+		return nil
+	}
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		return tx.Model(&models.Task{}).
+			Where("id IN ?", taskIDs).
+			Update("status", status).Error
+	})
+}
+
+// BatchCreate 批量创建任务（使用事务）
+func (r *taskRepository) BatchCreate(tasks []*models.Task) error {
+	if len(tasks) == 0 {
+		return nil
+	}
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		for _, task := range tasks {
+			if err := tx.Create(task).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+// BatchDelete 批量删除任务（使用事务）
+func (r *taskRepository) BatchDelete(taskIDs []uint64) error {
+	if len(taskIDs) == 0 {
+		return nil
+	}
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		// 先删除关联的日志
+		if err := tx.Where("task_id IN ?", taskIDs).Delete(&models.TaskLog{}).Error; err != nil {
+			return err
+		}
+		// 再删除任务
+		return tx.Delete(&models.Task{}, taskIDs).Error
+	})
 }
 
 // DeleteCompletedTasksBefore 删除指定时间之前的已完成任务

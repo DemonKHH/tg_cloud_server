@@ -11,6 +11,7 @@ import (
 // VerifyCodeRepository 验证码会话仓库接口
 type VerifyCodeRepository interface {
 	Create(session *models.VerifyCodeSession) error
+	BatchCreate(sessions []*models.VerifyCodeSession) error
 	GetByCode(code string) (*models.VerifyCodeSession, error)
 	ListByUserID(userID uint64, page, limit int, keyword string) ([]models.VerifyCodeSession, int64, error)
 	DeleteByCode(code string) error
@@ -32,6 +33,21 @@ func NewVerifyCodeRepository(db *gorm.DB) VerifyCodeRepository {
 // Create 创建验证码会话
 func (r *verifyCodeRepository) Create(session *models.VerifyCodeSession) error {
 	return r.db.Create(session).Error
+}
+
+// BatchCreate 批量创建验证码会话（使用事务）
+func (r *verifyCodeRepository) BatchCreate(sessions []*models.VerifyCodeSession) error {
+	if len(sessions) == 0 {
+		return nil
+	}
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		for _, session := range sessions {
+			if err := tx.Create(session).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 // GetByCode 根据code获取会话
@@ -75,12 +91,14 @@ func (r *verifyCodeRepository) DeleteByCode(code string) error {
 	return r.db.Where("code = ?", code).Delete(&models.VerifyCodeSession{}).Error
 }
 
-// DeleteByCodes 批量删除指定codes的会话
+// DeleteByCodes 批量删除指定codes的会话（使用事务）
 func (r *verifyCodeRepository) DeleteByCodes(codes []string) error {
 	if len(codes) == 0 {
 		return nil
 	}
-	return r.db.Where("code IN ?", codes).Delete(&models.VerifyCodeSession{}).Error
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		return tx.Where("code IN ?", codes).Delete(&models.VerifyCodeSession{}).Error
+	})
 }
 
 // DeleteExpired 删除过期的会话

@@ -222,19 +222,41 @@ func (r *proxyRepository) UpdateProxyStatus(id uint64, status string) error {
 		Update("status", status).Error
 }
 
-// BulkUpdateStatus 批量更新代理状态
+// BulkUpdateStatus 批量更新代理状态（使用事务）
 func (r *proxyRepository) BulkUpdateStatus(proxyIDs []uint64, status string) error {
-	return r.db.Model(&models.Proxy{}).
-		Where("id IN ?", proxyIDs).
-		Update("status", status).Error
+	if len(proxyIDs) == 0 {
+		return nil
+	}
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		return tx.Model(&models.Proxy{}).
+			Where("id IN ?", proxyIDs).
+			Update("status", status).Error
+	})
 }
 
-// BatchCreate 批量创建代理
+// BatchCreate 批量创建代理（使用事务）
 func (r *proxyRepository) BatchCreate(proxies []*models.ProxyIP) error {
-	return r.db.Create(proxies).Error
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		for _, proxy := range proxies {
+			if err := tx.Create(proxy).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
-// BatchDelete 批量删除代理
+// BatchDelete 批量删除代理（使用事务）
 func (r *proxyRepository) BatchDelete(ids []uint64) error {
-	return r.db.Delete(&models.ProxyIP{}, ids).Error
+	if len(ids) == 0 {
+		return nil
+	}
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		// 先解除账号与代理的绑定
+		if err := tx.Model(&models.TGAccount{}).Where("proxy_id IN ?", ids).Update("proxy_id", nil).Error; err != nil {
+			return err
+		}
+		// 再删除代理
+		return tx.Delete(&models.ProxyIP{}, ids).Error
+	})
 }

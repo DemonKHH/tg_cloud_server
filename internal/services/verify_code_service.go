@@ -129,7 +129,7 @@ func (s *VerifyCodeService) GenerateCode(userID, accountID uint64, expiresIn int
 	return response, nil
 }
 
-// BatchGenerateCode 批量生成临时访问代码
+// BatchGenerateCode 批量生成临时访问代码（使用事务）
 func (s *VerifyCodeService) BatchGenerateCode(userID uint64, accountIDs []uint64, expiresIn int) ([]models.BatchGenerateCodeItem, error) {
 	// 验证用户状态
 	user, err := s.userRepo.GetByID(userID)
@@ -149,7 +149,9 @@ func (s *VerifyCodeService) BatchGenerateCode(userID uint64, accountIDs []uint64
 	}
 
 	var results []models.BatchGenerateCodeItem
+	var sessionsToCreate []*models.VerifyCodeSession
 
+	// 第一阶段：验证所有账号并准备数据
 	for _, accountID := range accountIDs {
 		// 验证账号权限
 		account, err := s.accountRepo.GetByUserIDAndID(userID, accountID)
@@ -167,30 +169,46 @@ func (s *VerifyCodeService) BatchGenerateCode(userID uint64, accountIDs []uint64
 			continue
 		}
 
-		// 创建会话
+		now := time.Now()
+		expiresAt := now.Add(time.Duration(expiresIn) * time.Second)
+
+		// 创建会话对象
 		session := &models.VerifyCodeSession{
 			Code:      code,
 			AccountID: accountID,
 			UserID:    userID,
-			CreatedAt: time.Now(),
-			ExpiresAt: time.Now().Add(time.Duration(expiresIn) * time.Second),
+			CreatedAt: now,
+			ExpiresAt: expiresAt,
 		}
-
-		// 存储会话到数据库
-		if err := s.verifyCodeRepo.Create(session); err != nil {
-			s.logger.Error("Failed to create session in database", zap.Error(err))
-			continue
-		}
+		sessionsToCreate = append(sessionsToCreate, session)
 
 		results = append(results, models.BatchGenerateCodeItem{
 			AccountID: accountID,
 			Phone:     account.Phone,
 			Code:      code,
 			URL:       fmt.Sprintf("/verify-code/%s", code),
-			ExpiresAt: session.ExpiresAt.Unix(),
+			ExpiresAt: expiresAt.Unix(),
 			ExpiresIn: expiresIn,
 		})
 	}
+
+	// 如果没有有效会话，直接返回
+	if len(sessionsToCreate) == 0 {
+		return results, nil
+	}
+
+	// 第二阶段：使用事务批量创建
+	if err := s.verifyCodeRepo.BatchCreate(sessionsToCreate); err != nil {
+		s.logger.Error("Failed to batch create verify code sessions",
+			zap.Uint64("user_id", userID),
+			zap.Int("count", len(sessionsToCreate)),
+			zap.Error(err))
+		return nil, fmt.Errorf("批量生成验证码失败: %w", err)
+	}
+
+	s.logger.Info("Batch verify codes generated successfully",
+		zap.Uint64("user_id", userID),
+		zap.Int("count", len(results)))
 
 	return results, nil
 }

@@ -12,6 +12,9 @@ import (
 // AccountRepository 账号数据访问接口
 type AccountRepository interface {
 	Create(account *models.TGAccount) error
+	BatchCreate(accounts []*models.TGAccount) error
+	BatchDelete(ids []uint64) error
+	BatchUpdate(accounts []*models.TGAccount) error
 	GetByID(id uint64) (*models.TGAccount, error)
 	GetByUserIDAndID(userID, accountID uint64) (*models.TGAccount, error)
 	GetByPhone(phone string) (*models.TGAccount, error)
@@ -46,6 +49,51 @@ func NewAccountRepository(db *gorm.DB) AccountRepository {
 // Create 创建账号
 func (r *accountRepository) Create(account *models.TGAccount) error {
 	return r.db.Create(account).Error
+}
+
+// BatchCreate 批量创建账号（使用事务）
+func (r *accountRepository) BatchCreate(accounts []*models.TGAccount) error {
+	if len(accounts) == 0 {
+		return nil
+	}
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		for _, account := range accounts {
+			if err := tx.Create(account).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+// BatchDelete 批量删除账号（使用事务）
+func (r *accountRepository) BatchDelete(ids []uint64) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		// 先将关联的任务日志中的 account_id 设为 NULL
+		if err := tx.Model(&models.TaskLog{}).Where("account_id IN ?", ids).Update("account_id", nil).Error; err != nil {
+			return err
+		}
+		// 再删除账号
+		return tx.Delete(&models.TGAccount{}, ids).Error
+	})
+}
+
+// BatchUpdate 批量更新账号（使用事务）
+func (r *accountRepository) BatchUpdate(accounts []*models.TGAccount) error {
+	if len(accounts) == 0 {
+		return nil
+	}
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		for _, account := range accounts {
+			if err := tx.Save(account).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 // GetByID 根据ID获取账号

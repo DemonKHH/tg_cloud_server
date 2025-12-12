@@ -494,26 +494,38 @@ func (s *AccountService) generateDetailedHealthReport(account *models.TGAccount)
 	return report
 }
 
-// CreateAccountsFromUploadData 从上传的数据批量创建账号
+// CreateAccountsFromUploadData 从上传的数据批量创建账号（使用事务）
 func (s *AccountService) CreateAccountsFromUploadData(userID uint64, accounts []models.AccountUploadItem, proxyID *uint64) ([]*models.TGAccount, []string, error) {
-	var createdAccounts []*models.TGAccount
-	var errors []string
+	var accountsToCreate []*models.TGAccount
+	var validationErrors []string
 
+	// 如果指定了代理，先验证代理是否存在且属于该用户
+	if proxyID != nil {
+		proxy, err := s.proxyRepo.GetByUserIDAndID(userID, *proxyID)
+		if err != nil {
+			return nil, nil, fmt.Errorf("代理不存在")
+		}
+		if !proxy.IsActive {
+			return nil, nil, fmt.Errorf("代理未激活")
+		}
+	}
+
+	// 第一阶段：验证所有数据
 	for _, item := range accounts {
 		// 验证必需字段
 		if item.Phone == "" {
-			errors = append(errors, "手机号不能为空")
+			validationErrors = append(validationErrors, "手机号不能为空")
 			continue
 		}
 		if item.SessionData == "" {
-			errors = append(errors, fmt.Sprintf("账号 %s: session数据不能为空", item.Phone))
+			validationErrors = append(validationErrors, fmt.Sprintf("账号 %s: session数据不能为空", item.Phone))
 			continue
 		}
 
 		// 检查账号是否已存在
 		existingAccount, _ := s.accountRepo.GetByPhone(item.Phone)
 		if existingAccount != nil {
-			errors = append(errors, fmt.Sprintf("账号 %s 已存在", item.Phone))
+			validationErrors = append(validationErrors, fmt.Sprintf("账号 %s 已存在", item.Phone))
 			continue
 		}
 
@@ -524,59 +536,74 @@ func (s *AccountService) CreateAccountsFromUploadData(userID uint64, accounts []
 			Status:      models.AccountStatusNew,
 			ProxyID:     proxyID,
 		}
-
-		// 如果指定了代理，验证代理是否存在且属于该用户
-		if proxyID != nil {
-			proxy, err := s.proxyRepo.GetByUserIDAndID(userID, *proxyID)
-			if err != nil {
-				errors = append(errors, fmt.Sprintf("账号 %s: 代理不存在", item.Phone))
-				continue
-			}
-			if !proxy.IsActive {
-				errors = append(errors, fmt.Sprintf("账号 %s: 代理未激活", item.Phone))
-				continue
-			}
-		}
-
-		if err := s.accountRepo.Create(account); err != nil {
-			errors = append(errors, fmt.Sprintf("账号 %s: 创建失败 - %v", item.Phone, err))
-			continue
-		}
-
-		createdAccounts = append(createdAccounts, account)
-		s.logger.Info("Account created from upload",
-			zap.Uint64("user_id", userID),
-			zap.Uint64("account_id", account.ID),
-			zap.String("phone", account.Phone))
+		accountsToCreate = append(accountsToCreate, account)
 	}
 
-	return createdAccounts, errors, nil
+	// 如果没有有效账号，直接返回
+	if len(accountsToCreate) == 0 {
+		return nil, validationErrors, nil
+	}
+
+	// 第二阶段：使用事务批量创建
+	if err := s.accountRepo.BatchCreate(accountsToCreate); err != nil {
+		s.logger.Error("Failed to batch create accounts",
+			zap.Uint64("user_id", userID),
+			zap.Int("count", len(accountsToCreate)),
+			zap.Error(err))
+		return nil, validationErrors, fmt.Errorf("批量创建账号失败: %w", err)
+	}
+
+	s.logger.Info("Accounts batch created from upload",
+		zap.Uint64("user_id", userID),
+		zap.Int("created_count", len(accountsToCreate)),
+		zap.Int("error_count", len(validationErrors)))
+
+	return accountsToCreate, validationErrors, nil
 }
 
-// BatchSet2FA 批量设置2FA密码（仅更新本地记录）
+// BatchSet2FA 批量设置2FA密码（使用事务）
 func (s *AccountService) BatchSet2FA(userID uint64, req *models.BatchSet2FARequest) error {
+	// 先获取所有需要更新的账号
+	var accountsToUpdate []*models.TGAccount
 	for _, accountID := range req.AccountIDs {
 		account, err := s.accountRepo.GetByUserIDAndID(userID, accountID)
 		if err != nil {
+			s.logger.Warn("Account not found for 2FA update",
+				zap.Uint64("account_id", accountID),
+				zap.Error(err))
 			continue
 		}
 
 		account.TwoFAPassword = req.Password
 		account.Has2FA = true
 		account.Is2FACorrect = false // 需要等待实际验证
-
-		if err := s.accountRepo.Update(account); err != nil {
-			s.logger.Error("Failed to update 2FA password",
-				zap.Uint64("account_id", accountID),
-				zap.Error(err))
-		}
+		accountsToUpdate = append(accountsToUpdate, account)
 	}
+
+	if len(accountsToUpdate) == 0 {
+		return nil
+	}
+
+	// 使用事务批量更新
+	if err := s.accountRepo.BatchUpdate(accountsToUpdate); err != nil {
+		s.logger.Error("Failed to batch update 2FA passwords",
+			zap.Uint64("user_id", userID),
+			zap.Int("count", len(accountsToUpdate)),
+			zap.Error(err))
+		return fmt.Errorf("批量设置2FA失败: %w", err)
+	}
+
+	s.logger.Info("Batch 2FA passwords set successfully",
+		zap.Uint64("user_id", userID),
+		zap.Int("updated_count", len(accountsToUpdate)))
+
 	return nil
 }
 
-// BatchUpdate2FA 批量修改2FA密码（尝试修改Telegram密码）
+// BatchUpdate2FA 批量修改2FA密码（使用事务）
 func (s *AccountService) BatchUpdate2FA(userID uint64, req *models.BatchUpdate2FARequest) (map[uint64]string, error) {
 	results := make(map[uint64]string)
+	var accountsToUpdate []*models.TGAccount
 
 	for _, accountID := range req.AccountIDs {
 		account, err := s.accountRepo.GetByUserIDAndID(userID, accountID)
@@ -591,28 +618,41 @@ func (s *AccountService) BatchUpdate2FA(userID uint64, req *models.BatchUpdate2F
 			oldPassword = account.TwoFAPassword
 		}
 
-		// 创建修改密码任务
-		// 注意：这里需要引用 telegram 包，但为了避免循环依赖，我们需要通过接口或在 telegram 包中定义任务
-		// 由于 AccountService 引用了 telegram 包，我们可以在 telegram 包中定义任务
-
-		// 这里我们假设 telegram 包有一个 UpdatePasswordTask
+		// TODO: 实现真正的 Telegram 密码修改逻辑
 		// task := telegram.NewUpdatePasswordTask(oldPassword, req.NewPassword)
 		// err := s.connectionPool.ExecuteTask(fmt.Sprintf("%d", accountID), task)
-
-		// 由于我们还没有实现 UpdatePasswordTask，暂时只更新本地记录（模拟成功）
-		// TODO: 实现真正的 Telegram 密码修改逻辑
 
 		// 临时逻辑：只更新本地记录
 		account.TwoFAPassword = req.NewPassword
 		account.Has2FA = true
 		account.Is2FACorrect = false // 修改后需要重新验证
+		accountsToUpdate = append(accountsToUpdate, account)
+		results[accountID] = "success"
 
-		if err := s.accountRepo.Update(account); err != nil {
-			results[accountID] = fmt.Sprintf("更新本地记录失败: %v", err)
-		} else {
-			results[accountID] = "success"
-		}
+		// 忽略 oldPassword 的 lint 警告
+		_ = oldPassword
 	}
+
+	if len(accountsToUpdate) == 0 {
+		return results, nil
+	}
+
+	// 使用事务批量更新
+	if err := s.accountRepo.BatchUpdate(accountsToUpdate); err != nil {
+		s.logger.Error("Failed to batch update 2FA passwords",
+			zap.Uint64("user_id", userID),
+			zap.Int("count", len(accountsToUpdate)),
+			zap.Error(err))
+		// 更新结果为失败
+		for _, account := range accountsToUpdate {
+			results[account.ID] = fmt.Sprintf("更新失败: %v", err)
+		}
+		return results, fmt.Errorf("批量修改2FA失败: %w", err)
+	}
+
+	s.logger.Info("Batch 2FA passwords updated successfully",
+		zap.Uint64("user_id", userID),
+		zap.Int("updated_count", len(accountsToUpdate)))
 
 	return results, nil
 }

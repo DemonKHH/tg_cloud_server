@@ -79,9 +79,59 @@ func (r *userRepository) Update(user *models.User) error {
 	return r.db.Save(user).Error
 }
 
-// Delete 删除用户
+// Delete 删除用户（使用事务，清理关联数据）
 func (r *userRepository) Delete(id uint64) error {
-	return r.db.Delete(&models.User{}, id).Error
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		// 1. 获取用户的所有账号ID
+		var accountIDs []uint64
+		if err := tx.Model(&models.TGAccount{}).Where("user_id = ?", id).Pluck("id", &accountIDs).Error; err != nil {
+			return err
+		}
+
+		// 2. 删除账号关联的任务日志
+		if len(accountIDs) > 0 {
+			if err := tx.Where("account_id IN ?", accountIDs).Delete(&models.TaskLog{}).Error; err != nil {
+				return err
+			}
+		}
+
+		// 3. 删除用户的任务
+		var taskIDs []uint64
+		if err := tx.Model(&models.Task{}).Where("user_id = ?", id).Pluck("id", &taskIDs).Error; err != nil {
+			return err
+		}
+		if len(taskIDs) > 0 {
+			if err := tx.Where("task_id IN ?", taskIDs).Delete(&models.TaskLog{}).Error; err != nil {
+				return err
+			}
+			if err := tx.Where("user_id = ?", id).Delete(&models.Task{}).Error; err != nil {
+				return err
+			}
+		}
+
+		// 4. 删除用户的账号
+		if err := tx.Where("user_id = ?", id).Delete(&models.TGAccount{}).Error; err != nil {
+			return err
+		}
+
+		// 5. 删除用户的代理
+		if err := tx.Where("user_id = ?", id).Delete(&models.ProxyIP{}).Error; err != nil {
+			return err
+		}
+
+		// 6. 删除用户的批量任务
+		if err := tx.Where("user_id = ?", id).Delete(&models.BatchJob{}).Error; err != nil {
+			return err
+		}
+
+		// 7. 删除用户的验证码会话
+		if err := tx.Where("user_id = ?", id).Delete(&models.VerifyCodeSession{}).Error; err != nil {
+			return err
+		}
+
+		// 8. 最后删除用户
+		return tx.Delete(&models.User{}, id).Error
+	})
 }
 
 // List 获取用户列表

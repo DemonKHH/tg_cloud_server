@@ -30,6 +30,9 @@ type User struct {
 	CreatedAt    time.Time  `json:"created_at"`
 	UpdatedAt    time.Time  `json:"updated_at"`
 
+	// 风控配置
+	RiskSettings *UserRiskSettings `json:"risk_settings" gorm:"type:json;serializer:json"`
+
 	// 关联关系
 	Accounts []TGAccount `json:"accounts" gorm:"foreignKey:UserID"`
 	Tasks    []Task      `json:"tasks" gorm:"foreignKey:UserID"`
@@ -185,4 +188,39 @@ func NewUserExpiredError(user *User) *UserExpiredError {
 		ExpiresAt: user.ExpiresAt,
 		Message:   message,
 	}
+}
+
+// UserRiskSettings 用户风控配置
+type UserRiskSettings struct {
+	MaxConsecutiveFailures int `json:"max_consecutive_failures"` // 连续失败次数阈值，默认5，范围3-10
+	CoolingDurationMinutes int `json:"cooling_duration_minutes"` // 冷却时长（分钟），默认30，范围10-120
+}
+
+// GetDefaultRiskSettings 获取默认风控配置
+func GetDefaultRiskSettings() *UserRiskSettings {
+	return &UserRiskSettings{
+		MaxConsecutiveFailures: 5,
+		CoolingDurationMinutes: 30,
+	}
+}
+
+// Validate 验证并修正风控配置范围
+func (s *UserRiskSettings) Validate() {
+	if s.MaxConsecutiveFailures < 3 {
+		s.MaxConsecutiveFailures = 3
+	} else if s.MaxConsecutiveFailures > 10 {
+		s.MaxConsecutiveFailures = 10
+	}
+
+	if s.CoolingDurationMinutes < 10 {
+		s.CoolingDurationMinutes = 10
+	} else if s.CoolingDurationMinutes > 120 {
+		s.CoolingDurationMinutes = 120
+	}
+}
+
+// UpdateRiskSettingsRequest 更新风控配置请求
+type UpdateRiskSettingsRequest struct {
+	MaxConsecutiveFailures int `json:"max_consecutive_failures" binding:"min=3,max=10"`
+	CoolingDurationMinutes int `json:"cooling_duration_minutes" binding:"min=10,max=120"`
 }

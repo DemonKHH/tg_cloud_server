@@ -17,7 +17,7 @@ func RegisterAPIRoutes(
 	proxyHandler *handlers.ProxyHandler,
 	moduleHandler *handlers.ModuleHandler,
 	statsHandler *handlers.StatsHandler,
-
+	settingsHandler *handlers.SettingsHandler,
 	aiHandler *handlers.AIHandler,
 	authService *services.AuthService,
 	config *config.Config,
@@ -88,5 +88,12 @@ func RegisterAPIRoutes(
 		stats.GET("/dashboard", statsHandler.GetUserDashboard) // 用户仪表盘
 		stats.GET("/tasks", taskHandler.GetTaskStats)          // 任务统计
 		stats.GET("/proxies", proxyHandler.GetProxyStats)      // 代理统计
+	}
+
+	// 设置路由
+	settings := api.Group("/settings")
+	{
+		settings.GET("/risk", settingsHandler.GetRiskSettings)    // 获取风控配置
+		settings.PUT("/risk", settingsHandler.UpdateRiskSettings) // 更新风控配置
 	}
 }

@@ -34,6 +34,13 @@ type AccountRepository interface {
 	GetStatusDistribution(userID uint64) (map[string]int64, error)
 	GetGrowthTrend(userID uint64, days int) ([]models.TimeSeriesPoint, error)
 	GetProxyUsageStats(userID uint64) (*models.ProxyUsageStats, error)
+
+	// 风控相关方法
+	GetCoolingExpiredAccounts() ([]*models.TGAccount, error)
+	GetWarningAccountsOlderThan(cutoffTime time.Time) ([]*models.TGAccount, error)
+	UpdateCoolingStatus(id uint64, status models.AccountStatus, coolingUntil *time.Time, consecutiveFailures uint32) error
+	IncrementConsecutiveFailures(id uint64) (uint32, error)
+	ResetConsecutiveFailures(id uint64) error
 }
 
 // accountRepository 账号数据访问实现
@@ -285,9 +292,9 @@ func (r *accountRepository) GetAccountSummaries(userID uint64, page, limit int, 
 		return nil, 0, err
 	}
 
-	// 获取摘要数据（包含 Telegram 信息和代理信息）
+	// 获取摘要数据（包含 Telegram 信息、代理信息和风控字段）
 	err := query.
-		Select("tg_accounts.id, tg_accounts.user_id, tg_accounts.phone, tg_accounts.status, tg_accounts.is_online, tg_accounts.proxy_id, tg_accounts.frozen_until, tg_accounts.has_2fa, tg_accounts.two_fa_password, tg_accounts.tg_user_id, tg_accounts.username, tg_accounts.first_name, tg_accounts.last_name, tg_accounts.bio, tg_accounts.photo_url, tg_accounts.last_used_at, tg_accounts.created_at, proxy_ips.name as proxy_name, proxy_ips.ip as proxy_ip, proxy_ips.port as proxy_port, proxy_ips.username as proxy_username, proxy_ips.password as proxy_password, proxy_ips.protocol as proxy_protocol").
+		Select("tg_accounts.id, tg_accounts.user_id, tg_accounts.phone, tg_accounts.status, tg_accounts.is_online, tg_accounts.proxy_id, tg_accounts.frozen_until, tg_accounts.has_2fa, tg_accounts.two_fa_password, tg_accounts.consecutive_failures, tg_accounts.cooling_until, tg_accounts.tg_user_id, tg_accounts.username, tg_accounts.first_name, tg_accounts.last_name, tg_accounts.bio, tg_accounts.photo_url, tg_accounts.last_used_at, tg_accounts.created_at, proxy_ips.name as proxy_name, proxy_ips.ip as proxy_ip, proxy_ips.port as proxy_port, proxy_ips.username as proxy_username, proxy_ips.password as proxy_password, proxy_ips.protocol as proxy_protocol").
 		Joins("LEFT JOIN proxy_ips ON proxy_ips.id = tg_accounts.proxy_id").
 		Offset(offset).
 		Limit(limit).
@@ -477,4 +484,61 @@ func (r *accountRepository) GetProxyUsageStats(userID uint64) (*models.ProxyUsag
 	stats.AvgLatency = 0 // 暂不支持延迟统计
 
 	return stats, nil
+}
+
+// GetCoolingExpiredAccounts 获取冷却到期的账号
+func (r *accountRepository) GetCoolingExpiredAccounts() ([]*models.TGAccount, error) {
+	var accounts []*models.TGAccount
+	err := r.db.Where("status = ? AND cooling_until IS NOT NULL AND cooling_until < ?",
+		models.AccountStatusCooling, time.Now()).
+		Find(&accounts).Error
+	return accounts, err
+}
+
+// GetWarningAccountsOlderThan 获取警告状态超过指定时间的账号
+func (r *accountRepository) GetWarningAccountsOlderThan(cutoffTime time.Time) ([]*models.TGAccount, error) {
+	var accounts []*models.TGAccount
+	err := r.db.Where("status = ? AND updated_at < ?",
+		models.AccountStatusWarning, cutoffTime).
+		Find(&accounts).Error
+	return accounts, err
+}
+
+// UpdateCoolingStatus 更新账号冷却状态
+func (r *accountRepository) UpdateCoolingStatus(id uint64, status models.AccountStatus, coolingUntil *time.Time, consecutiveFailures uint32) error {
+	updates := map[string]interface{}{
+		"status":               status,
+		"cooling_until":        coolingUntil,
+		"consecutive_failures": consecutiveFailures,
+		"updated_at":           time.Now(),
+	}
+	return r.db.Model(&models.TGAccount{}).
+		Where("id = ?", id).
+		Updates(updates).Error
+}
+
+// IncrementConsecutiveFailures 增加连续失败计数并返回新值
+func (r *accountRepository) IncrementConsecutiveFailures(id uint64) (uint32, error) {
+	// 先增加计数
+	err := r.db.Model(&models.TGAccount{}).
+		Where("id = ?", id).
+		UpdateColumn("consecutive_failures", gorm.Expr("consecutive_failures + 1")).Error
+	if err != nil {
+		return 0, err
+	}
+
+	// 获取新值
+	var account models.TGAccount
+	err = r.db.Select("consecutive_failures").Where("id = ?", id).First(&account).Error
+	if err != nil {
+		return 0, err
+	}
+	return account.ConsecutiveFailures, nil
+}
+
+// ResetConsecutiveFailures 重置连续失败计数
+func (r *accountRepository) ResetConsecutiveFailures(id uint64) error {
+	return r.db.Model(&models.TGAccount{}).
+		Where("id = ?", id).
+		Update("consecutive_failures", 0).Error
 }

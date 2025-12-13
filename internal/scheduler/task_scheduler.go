@@ -21,17 +21,18 @@ import (
 
 // TaskScheduler 任务调度器
 type TaskScheduler struct {
-	taskQueue      []*models.Task               // 任务队列
-	runningTasks   map[uint64]bool              // 正在运行的任务 (taskID -> true)
-	connectionPool *telegram.ConnectionPool     // 连接池引用
-	accountRepo    repository.AccountRepository // 账号仓库
-	taskRepo       repository.TaskRepository    // 任务仓库
-	aiService      services.AIService           // AI服务
-	logger         *zap.Logger
-	mu             sync.RWMutex
-	ctx            context.Context
-	cancel         context.CancelFunc
-	maxConcurrent  int // 最大并发任务数
+	taskQueue          []*models.Task               // 任务队列
+	runningTasks       map[uint64]bool              // 正在运行的任务 (taskID -> true)
+	connectionPool     *telegram.ConnectionPool     // 连接池引用
+	accountRepo        repository.AccountRepository // 账号仓库
+	taskRepo           repository.TaskRepository    // 任务仓库
+	aiService          services.AIService           // AI服务
+	riskControlService services.RiskControlService  // 风控服务
+	logger             *zap.Logger
+	mu                 sync.RWMutex
+	ctx                context.Context
+	cancel             context.CancelFunc
+	maxConcurrent      int // 最大并发任务数
 }
 
 // NewTaskScheduler 创建新的任务调度器
@@ -60,6 +61,11 @@ func NewTaskScheduler(
 	go ts.schedulingLoop()
 
 	return ts
+}
+
+// SetRiskControlService 设置风控服务
+func (ts *TaskScheduler) SetRiskControlService(riskControlService services.RiskControlService) {
+	ts.riskControlService = riskControlService
 }
 
 // Stop 停止任务调度器
@@ -434,6 +440,12 @@ func (ts *TaskScheduler) executeTask(task *models.Task) {
 			accountResult["error"] = err.Error()
 			// 记录执行失败日志
 			ts.createTaskLog(task.ID, &accountID, "execution_failed", fmt.Sprintf("账号 %d 执行失败: %v (耗时: %s)", accountID, err, accountDuration), accountResult)
+
+			// 上报任务失败结果到风控服务
+			if ts.riskControlService != nil {
+				ts.riskControlService.ReportTaskResult(ts.ctx, accountID, false, err)
+			}
+
 			failCount++
 			lastError = err
 		} else {
@@ -474,6 +486,12 @@ func (ts *TaskScheduler) executeTask(task *models.Task) {
 				logMessage = ts.buildCheckTaskSummary(accountID, accountDuration, accountResult)
 			}
 			ts.createTaskLog(task.ID, &accountID, "execution_success", logMessage, accountResult)
+
+			// 上报任务成功结果到风控服务
+			if ts.riskControlService != nil {
+				ts.riskControlService.ReportTaskResult(ts.ctx, accountID, true, nil)
+			}
+
 			successCount++
 
 			// 如果是账号检查任务，且有建议的状态变更，自动更新账号状态
@@ -595,52 +613,31 @@ func (ts *TaskScheduler) performRiskControlCheck(task *models.Task, accountID st
 		return fmt.Errorf("invalid account ID: %w", err)
 	}
 
+	// 使用风控服务检查（如果已设置）
+	if ts.riskControlService != nil {
+		allowed, reason := ts.riskControlService.CanExecuteTask(ts.ctx, accountIDUint, task.TaskType)
+		if !allowed {
+			return fmt.Errorf("risk control check failed: %s", reason)
+		}
+	}
+
 	account, err := ts.accountRepo.GetByID(accountIDUint)
 	if err != nil {
 		return fmt.Errorf("failed to get account: %w", err)
 	}
 
-	// 1. 检查账号状态
-	if !account.IsAvailable() {
-		return fmt.Errorf("account is not available, status: %s", account.Status)
-	}
-
-	// 2. 检查账号是否忙碌
+	// 检查账号是否忙碌
 	if ts.connectionPool.IsAccountBusy(accountID) {
 		return fmt.Errorf("account is busy with another task")
 	}
 
-	// 3. 连接状态检查移到实际执行时进行，这里只检查连接是否处于错误状态
+	// 连接状态检查移到实际执行时进行，这里只检查连接是否处于错误状态
 	connStatus := ts.connectionPool.GetConnectionStatus(accountID)
 	if connStatus == telegram.StatusConnectionError {
 		return fmt.Errorf("account connection has persistent error")
 	}
-	// 注意：StatusDisconnected 和 StatusConnecting 不算错误，连接会在执行时自动创建
 
-	// 4. 检查账号是否需要冷却（如果最近有失败的任务）
-	// 获取最近1小时内的失败任务数
-	oneHourAgo := time.Now().Add(-1 * time.Hour)
-	recentFailedTasks, err := ts.taskRepo.GetTasksByAccountID(accountIDUint, []string{"failed"})
-	if err == nil {
-		failedCount := 0
-		for _, t := range recentFailedTasks {
-			if t.CompletedAt != nil && t.CompletedAt.After(oneHourAgo) {
-				failedCount++
-			}
-		}
-
-		// 如果最近1小时内失败任务超过3个，拒绝新任务
-		if failedCount >= 3 {
-			return fmt.Errorf("account has too many recent failures (%d in last hour), cooling down required", failedCount)
-		}
-	}
-
-	// 5. 检查账号是否在冷却状态
-	if account.Status == models.AccountStatusCooling {
-		return fmt.Errorf("account is in cooling period")
-	}
-
-	// 6. 检查任务频率限制（避免短时间内大量相同类型任务）
+	// 检查任务频率限制（避免短时间内大量相同类型任务）
 	recentTasks, err := ts.taskRepo.GetTasksByAccountID(accountIDUint, []string{"running", "queued"})
 	if err == nil {
 		sameTypeCount := 0
@@ -650,13 +647,12 @@ func (ts *TaskScheduler) performRiskControlCheck(task *models.Task, accountID st
 			}
 		}
 
-		// 同一类型任务队列中超过5个，限制新任务
+		// 同一类型任务队列中超过5个，记录警告
 		if sameTypeCount >= 5 {
 			ts.logger.Warn("Too many tasks of same type in queue",
 				zap.String("account_id", accountID),
 				zap.String("task_type", string(task.TaskType)),
 				zap.Int("count", sameTypeCount))
-			// 这里可以选择拒绝或允许，根据业务需求
 		}
 	}
 

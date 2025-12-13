@@ -111,6 +111,13 @@ class ApiClient {
     });
   }
 
+  async put<T>(endpoint: string, data?: any): Promise<APIResponse<T>> {
+    return this.request<T>(endpoint, {
+      method: 'PUT',
+      body: data ? JSON.stringify(data) : undefined,
+    });
+  }
+
   async delete<T>(endpoint: string): Promise<APIResponse<T>> {
     return this.request<T>(endpoint, { method: 'DELETE' });
   }
@@ -329,4 +336,16 @@ export const statsAPI = {
   getDashboard: () => apiClient.get('/stats/dashboard'),
   getTaskStats: () => apiClient.get('/stats/tasks'),
   getProxyStats: () => apiClient.get('/stats/proxies'),
+};
+
+// 设置API
+export interface RiskSettings {
+  max_consecutive_failures: number;
+  cooling_duration_minutes: number;
+}
+
+export const settingsAPI = {
+  getRiskSettings: () => apiClient.get<RiskSettings>('/settings/risk'),
+  updateRiskSettings: (data: RiskSettings) => 
+    apiClient.put<RiskSettings>('/settings/risk', data),
 };

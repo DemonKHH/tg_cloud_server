@@ -32,11 +32,12 @@ type CronService struct {
 	config         *config.Config
 
 	// 依赖服务
-	taskService    *services.TaskService
-	accountService *services.AccountService
-	userRepo       repository.UserRepository
-	taskRepo       repository.TaskRepository
-	accountRepo    repository.AccountRepository
+	taskService        *services.TaskService
+	accountService     *services.AccountService
+	riskControlService services.RiskControlService
+	userRepo           repository.UserRepository
+	taskRepo           repository.TaskRepository
+	accountRepo        repository.AccountRepository
 
 	// 连接池接口（可选，用于连接检查）
 	connectionPool interface {
@@ -49,20 +50,22 @@ type CronService struct {
 func NewCronService(
 	taskService *services.TaskService,
 	accountService *services.AccountService,
+	riskControlService services.RiskControlService,
 	userRepo repository.UserRepository,
 	taskRepo repository.TaskRepository,
 	accountRepo repository.AccountRepository,
 ) *CronService {
 	return &CronService{
-		cron:           cron.New(cron.WithSeconds()),
-		logger:         logger.Get().Named("cron_service"),
-		metricsService: metrics.NewMetricsService(),
-		config:         config.Get(),
-		taskService:    taskService,
-		accountService: accountService,
-		userRepo:       userRepo,
-		taskRepo:       taskRepo,
-		accountRepo:    accountRepo,
+		cron:               cron.New(cron.WithSeconds()),
+		logger:             logger.Get().Named("cron_service"),
+		metricsService:     metrics.NewMetricsService(),
+		config:             config.Get(),
+		taskService:        taskService,
+		accountService:     accountService,
+		riskControlService: riskControlService,
+		userRepo:           userRepo,
+		taskRepo:           taskRepo,
+		accountRepo:        accountRepo,
 	}
 }
 
@@ -96,6 +99,10 @@ func (s *CronService) Start() error {
 	}
 
 	if err := s.addTaskTimeoutCheckJob(); err != nil {
+		return err
+	}
+
+	if err := s.addRiskControlRecoveryJob(); err != nil {
 		return err
 	}
 
@@ -740,5 +747,51 @@ func (s *CronService) checkAccountConnections(ctx context.Context) error {
 		zap.Int("total_pool_connections", totalConnections),
 		zap.Int("active_pool_connections", activeConnections))
 
+	return nil
+}
+
+// addRiskControlRecoveryJob 添加风控恢复任务
+func (s *CronService) addRiskControlRecoveryJob() error {
+	// 每5分钟执行一次冷却恢复
+	_, err := s.cron.AddFunc("0 */5 * * * *", func() {
+		if s.riskControlService == nil {
+			return
+		}
+		ctx := context.Background()
+		s.logger.Debug("Running cooling recovery job")
+
+		recoveredCount := s.riskControlService.ProcessCoolingRecovery(ctx)
+		if recoveredCount > 0 {
+			s.logger.Info("Cooling recovery completed",
+				zap.Int("recovered_count", recoveredCount))
+		}
+	})
+
+	if err != nil {
+		s.logger.Error("Failed to add cooling recovery job", zap.Error(err))
+		return err
+	}
+
+	// 每10分钟执行一次警告恢复
+	_, err = s.cron.AddFunc("0 */10 * * * *", func() {
+		if s.riskControlService == nil {
+			return
+		}
+		ctx := context.Background()
+		s.logger.Debug("Running warning recovery job")
+
+		recoveredCount := s.riskControlService.ProcessWarningRecovery(ctx)
+		if recoveredCount > 0 {
+			s.logger.Info("Warning recovery completed",
+				zap.Int("recovered_count", recoveredCount))
+		}
+	})
+
+	if err != nil {
+		s.logger.Error("Failed to add warning recovery job", zap.Error(err))
+		return err
+	}
+
+	s.logger.Info("Risk control recovery jobs added successfully")
 	return nil
 }

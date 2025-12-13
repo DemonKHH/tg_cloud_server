@@ -126,6 +126,10 @@ func main() {
 
 	// 初始化服务层
 	authService := services.NewAuthService(userRepo, cfg)
+	riskControlService := services.NewRiskControlService(accountRepo, userRepo)
+
+	// 设置风控服务到任务调度器
+	taskScheduler.SetRiskControlService(riskControlService)
 	accountService := services.NewAccountService(accountRepo, proxyRepo, connectionPool)
 	proxyService := services.NewProxyService(proxyRepo)
 	taskService := services.NewTaskService(taskRepo, accountRepo)
@@ -141,7 +145,7 @@ func main() {
 	statsService := services.NewStatsService(userRepo, accountRepo, taskRepo, proxyRepo)
 
 	// 初始化定时任务服务
-	cronService := cron.NewCronService(taskService, accountService, userRepo, taskRepo, accountRepo)
+	cronService := cron.NewCronService(taskService, accountService, riskControlService, userRepo, taskRepo, accountRepo)
 	cronService.SetConnectionPool(connectionPool)
 
 	// 初始化处理器
@@ -154,6 +158,7 @@ func main() {
 
 	aiHandler := handlers.NewAIHandler(aiService)
 	statsHandler := handlers.NewStatsHandler(statsService)
+	settingsHandler := handlers.NewSettingsHandler(riskControlService)
 
 	// 设置Gin模式
 	if cfg.Logging.Level == "debug" {
@@ -176,7 +181,7 @@ func main() {
 
 	// 注册路由
 	routes.RegisterAuthRoutes(router, authHandler)
-	routes.RegisterAPIRoutes(router, accountHandler, taskHandler, proxyHandler, moduleHandler, statsHandler, aiHandler, authService, cfg)
+	routes.RegisterAPIRoutes(router, accountHandler, taskHandler, proxyHandler, moduleHandler, statsHandler, settingsHandler, aiHandler, authService, cfg)
 	routes.SetupVerifyCodeRoutes(router, verifyCodeHandler, authService)
 	routes.RegisterWebSocketRoutes(router, redisClient, authService)
 

@@ -76,6 +76,10 @@ type TGAccount struct {
 	// 限制信息
 	FrozenUntil *string `json:"frozen_until" gorm:"column:frozen_until;size:100"` // 冻结结束时间
 
+	// 风控字段
+	ConsecutiveFailures uint32     `json:"consecutive_failures" gorm:"default:0"` // 连续失败次数
+	CoolingUntil        *time.Time `json:"cooling_until"`                         // 冷却结束时间
+
 	LastCheckAt *time.Time `json:"last_check_at"`
 	LastUsedAt  *time.Time `json:"last_used_at"`
 	CreatedAt   time.Time  `json:"created_at"`
@@ -144,6 +148,10 @@ type AccountSummary struct {
 	FrozenUntil   *string       `json:"frozen_until,omitempty" gorm:"column:frozen_until"`
 	Has2FA        bool          `json:"has_2fa" gorm:"column:has_2fa"`
 	TwoFAPassword string        `json:"two_fa_password,omitempty" gorm:"column:two_fa_password"`
+
+	// 风控字段
+	ConsecutiveFailures uint32     `json:"consecutive_failures"`
+	CoolingUntil        *time.Time `json:"cooling_until,omitempty"`
 
 	// Telegram 信息（始终返回，即使为空）
 	TgUserID  *int64  `json:"tg_user_id"`

@@ -75,7 +75,19 @@ class ApiClient {
         headers,
       });
 
+      // 处理 HTTP 401 未授权错误
+      if (response.status === 401) {
+        this.handleUnauthorized();
+        throw new Error('登录已过期，请重新登录');
+      }
+
       const data: APIResponse<T> = await response.json();
+
+      // 处理业务层面的未授权错误
+      if (data.code === ResponseCode.UNAUTHORIZED) {
+        this.handleUnauthorized();
+        throw new Error(data.msg || '登录已过期，请重新登录');
+      }
 
       if (data.code !== ResponseCode.SUCCESS) {
         throw new Error(data.msg || '请求失败');
@@ -87,6 +99,20 @@ class ApiClient {
         throw error;
       }
       throw new Error('网络请求失败');
+    }
+  }
+
+  private handleUnauthorized() {
+    // 清除 token
+    this.setToken(null);
+    // 重定向到登录页面
+    if (typeof window !== 'undefined') {
+      // 保存当前路径，登录后可以跳转回来
+      const currentPath = window.location.pathname;
+      if (currentPath !== '/login') {
+        localStorage.setItem('redirectAfterLogin', currentPath);
+        window.location.href = '/login';
+      }
     }
   }
 
@@ -136,7 +162,20 @@ class ApiClient {
       body: formData,
     });
 
+    // 处理 HTTP 401 未授权错误
+    if (response.status === 401) {
+      this.handleUnauthorized();
+      throw new Error('登录已过期，请重新登录');
+    }
+
     const data: APIResponse<T> = await response.json();
+
+    // 处理业务层面的未授权错误
+    if (data.code === ResponseCode.UNAUTHORIZED) {
+      this.handleUnauthorized();
+      throw new Error(data.msg || '登录已过期，请重新登录');
+    }
+
     if (data.code !== ResponseCode.SUCCESS) {
       throw new Error(data.msg || '请求失败');
     }

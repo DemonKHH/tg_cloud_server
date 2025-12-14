@@ -119,11 +119,14 @@ func (cp *ConnectionPool) GetOrCreateConnection(accountID string, config *Client
 
 	// 检查是否已存在连接
 	if conn, exists := cp.connections[accountID]; exists {
-		if conn.isActive && conn.status == StatusConnected {
+		// 复用连接：只要连接是活跃的，无论是已连接、连接中还是重连中，都应该复用，
+		// 让 waitForConnection 去处理等待逻辑
+		if conn.isActive && (conn.status == StatusConnected || conn.status == StatusConnecting || conn.status == StatusReconnecting) {
 			conn.lastUsed = time.Now()
 			conn.useCount++
 			cp.logger.Debug("Reusing existing connection",
 				zap.String("account_id", accountID),
+				zap.String("status", conn.status.String()),
 				zap.Int64("use_count", conn.useCount))
 			return conn, nil
 		}
@@ -301,6 +304,11 @@ func (cp *ConnectionPool) scheduleReconnect(accountID string, conn *ManagedConne
 		delay = MaxReconnectDelay
 	}
 
+	// 设置状态为重连中，以便任务可以等待
+	conn.mu.Lock()
+	conn.status = StatusReconnecting
+	conn.mu.Unlock()
+
 	conn.logger.Info("Scheduling reconnection",
 		zap.Int("attempt", currentAttempt),
 		zap.Int("max_attempts", MaxReconnectAttempts),
@@ -344,33 +352,54 @@ func (cp *ConnectionPool) ExecuteTask(accountID string, task TaskInterface) erro
 		}
 	}
 
-	conn, err := cp.GetOrCreateConnection(accountID, config)
-	if err != nil {
-		// 连接失败，更新账号状态为警告
-		cp.updateAccountStatusOnError(accountID, err)
-		return fmt.Errorf("failed to get connection: %w", err)
-	}
+	var conn *ManagedConnection
+	var err error
 
-	// 确保单任务执行
-	conn.mu.Lock()
-	if conn.taskRunning {
+	// 尝试获取连接并等待连接就绪，支持在连接被替换（重连）时重试
+	maxRetries := 3
+	for i := 0; i < maxRetries; i++ {
+		conn, err = cp.GetOrCreateConnection(accountID, config)
+		if err != nil {
+			// 连接失败，更新账号状态为警告
+			cp.updateAccountStatusOnError(accountID, err)
+			return fmt.Errorf("failed to get connection: %w", err)
+		}
+
+		// 确保单任务执行
+		conn.mu.Lock()
+		if conn.taskRunning {
+			conn.mu.Unlock()
+			return errors.New("account is busy with another task")
+		}
+		conn.taskRunning = true
 		conn.mu.Unlock()
-		return errors.New("account is busy with another task")
-	}
-	conn.taskRunning = true
-	conn.mu.Unlock()
 
-	defer func() {
+		// 等待连接建立完成
+		_, err = cp.waitForConnection(accountID, conn, config)
+		if err == nil {
+			// 成功建立连接
+			break
+		}
+
+		// 等待失败，释放占用状态
 		conn.mu.Lock()
 		conn.taskRunning = false
-		conn.lastUsed = time.Now()
 		conn.mu.Unlock()
-	}()
 
-	// 等待连接建立完成
-	_, err = cp.waitForConnection(accountID, conn, config)
-	if err != nil {
+		// 检查是否是因为连接被替换（这是正常的重连流程）
+		if strings.Contains(err.Error(), "connection was replaced") || strings.Contains(err.Error(), "please retry") {
+			cp.logger.Info("Connection replaced during wait, retrying...",
+				zap.String("account_id", accountID),
+				zap.Int("attempt", i+1))
+			continue
+		}
+
+		// 其他错误直接返回
 		return err
+	}
+
+	if err != nil {
+		return fmt.Errorf("failed to establish connection after retries: %w", err)
 	}
 
 	// 连接成功，更新账号状态为正常（如果之前不是正常状态）

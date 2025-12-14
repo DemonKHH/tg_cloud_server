@@ -50,12 +50,22 @@ type ManagedConnection struct {
 	useCount        int64
 	isActive        bool
 	taskRunning     bool
-	reconnectCount  int       // 重连次数计数器
-	lastReconnectAt time.Time // 上次重连时间
+	reconnectCount  int           // 重连次数计数器
+	lastReconnectAt time.Time     // 上次重连时间
+	stateChangeCh   chan struct{} // 状态变更通知通道
 	mu              sync.Mutex
 	ctx             context.Context
 	cancel          context.CancelFunc
 	logger          *zap.Logger
+}
+
+// notifyStateChange 通知状态变更
+func (c *ManagedConnection) notifyStateChange() {
+	select {
+	case c.stateChangeCh <- struct{}{}:
+	default:
+		// 通道已满，说明已有挂起的通知，忽略
+	}
 }
 
 // ClientConfig 客户端配置
@@ -132,6 +142,13 @@ func (cp *ConnectionPool) GetOrCreateConnection(accountID string, config *Client
 		}
 	}
 
+	// 检查是否已存在旧连接，如果存在，先取消它以便通知等待者
+	if oldConn, exists := cp.connections[accountID]; exists {
+		cp.logger.Info("Canceling old connection before creating new one", zap.String("account_id", accountID))
+		oldConn.cancel()
+		// 不需要 delete，因为下面会直接覆盖
+	}
+
 	// 创建新连接
 	cp.logger.Info("Creating new connection", zap.String("account_id", accountID))
 	return cp.createNewConnection(accountID, config)
@@ -199,14 +216,15 @@ func (cp *ConnectionPool) createNewConnection(accountID string, config *ClientCo
 	client := telegram.NewClient(cp.appID, cp.appHash, options)
 
 	conn := &ManagedConnection{
-		client:   client,
-		config:   config,
-		status:   StatusConnecting,
-		lastUsed: time.Now(),
-		isActive: true,
-		ctx:      ctx,
-		cancel:   cancel,
-		logger:   cp.logger.Named(accountID),
+		client:        client,
+		config:        config,
+		status:        StatusConnecting,
+		stateChangeCh: make(chan struct{}, 1),
+		lastUsed:      time.Now(),
+		isActive:      true,
+		ctx:           ctx,
+		cancel:        cancel,
+		logger:        cp.logger.Named(accountID),
 	}
 
 	// 异步建立连接
@@ -231,6 +249,7 @@ func (cp *ConnectionPool) maintainConnection(accountID string, conn *ManagedConn
 				zap.Int("previous_attempts", conn.reconnectCount))
 		}
 		conn.reconnectCount = 0
+		conn.notifyStateChange() // 通知状态变更
 		conn.mu.Unlock()
 
 		conn.logger.Info("Connection established successfully")
@@ -259,7 +278,8 @@ func (cp *ConnectionPool) maintainConnection(accountID string, conn *ManagedConn
 			zap.Int("session_data_length", len(conn.config.SessionData)))
 
 		conn.mu.Lock()
-		conn.status = StatusError
+		conn.status = StatusReconnecting // 改为重连中，而不是 Error，以便任务等待
+		conn.notifyStateChange()         // 通知状态变更
 		conn.mu.Unlock()
 
 		// 确保在线状态为离线（连接错误时）
@@ -307,6 +327,7 @@ func (cp *ConnectionPool) scheduleReconnect(accountID string, conn *ManagedConne
 	// 设置状态为重连中，以便任务可以等待
 	conn.mu.Lock()
 	conn.status = StatusReconnecting
+	conn.notifyStateChange() // 通知状态变更
 	conn.mu.Unlock()
 
 	conn.logger.Info("Scheduling reconnection",
@@ -375,7 +396,7 @@ func (cp *ConnectionPool) ExecuteTask(accountID string, task TaskInterface) erro
 		conn.mu.Unlock()
 
 		// 等待连接建立完成
-		_, err = cp.waitForConnection(accountID, conn, config)
+		_, err = cp.waitForConnection(accountID, conn)
 		if err == nil {
 			// 成功建立连接
 			break
@@ -442,69 +463,67 @@ func (cp *ConnectionPool) ExecuteTask(accountID string, task TaskInterface) erro
 	return taskErr
 }
 
-// waitForConnection 等待连接建立（简化版本，不跟踪连接替换）
-func (cp *ConnectionPool) waitForConnection(accountID string, conn *ManagedConnection, config *ClientConfig) (*ManagedConnection, error) {
-	// 等待连接建立的超时时间
-	maxWaitTime := 30 * time.Second
-	startTime := time.Now()
+// waitForConnection 等待连接建立（事件驱动版本，去轮询）
+func (cp *ConnectionPool) waitForConnection(accountID string, conn *ManagedConnection) (*ManagedConnection, error) {
+	// 等待连接建立的超时时间 (增加到 90s 以覆盖重连周期)
+	// 如果连接彻底失败（重试耗尽），会在其他地方被 Cancel，这里会收到 ctx.Done()，所以不用担心死等
+	maxWaitTime := 90 * time.Second
 
-	ticker := time.NewTicker(500 * time.Millisecond)
-	defer ticker.Stop()
+	// 快速检查一次状态
+	conn.mu.Lock()
+	status := conn.status
+	conn.mu.Unlock()
+
+	if status == StatusConnected && conn.client != nil && conn.client.API() != nil {
+		return conn, nil
+	}
+	if status == StatusConnectionError {
+		return nil, fmt.Errorf("connection error")
+	}
+
+	timer := time.NewTimer(maxWaitTime)
+	defer timer.Stop()
+
+	cp.logger.Info("Waiting for connection ready...",
+		zap.String("account_id", accountID),
+		zap.String("initial_status", status.String()))
 
 	for {
-		// 检查超时
-		if time.Since(startTime) > maxWaitTime {
-			cp.updateAccountStatusOnError(accountID, fmt.Errorf("connection timeout"))
+		select {
+		case <-conn.stateChangeCh:
+			// 状态发生变更，检查新状态
+			conn.mu.Lock()
+			newStatus := conn.status
+			conn.mu.Unlock()
+
+			// cp.logger.Debug("Connection state changed",
+			// 	zap.String("account_id", accountID),
+			// 	zap.String("status", newStatus.String()))
+
+			switch newStatus {
+			case StatusConnected:
+				// 连接成功，再次确保 client 和 API可用
+				if conn.client != nil && conn.client.API() != nil {
+					return conn, nil
+				}
+				// 理论上不应该发生 Connected 但 API 为 nil，除非初始化逻辑有 bug
+				// 继续等待
+
+			case StatusConnectionError:
+				return nil, fmt.Errorf("connection error")
+
+			case StatusConnecting, StatusReconnecting:
+				// 继续等待
+			}
+
+		case <-conn.ctx.Done():
+			// 当前连接上下文被取消，说明连接被替代（重连产生新连接）或被移除
+			// 此时应该返回错误，让上层 ExecuteTask 的重试逻辑去获取新连接
+			return nil, fmt.Errorf("connection replaced or canceled")
+
+		case <-timer.C:
 			return nil, fmt.Errorf("connection timeout after %v", maxWaitTime)
 		}
-
-		// 检查连接是否仍然有效（没有被替换或移除）
-		cp.mu.RLock()
-		currentConn, exists := cp.connections[accountID]
-		cp.mu.RUnlock()
-
-		if !exists {
-			return nil, fmt.Errorf("connection removed")
-		}
-
-		// 如果连接对象被替换了，返回错误让调度器重试
-		if currentConn != conn {
-			return nil, fmt.Errorf("connection was replaced during wait, please retry")
-		}
-
-		conn.mu.Lock()
-		status := conn.status
-		conn.mu.Unlock()
-
-		switch status {
-		case StatusConnected:
-			// 连接成功，验证 client 和 API 是否可用
-			if conn.client == nil {
-				cp.logger.Debug("Connection status is connected but client not ready yet",
-					zap.String("account_id", accountID))
-				<-ticker.C
-				continue
-			}
-
-			api := conn.client.API()
-			if api == nil {
-				cp.logger.Debug("Connection status is connected but API not ready yet",
-					zap.String("account_id", accountID))
-				<-ticker.C
-				continue
-			}
-
-			return conn, nil
-
-		case StatusConnectionError:
-			// 连接错误，直接返回错误让调度器决定是否重试
-			return nil, fmt.Errorf("connection error")
-
-		case StatusConnecting, StatusReconnecting:
-			// 正在连接中，继续等待
-		}
-
-		<-ticker.C
 	}
 }
 

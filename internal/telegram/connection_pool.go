@@ -367,8 +367,8 @@ func (cp *ConnectionPool) ExecuteTask(accountID string, task TaskInterface) erro
 		conn.mu.Unlock()
 	}()
 
-	// 等待连接建立完成，支持等待重连
-	conn, err = cp.waitForConnection(accountID, conn, config)
+	// 等待连接建立完成
+	_, err = cp.waitForConnection(accountID, conn, config)
 	if err != nil {
 		return err
 	}
@@ -384,10 +384,22 @@ func (cp *ConnectionPool) ExecuteTask(accountID string, task TaskInterface) erro
 	// 直接执行任务逻辑
 	taskErr := func() error {
 		ctx := context.Background()
+
+		// 安全检查：确保 client 不为 nil
+		if conn.client == nil {
+			return errors.New("connection client is nil")
+		}
+
 		if advancedTask, ok := task.(AdvancedTaskInterface); ok {
 			return advancedTask.ExecuteAdvanced(ctx, conn.client)
 		}
+
+		// 安全检查：确保 API 不为 nil
 		api := conn.client.API()
+		if api == nil {
+			return errors.New("connection API is nil, connection may not be fully established")
+		}
+
 		return task.Execute(ctx, api)
 	}()
 
@@ -401,83 +413,66 @@ func (cp *ConnectionPool) ExecuteTask(accountID string, task TaskInterface) erro
 	return taskErr
 }
 
-// waitForConnection 等待连接建立，支持等待重连
+// waitForConnection 等待连接建立（简化版本，不跟踪连接替换）
 func (cp *ConnectionPool) waitForConnection(accountID string, conn *ManagedConnection, config *ClientConfig) (*ManagedConnection, error) {
-	// 总超时时间：考虑最多等待一次完整重连周期
-	// 初始等待30秒 + 重连延迟(10s+20s+30s=60s) + 重连后等待30秒 = 最多2分钟
-	maxWaitTime := 2 * time.Minute
+	// 等待连接建立的超时时间
+	maxWaitTime := 30 * time.Second
 	startTime := time.Now()
 
 	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
 
-	waitedForReconnect := false
-
 	for {
-		// 检查总超时
+		// 检查超时
 		if time.Since(startTime) > maxWaitTime {
-			cp.updateAccountStatusOnError(accountID, fmt.Errorf("connection timeout after waiting for reconnect"))
+			cp.updateAccountStatusOnError(accountID, fmt.Errorf("connection timeout"))
 			return nil, fmt.Errorf("connection timeout after %v", maxWaitTime)
 		}
 
-		// 获取当前连接（可能已被重连替换）
+		// 检查连接是否仍然有效（没有被替换或移除）
 		cp.mu.RLock()
 		currentConn, exists := cp.connections[accountID]
 		cp.mu.RUnlock()
 
 		if !exists {
-			// 连接已被移除（超过最大重连次数）
-			return nil, fmt.Errorf("connection removed, max reconnect attempts exceeded")
+			return nil, fmt.Errorf("connection removed")
 		}
 
-		// 如果连接对象变了，说明重连创建了新连接
+		// 如果连接对象被替换了，返回错误让调度器重试
 		if currentConn != conn {
-			conn = currentConn
-			// 需要重新标记任务运行状态
-			conn.mu.Lock()
-			if conn.taskRunning {
-				conn.mu.Unlock()
-				// 新连接正在被其他任务使用，等待
-				<-ticker.C
-				continue
-			}
-			conn.taskRunning = true
-			conn.mu.Unlock()
+			return nil, fmt.Errorf("connection was replaced during wait, please retry")
 		}
 
 		conn.mu.Lock()
 		status := conn.status
-		reconnectCount := conn.reconnectCount
 		conn.mu.Unlock()
 
 		switch status {
 		case StatusConnected:
-			// 连接成功
-			if waitedForReconnect {
-				cp.logger.Info("Connection recovered, proceeding with task",
-					zap.String("account_id", accountID),
-					zap.Duration("wait_time", time.Since(startTime)))
+			// 连接成功，验证 client 和 API 是否可用
+			if conn.client == nil {
+				cp.logger.Debug("Connection status is connected but client not ready yet",
+					zap.String("account_id", accountID))
+				<-ticker.C
+				continue
 			}
+
+			api := conn.client.API()
+			if api == nil {
+				cp.logger.Debug("Connection status is connected but API not ready yet",
+					zap.String("account_id", accountID))
+				<-ticker.C
+				continue
+			}
+
 			return conn, nil
 
 		case StatusConnectionError:
-			// 连接错误，检查是否还有重连机会
-			if reconnectCount >= MaxReconnectAttempts {
-				cp.updateAccountStatusOnError(accountID, fmt.Errorf("connection failed after max reconnect attempts"))
-				return nil, fmt.Errorf("connection failed, max reconnect attempts (%d) exceeded", MaxReconnectAttempts)
-			}
-
-			// 还有重连机会，等待重连
-			if !waitedForReconnect {
-				cp.logger.Info("Connection error, waiting for reconnect",
-					zap.String("account_id", accountID),
-					zap.Int("reconnect_attempt", reconnectCount),
-					zap.Int("max_attempts", MaxReconnectAttempts))
-				waitedForReconnect = true
-			}
+			// 连接错误，直接返回错误让调度器决定是否重试
+			return nil, fmt.Errorf("connection error")
 
 		case StatusConnecting, StatusReconnecting:
-			// 正在连接/重连中，继续等待
+			// 正在连接中，继续等待
 		}
 
 		<-ticker.C

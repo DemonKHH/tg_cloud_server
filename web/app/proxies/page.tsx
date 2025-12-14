@@ -204,16 +204,26 @@ export default function ProxiesPage() {
       }
 
       if (editingProxy) {
-        await proxyAPI.update(String(editingProxy.id), data)
-        toast.success("代理更新成功")
+        const res = await proxyAPI.update(String(editingProxy.id), data)
+        if (res.code === 0) {
+          toast.success("代理更新成功")
+          setEditDialogOpen(false)
+          refresh()
+        } else {
+          toast.error(res.msg || "更新代理失败")
+        }
       } else {
-        await proxyAPI.create(data)
-        toast.success("代理添加成功")
+        const res = await proxyAPI.create(data)
+        if (res.code === 0) {
+          toast.success("代理添加成功")
+          setEditDialogOpen(false)
+          refresh()
+        } else {
+          toast.error(res.msg || "添加代理失败")
+        }
       }
-      setEditDialogOpen(false)
-      refresh()
     } catch (error: any) {
-      toast.error(error.message || (editingProxy ? "更新代理失败" : "添加代理失败"))
+      toast.error(error instanceof Error ? error.message : (editingProxy ? "更新代理失败" : "添加代理失败"))
     }
   }
 
@@ -229,13 +239,17 @@ export default function ProxiesPage() {
     if (!deletingProxy) return
 
     try {
-      await proxyAPI.delete(String(deletingProxy.id))
-      toast.success("代理删除成功")
-      refresh()
-      setDeleteDialogOpen(false)
-      setDeletingProxy(null)
+      const res = await proxyAPI.delete(String(deletingProxy.id))
+      if (res.code === 0) {
+        toast.success("代理删除成功")
+        refresh()
+        setDeleteDialogOpen(false)
+        setDeletingProxy(null)
+      } else {
+        toast.error(res.msg || "删除代理失败")
+      }
     } catch (error: any) {
-      toast.error(error.message || "删除代理失败")
+      toast.error(error instanceof Error ? error.message : "删除代理失败")
     }
   }
 
@@ -244,13 +258,15 @@ export default function ProxiesPage() {
     try {
       setTestingProxy(proxy.id)
       const response = await proxyAPI.test(String(proxy.id))
-      if (response.data) {
+      if (response.code === 0 && response.data) {
         const result = response.data as any
         if (result.success) {
           toast.success(`代理测试成功，延迟: ${result.latency_ms}ms`)
         } else {
           toast.error(`代理测试失败: ${result.error || "未知错误"}`)
         }
+      } else {
+        toast.error(response.msg || "代理测试失败")
       }
       refresh()
     } catch (error: any) {
@@ -314,13 +330,17 @@ export default function ProxiesPage() {
     }
 
     try {
-      await proxyAPI.batchCreate({ proxies })
-      toast.success(`成功添加 ${proxies.length} 个代理`)
-      setBatchDialogOpen(false)
-      setBatchInput("")
-      refresh()
+      const res = await proxyAPI.batchCreate({ proxies })
+      if (res.code === 0) {
+        toast.success(`成功添加 ${proxies.length} 个代理`)
+        setBatchDialogOpen(false)
+        setBatchInput("")
+        refresh()
+      } else {
+        toast.error(res.msg || "批量添加失败")
+      }
     } catch (error: any) {
-      toast.error(error.message || "批量添加失败")
+      toast.error(error instanceof Error ? error.message : "批量添加失败")
     }
   }
 
@@ -349,13 +369,17 @@ export default function ProxiesPage() {
   const confirmBatchDelete = async () => {
     setBatchActionLoading(true)
     try {
-      await proxyAPI.batchDelete(selectedProxies)
-      toast.success("批量删除成功")
-      setSelectedProxies([])
-      refresh()
-      setBatchDeleteDialogOpen(false)
+      const res = await proxyAPI.batchDelete(selectedProxies)
+      if (res.code === 0) {
+        toast.success("批量删除成功")
+        setSelectedProxies([])
+        refresh()
+        setBatchDeleteDialogOpen(false)
+      } else {
+        toast.error(res.msg || "批量删除失败")
+      }
     } catch (error: any) {
-      toast.error(error.message || "批量删除失败")
+      toast.error(error instanceof Error ? error.message : "批量删除失败")
     } finally {
       setBatchActionLoading(false)
     }
@@ -367,12 +391,15 @@ export default function ProxiesPage() {
     setBatchActionLoading(true)
     try {
       const res = await proxyAPI.batchTest(selectedProxies)
-      toast.success("批量测试完成")
-      // 刷新列表以显示最新状态
-      refresh()
-      // 可以选择不清除选中状态，方便查看
+      if (res.code === 0) {
+        toast.success("批量测试完成")
+        // 刷新列表以显示最新状态
+        refresh()
+      } else {
+        toast.error(res.msg || "批量测试失败")
+      }
     } catch (error: any) {
-      toast.error(error.message || "批量测试失败")
+      toast.error(error instanceof Error ? error.message : "批量测试失败")
     } finally {
       setBatchActionLoading(false)
     }

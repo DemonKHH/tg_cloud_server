@@ -98,14 +98,18 @@ export default function AccountsPage() {
       return
     }
     try {
-      await accountAPI.batchSet2FA(selectedAccountIds, batchSet2FAPassword)
-      toast.success("批量设置2FA成功")
-      setBatchSet2FADialogOpen(false)
-      setBatchSet2FAPassword("")
-      setSelectedAccountIds([])
-      refresh()
+      const res = await accountAPI.batchSet2FA(selectedAccountIds, batchSet2FAPassword)
+      if (res.code === 0) {
+        toast.success("批量设置2FA成功")
+        setBatchSet2FADialogOpen(false)
+        setBatchSet2FAPassword("")
+        setSelectedAccountIds([])
+        refresh()
+      } else {
+        toast.error(res.msg || "批量设置2FA失败")
+      }
     } catch (error: any) {
-      toast.error(error.message || "批量设置2FA失败")
+      toast.error(error instanceof Error ? error.message : "批量设置2FA失败")
     }
   }
 
@@ -139,7 +143,7 @@ export default function AccountsPage() {
         expires_in: expiresInNum,
       })
 
-      if (response.data && response.data.items) {
+      if (response.code === 0 && response.data && response.data.items) {
         const items = response.data.items
         const links = items.map(item => {
           const fullUrl = `${window.location.origin}/verify-code/${item.code}`
@@ -182,10 +186,10 @@ export default function AccountsPage() {
         toast.success(`成功生成 ${links.length} 个验证码链接`)
         setSelectedAccountIds([]) // 清空选择
       } else {
-        toast.error("未能生成任何链接")
+        toast.error(response.msg || "未能生成任何链接")
       }
     } catch (error: any) {
-      toast.error(error.message || "批量生成链接失败")
+      toast.error(error instanceof Error ? error.message : "批量生成链接失败")
     } finally {
       setBatchGenerateLinkLoading(false)
     }
@@ -225,7 +229,7 @@ export default function AccountsPage() {
       setLoadingProxies(true)
       // 获取所有代理，前端过滤活跃的
       const response = await proxyAPI.list({ page: 1, limit: 100 })
-      if (response.data) {
+      if (response.code === 0 && response.data) {
         const data = response.data as any
         // 过滤出活跃状态的代理
         const activeProxies = (data.items || []).filter(
@@ -320,15 +324,19 @@ export default function AccountsPage() {
     if (!editingAccount) return
 
     try {
-      await accountAPI.update(String(editingAccount.id), {
+      const res = await accountAPI.update(String(editingAccount.id), {
         note: editForm.note,
         // session_data 通常不允许修改，除非是特殊情况
       })
-      toast.success("账号更新成功")
-      setEditDialogOpen(false)
-      refresh()
+      if (res.code === 0) {
+        toast.success("账号更新成功")
+        setEditDialogOpen(false)
+        refresh()
+      } else {
+        toast.error(res.msg || "更新账号失败")
+      }
     } catch (error: any) {
-      toast.error(error.message || "更新账号失败")
+      toast.error(error instanceof Error ? error.message : "更新账号失败")
     }
   }
 
@@ -346,12 +354,16 @@ export default function AccountsPage() {
     if (!deletingAccount) return
 
     try {
-      await accountAPI.delete(String(deletingAccount.id))
-      toast.success("账号删除成功")
-      setDeleteDialogOpen(false)
-      refresh()
+      const res = await accountAPI.delete(String(deletingAccount.id))
+      if (res.code === 0) {
+        toast.success("账号删除成功")
+        setDeleteDialogOpen(false)
+        refresh()
+      } else {
+        toast.error(res.msg || "删除账号失败")
+      }
     } catch (error: any) {
-      toast.error(error.message || "删除账号失败")
+      toast.error(error instanceof Error ? error.message : "删除账号失败")
     }
   }
 
@@ -360,15 +372,17 @@ export default function AccountsPage() {
     try {
       setHealthChecking(account.id)
       const response = await accountAPI.checkHealth(String(account.id))
-      if (response.data) {
+      if (response.code === 0 && response.data) {
         const health = response.data as any
         const status = health.status || 'unknown'
         const issuesCount = (health.issues || []).length
         toast.success(`检查完成：状态 ${status}${issuesCount > 0 ? `，发现 ${issuesCount} 个问题` : ''}`)
         refresh() // 重新加载以更新状态
+      } else {
+        toast.error(response.msg || "健康检查失败")
       }
     } catch (error: any) {
-      toast.error(error.message || "健康检查失败")
+      toast.error(error instanceof Error ? error.message : "健康检查失败")
     } finally {
       setHealthChecking(null)
     }
@@ -386,12 +400,16 @@ export default function AccountsPage() {
 
     try {
       const proxyId = selectedBindProxy ? parseInt(selectedBindProxy) : undefined
-      await accountAPI.bindProxy(String(bindingAccount.id), proxyId)
-      toast.success(proxyId ? "代理绑定成功" : "代理解绑成功")
-      setBindProxyDialogOpen(false)
-      refresh()
+      const res = await accountAPI.bindProxy(String(bindingAccount.id), proxyId)
+      if (res.code === 0) {
+        toast.success(proxyId ? "代理绑定成功" : "代理解绑成功")
+        setBindProxyDialogOpen(false)
+        refresh()
+      } else {
+        toast.error(res.msg || "代理绑定失败")
+      }
     } catch (error: any) {
-      toast.error(error.message || "代理绑定失败")
+      toast.error(error instanceof Error ? error.message : "代理绑定失败")
     }
   }
 
@@ -418,12 +436,16 @@ export default function AccountsPage() {
       if (addForm.proxy_id) {
         data.proxy_id = parseInt(addForm.proxy_id)
       }
-      await accountAPI.create(data)
-      toast.success("账号添加成功")
-      setAddDialogOpen(false)
-      refresh()
+      const res = await accountAPI.create(data)
+      if (res.code === 0) {
+        toast.success("账号添加成功")
+        setAddDialogOpen(false)
+        refresh()
+      } else {
+        toast.error(res.msg || "添加账号失败")
+      }
     } catch (error: any) {
-      toast.error(error.message || "添加账号失败")
+      toast.error(error instanceof Error ? error.message : "添加账号失败")
     }
   }
 
@@ -452,11 +474,10 @@ export default function AccountsPage() {
     try {
       setUploading(true)
 
-      // 如果选择了代理，传递代理ID
       const proxyId = selectedProxy ? parseInt(selectedProxy) : undefined
       const response = await accountAPI.uploadFiles(file, proxyId)
 
-      if (response.data) {
+      if (response.code === 0 && response.data) {
         const data = response.data as any
         const created = data.created || 0
         const failed = data.failed || 0
@@ -486,15 +507,17 @@ export default function AccountsPage() {
             : '未知错误'
           toast.error(`未能创建任何账号。${errorMsg}${data.errors?.length > 3 ? '...' : ''}`)
         }
-      } else {
+      } else if (response.code === 0) {
         toast.success("文件上传成功")
         setUploadDialogOpen(false)
         setSelectedProxy("") // 重置代理选择
         refresh()
+      } else {
+        toast.error(response.msg || "上传账号文件失败")
       }
     } catch (error: any) {
       console.error("上传账号文件失败:", error)
-      const errorMsg = error.message || "上传账号文件失败"
+      const errorMsg = error instanceof Error ? error.message : "上传账号文件失败"
       toast.error(errorMsg)
     } finally {
       setUploading(false)

@@ -26,7 +26,7 @@ const DEFAULT_RISK_SETTINGS: RiskSettings = {
 
 export default function SettingsPage() {
   const { theme, setTheme } = useTheme()
-  
+
   const [riskSettings, setRiskSettings] = useState<RiskSettings>(DEFAULT_RISK_SETTINGS)
   const [originalSettings, setOriginalSettings] = useState<RiskSettings>(DEFAULT_RISK_SETTINGS)
   const [loading, setLoading] = useState(true)
@@ -41,9 +41,11 @@ export default function SettingsPage() {
     try {
       setLoading(true)
       const response = await settingsAPI.getRiskSettings()
-      if (response.data) {
+      if (response.code === 0 && response.data) {
         setRiskSettings(response.data)
         setOriginalSettings(response.data)
+      } else {
+        toast.error(response.msg || "无法加载风控配置")
       }
     } catch (error) {
       console.error("Failed to load risk settings:", error)
@@ -56,12 +58,16 @@ export default function SettingsPage() {
   const handleSaveRiskSettings = async () => {
     try {
       setSaving(true)
-      await settingsAPI.updateRiskSettings(riskSettings)
-      setOriginalSettings(riskSettings)
-      toast.success("风控配置已更新")
-    } catch (error) {
+      const res = await settingsAPI.updateRiskSettings(riskSettings)
+      if (res.code === 0) {
+        setOriginalSettings(riskSettings)
+        toast.success("风控配置已更新")
+      } else {
+        toast.error(res.msg || "无法保存风控配置")
+      }
+    } catch (error: any) {
       console.error("Failed to save risk settings:", error)
-      toast.error("无法保存风控配置")
+      toast.error(error instanceof Error ? error.message : "无法保存风控配置")
     } finally {
       setSaving(false)
     }
@@ -158,7 +164,7 @@ export default function SettingsPage() {
                     </div>
                     <Slider
                       value={[riskSettings.max_consecutive_failures]}
-                      onValueChange={([value]) => 
+                      onValueChange={([value]) =>
                         setRiskSettings(prev => ({ ...prev, max_consecutive_failures: value }))
                       }
                       min={3}
@@ -187,7 +193,7 @@ export default function SettingsPage() {
                     </div>
                     <Slider
                       value={[riskSettings.cooling_duration_minutes]}
-                      onValueChange={([value]) => 
+                      onValueChange={([value]) =>
                         setRiskSettings(prev => ({ ...prev, cooling_duration_minutes: value }))
                       }
                       min={10}

@@ -22,9 +22,11 @@ export default function AIPage() {
     try {
       setLoading(true)
       const response = await aiAPI.analyzeSentiment(text)
-      if (response.data) {
+      if (response.code === 0 && response.data) {
         setResult(response.data)
         toast.success("情感分析完成")
+      } else {
+        toast.error(response.msg || "情感分析失败")
       }
     } catch (error) {
       toast.error("情感分析失败")
@@ -42,9 +44,11 @@ export default function AIPage() {
     try {
       setLoading(true)
       const response = await aiAPI.extractKeywords(text)
-      if (response.data) {
+      if (response.code === 0 && response.data) {
         setResult(response.data)
         toast.success("关键词提取完成")
+      } else {
+        toast.error(response.msg || "关键词提取失败")
       }
     } catch (error) {
       toast.error("关键词提取失败")

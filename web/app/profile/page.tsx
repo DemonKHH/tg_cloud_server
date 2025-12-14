@@ -50,14 +50,18 @@ export default function ProfilePage() {
 
     setSaving(true)
     try {
-      await authAPI.updateProfile({
+      const res = await authAPI.updateProfile({
         username: form.username,
         email: form.email,
       })
-      toast.success("个人资料已更新")
-      refresh?.()
+      if (res.code === 0) {
+        toast.success("个人资料已更新")
+        refresh?.()
+      } else {
+        toast.error(res.msg || "更新失败")
+      }
     } catch (error: any) {
-      toast.error(error.message || "更新失败")
+      toast.error(error instanceof Error ? error.message : "更新失败")
     } finally {
       setSaving(false)
     }
@@ -81,13 +85,17 @@ export default function ProfilePage() {
 
     setSavingPassword(true)
     try {
-      await authAPI.updateProfile({
+      const res = await authAPI.updateProfile({
         password: passwordForm.newPassword,
       })
-      toast.success("密码已更新")
-      setPasswordForm({ newPassword: "", confirmPassword: "" })
+      if (res.code === 0) {
+        toast.success("密码已更新")
+        setPasswordForm({ newPassword: "", confirmPassword: "" })
+      } else {
+        toast.error(res.msg || "密码更新失败")
+      }
     } catch (error: any) {
-      toast.error(error.message || "密码更新失败")
+      toast.error(error instanceof Error ? error.message : "密码更新失败")
     } finally {
       setSavingPassword(false)
     }

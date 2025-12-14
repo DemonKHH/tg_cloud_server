@@ -83,16 +83,20 @@ export default function VerifyCodesPage() {
   // 删除会话
   const deleteSession = async (code: string) => {
     try {
-      await verifyCodeAPI.batchDelete([code])
-      toast.success("验证码会话已删除")
-      if (selectedCodes.includes(code)) {
-        setSelectedCodes(prev => prev.filter(c => c !== code))
+      const res = await verifyCodeAPI.batchDelete([code])
+      if (res.code === 0) {
+        toast.success("验证码会话已删除")
+        if (selectedCodes.includes(code)) {
+          setSelectedCodes(prev => prev.filter(c => c !== code))
+        }
+        // 刷新列表
+        fetchSessions()
+      } else {
+        toast.error(res.msg || "删除会话失败")
       }
-      // 刷新列表
-      fetchSessions()
     } catch (error) {
       console.error("Failed to delete session:", error)
-      toast.error("删除会话失败")
+      toast.error(error instanceof Error ? error.message : "删除会话失败")
     }
   }
 
@@ -104,15 +108,19 @@ export default function VerifyCodesPage() {
 
   const confirmBatchDelete = async () => {
     try {
-      await verifyCodeAPI.batchDelete(selectedCodes)
-      toast.success(`已删除 ${selectedCodes.length} 个会话`)
-      setSelectedCodes([])
-      setBatchDeleteDialogOpen(false)
-      // 刷新列表
-      fetchSessions()
+      const res = await verifyCodeAPI.batchDelete(selectedCodes)
+      if (res.code === 0) {
+        toast.success(`已删除 ${selectedCodes.length} 个会话`)
+        setSelectedCodes([])
+        setBatchDeleteDialogOpen(false)
+        // 刷新列表
+        fetchSessions()
+      } else {
+        toast.error(res.msg || "批量删除失败")
+      }
     } catch (error) {
       console.error("Failed to batch delete sessions:", error)
-      toast.error("批量删除失败")
+      toast.error(error instanceof Error ? error.message : "批量删除失败")
     }
   }
 
@@ -179,9 +187,11 @@ export default function VerifyCodesPage() {
         keyword: searchKeyword,
       })
 
-      if (res.data) {
+      if (res.code === 0 && res.data) {
         setSessions(res.data.items)
         setTotal(res.data.pagination.total)
+      } else {
+        toast.error(res.msg || "获取会话列表失败")
       }
     } catch (error) {
       console.error("Failed to fetch sessions:", error)

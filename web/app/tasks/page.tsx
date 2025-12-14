@@ -73,16 +73,17 @@ export default function TasksPage() {
     try {
       setLoadingLogs(true)
       const response = await taskAPI.getLogs(taskId)
-      if (response.data) {
+      if (response.code === 0 && response.data) {
         // 确保logs是数组格式
         const logsData = Array.isArray(response.data) ? response.data : []
         setLogs(logsData)
       } else {
+        toast.error(response.msg || "加载日志失败")
         setLogs([])
       }
     } catch (error: any) {
       console.error("加载日志失败:", error)
-      const errorMessage = error?.response?.data?.msg || error.message || "加载日志失败"
+      const errorMessage = error instanceof Error ? error.message : "加载日志失败"
       toast.error(errorMessage)
       setLogs([])
     } finally {
@@ -173,14 +174,18 @@ export default function TasksPage() {
     if (!cancellingTask) return
 
     try {
-      await taskAPI.cancel(String(cancellingTask.id))
-      toast.success("任务已取消")
-      refresh()
-      setCancelDialogOpen(false)
-      setCancellingTask(null)
+      const res = await taskAPI.cancel(String(cancellingTask.id))
+      if (res.code === 0) {
+        toast.success("任务已取消")
+        refresh()
+        setCancelDialogOpen(false)
+        setCancellingTask(null)
+      } else {
+        toast.error(res.msg || "取消任务失败")
+      }
     } catch (error: any) {
       console.error('取消任务失败:', error)
-      const errorMessage = error?.response?.data?.msg || error.message || "取消任务失败"
+      const errorMessage = error instanceof Error ? error.message : "取消任务失败"
       toast.error(errorMessage)
     }
   }
@@ -197,14 +202,18 @@ export default function TasksPage() {
     if (!deletingTask) return
 
     try {
-      await taskAPI.delete(String(deletingTask.id))
-      toast.success("任务已删除")
-      refresh()
-      setDeleteDialogOpen(false)
-      setDeletingTask(null)
+      const res = await taskAPI.delete(String(deletingTask.id))
+      if (res.code === 0) {
+        toast.success("任务已删除")
+        refresh()
+        setDeleteDialogOpen(false)
+        setDeletingTask(null)
+      } else {
+        toast.error(res.msg || "删除任务失败")
+      }
     } catch (error: any) {
       console.error('删除任务失败:', error)
-      const errorMessage = error?.response?.data?.msg || error.message || "删除任务失败"
+      const errorMessage = error instanceof Error ? error.message : "删除任务失败"
       toast.error(errorMessage)
     }
   }
@@ -212,12 +221,16 @@ export default function TasksPage() {
   // 重试任务
   const handleRetryTask = async (task: any) => {
     try {
-      await taskAPI.retry(String(task.id))
-      toast.success("任务已重新执行")
-      refresh()
+      const res = await taskAPI.retry(String(task.id))
+      if (res.code === 0) {
+        toast.success("任务已重新执行")
+        refresh()
+      } else {
+        toast.error(res.msg || "重试任务失败")
+      }
     } catch (error: any) {
       console.error('重试任务失败:', error)
-      const errorMessage = error?.response?.data?.msg || error.message || "重试任务失败"
+      const errorMessage = error instanceof Error ? error.message : "重试任务失败"
       toast.error(errorMessage)
     }
   }
@@ -225,12 +238,16 @@ export default function TasksPage() {
   // 启动任务
   const handleStartTask = async (task: any) => {
     try {
-      await taskAPI.control(String(task.id), 'start')
-      toast.success("任务已启动")
-      refresh()
+      const res = await taskAPI.control(String(task.id), 'start')
+      if (res.code === 0) {
+        toast.success("任务已启动")
+        refresh()
+      } else {
+        toast.error(res.msg || "启动任务失败")
+      }
     } catch (error: any) {
       console.error('启动任务失败:', error)
-      const errorMessage = error?.response?.data?.msg || error.message || "启动任务失败"
+      const errorMessage = error instanceof Error ? error.message : "启动任务失败"
       toast.error(errorMessage)
     }
   }
@@ -238,12 +255,16 @@ export default function TasksPage() {
   // 暂停任务
   const handlePauseTask = async (task: any) => {
     try {
-      await taskAPI.control(String(task.id), 'pause')
-      toast.success("任务已暂停")
-      refresh()
+      const res = await taskAPI.control(String(task.id), 'pause')
+      if (res.code === 0) {
+        toast.success("任务已暂停")
+        refresh()
+      } else {
+        toast.error(res.msg || "暂停任务失败")
+      }
     } catch (error: any) {
       console.error('暂停任务失败:', error)
-      const errorMessage = error?.response?.data?.msg || error.message || "暂停任务失败"
+      const errorMessage = error instanceof Error ? error.message : "暂停任务失败"
       toast.error(errorMessage)
     }
   }
@@ -251,12 +272,16 @@ export default function TasksPage() {
   // 恢复任务
   const handleResumeTask = async (task: any) => {
     try {
-      await taskAPI.control(String(task.id), 'resume')
-      toast.success("任务已恢复")
-      refresh()
+      const res = await taskAPI.control(String(task.id), 'resume')
+      if (res.code === 0) {
+        toast.success("任务已恢复")
+        refresh()
+      } else {
+        toast.error(res.msg || "恢复任务失败")
+      }
     } catch (error: any) {
       console.error('恢复任务失败:', error)
-      const errorMessage = error?.response?.data?.msg || error.message || "恢复任务失败"
+      const errorMessage = error instanceof Error ? error.message : "恢复任务失败"
       toast.error(errorMessage)
     }
   }
@@ -264,12 +289,16 @@ export default function TasksPage() {
   // 停止任务
   const handleStopTask = async (task: any) => {
     try {
-      await taskAPI.control(String(task.id), 'stop')
-      toast.success("任务已停止")
-      refresh()
+      const res = await taskAPI.control(String(task.id), 'stop')
+      if (res.code === 0) {
+        toast.success("任务已停止")
+        refresh()
+      } else {
+        toast.error(res.msg || "停止任务失败")
+      }
     } catch (error: any) {
       console.error('停止任务失败:', error)
-      const errorMessage = error?.response?.data?.msg || error.message || "停止任务失败"
+      const errorMessage = error instanceof Error ? error.message : "停止任务失败"
       toast.error(errorMessage)
     }
   }

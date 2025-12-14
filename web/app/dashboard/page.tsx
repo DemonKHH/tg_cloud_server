@@ -32,8 +32,17 @@ export default function DashboardPage() {
         statsAPI.getOverview("week"),
       ])
 
-      if (dashboardRes.data) setDashboard(dashboardRes.data)
-      if (overviewRes.data) setOverview(overviewRes.data)
+      if (dashboardRes.code === 0 && dashboardRes.data) {
+        setDashboard(dashboardRes.data)
+      } else if (dashboardRes.code !== 0) {
+        toast.error(dashboardRes.msg || "加载仪表盘数据失败")
+      }
+
+      if (overviewRes.code === 0 && overviewRes.data) {
+        setOverview(overviewRes.data)
+      } else if (overviewRes.code !== 0) {
+        toast.error(overviewRes.msg || "加载概览数据失败")
+      }
     } catch (error) {
       toast.error("加载数据失败")
       console.error("加载数据失败:", error)

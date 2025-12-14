@@ -3,7 +3,6 @@ package middleware
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"strconv"
 	"time"
 
@@ -12,6 +11,7 @@ import (
 	"go.uber.org/zap"
 
 	"tg_cloud_server/internal/common/logger"
+	"tg_cloud_server/internal/common/response"
 )
 
 // RateLimit 限流中间件
@@ -21,15 +21,15 @@ func RateLimit(redisClient *redis.Client) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// 获取客户端IP
 		clientIP := c.ClientIP()
-		
+
 		// 构建Redis键
 		key := fmt.Sprintf("rate_limit:%s", clientIP)
-		
+
 		// 检查当前请求数
 		ctx := context.Background()
 		current, err := redisClient.Get(ctx, key).Int()
 		if err != nil && err != redis.Nil {
-			log.Error("Failed to get rate limit from Redis", 
+			log.Error("Failed to get rate limit from Redis",
 				zap.String("client_ip", clientIP),
 				zap.Error(err))
 			// 如果Redis出错，允许请求继续，但记录错误
@@ -42,7 +42,7 @@ func RateLimit(redisClient *redis.Client) gin.HandlerFunc {
 		window := 60 * time.Second
 
 		if current >= limit {
-			log.Warn("Rate limit exceeded", 
+			log.Warn("Rate limit exceeded",
 				zap.String("client_ip", clientIP),
 				zap.Int("current", current),
 				zap.Int("limit", limit))
@@ -51,11 +51,7 @@ func RateLimit(redisClient *redis.Client) gin.HandlerFunc {
 			c.Header("X-RateLimit-Remaining", "0")
 			c.Header("X-RateLimit-Reset", strconv.FormatInt(time.Now().Add(window).Unix(), 10))
 
-			c.JSON(http.StatusTooManyRequests, gin.H{
-				"error":   "rate_limit_exceeded",
-				"message": "请求过于频繁，请稍后重试",
-				"retry_after": int(window.Seconds()),
-			})
+			response.TooManyRequests(c, "请求过于频繁，请稍后重试", fmt.Sprintf("retry_after: %d", int(window.Seconds())))
 			c.Abort()
 			return
 		}
@@ -65,9 +61,9 @@ func RateLimit(redisClient *redis.Client) gin.HandlerFunc {
 		pipe.Incr(ctx, key)
 		pipe.Expire(ctx, key, window)
 		_, err = pipe.Exec(ctx)
-		
+
 		if err != nil {
-			log.Error("Failed to update rate limit in Redis", 
+			log.Error("Failed to update rate limit in Redis",
 				zap.String("client_ip", clientIP),
 				zap.Error(err))
 		}
@@ -93,11 +89,11 @@ func RateLimitWithCustom(redisClient *redis.Client, limit int, window time.Durat
 	return func(c *gin.Context) {
 		clientIP := c.ClientIP()
 		key := fmt.Sprintf("rate_limit:%s", clientIP)
-		
+
 		ctx := context.Background()
 		current, err := redisClient.Get(ctx, key).Int()
 		if err != nil && err != redis.Nil {
-			log.Error("Failed to get rate limit from Redis", 
+			log.Error("Failed to get rate limit from Redis",
 				zap.String("client_ip", clientIP),
 				zap.Error(err))
 			c.Next()
@@ -105,7 +101,7 @@ func RateLimitWithCustom(redisClient *redis.Client, limit int, window time.Durat
 		}
 
 		if current >= limit {
-			log.Warn("Rate limit exceeded", 
+			log.Warn("Rate limit exceeded",
 				zap.String("client_ip", clientIP),
 				zap.Int("current", current),
 				zap.Int("limit", limit))
@@ -114,11 +110,7 @@ func RateLimitWithCustom(redisClient *redis.Client, limit int, window time.Durat
 			c.Header("X-RateLimit-Remaining", "0")
 			c.Header("X-RateLimit-Reset", strconv.FormatInt(time.Now().Add(window).Unix(), 10))
 
-			c.JSON(http.StatusTooManyRequests, gin.H{
-				"error":   "rate_limit_exceeded",
-				"message": "请求过于频繁，请稍后重试",
-				"retry_after": int(window.Seconds()),
-			})
+			response.TooManyRequests(c, "请求过于频繁，请稍后重试", fmt.Sprintf("retry_after: %d", int(window.Seconds())))
 			c.Abort()
 			return
 		}
@@ -128,9 +120,9 @@ func RateLimitWithCustom(redisClient *redis.Client, limit int, window time.Durat
 		pipe.Incr(ctx, key)
 		pipe.Expire(ctx, key, window)
 		_, err = pipe.Exec(ctx)
-		
+
 		if err != nil {
-			log.Error("Failed to update rate limit in Redis", 
+			log.Error("Failed to update rate limit in Redis",
 				zap.String("client_ip", clientIP),
 				zap.Error(err))
 		}

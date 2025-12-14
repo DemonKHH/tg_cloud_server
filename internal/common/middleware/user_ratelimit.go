@@ -3,7 +3,6 @@ package middleware
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"strconv"
 	"time"
 
@@ -12,6 +11,7 @@ import (
 	"go.uber.org/zap"
 
 	"tg_cloud_server/internal/common/logger"
+	"tg_cloud_server/internal/common/response"
 )
 
 // UserRateLimit 基于用户的限流中间件
@@ -70,11 +70,7 @@ func handleRateLimit(c *gin.Context, redisClient *redis.Client, key string, limi
 		c.Header("X-RateLimit-Remaining", "0")
 		c.Header("X-RateLimit-Reset", strconv.FormatInt(time.Now().Add(window).Unix(), 10))
 
-		c.JSON(http.StatusTooManyRequests, gin.H{
-			"error":       "rate_limit_exceeded",
-			"message":     "请求过于频繁，请稍后重试",
-			"retry_after": int(window.Seconds()),
-		})
+		response.TooManyRequests(c, "请求过于频繁，请稍后重试", fmt.Sprintf("retry_after: %d", int(window.Seconds())))
 		c.Abort()
 		return
 	}

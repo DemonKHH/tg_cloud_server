@@ -3,6 +3,8 @@ package middleware
 import (
 	"time"
 
+	"tg_cloud_server/internal/common/response"
+
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
@@ -83,10 +85,8 @@ func Recovery(logger *zap.Logger) gin.HandlerFunc {
 				)
 
 				// 返回500错误
-				c.JSON(500, gin.H{
-					"error":   "internal_server_error",
-					"message": "服务器内部错误",
-				})
+				// 返回500错误
+				response.InternalError(c, "服务器内部错误")
 				c.Abort()
 			}
 		}()

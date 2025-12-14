@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"time"
 
+	"tg_cloud_server/internal/common/errors"
+
 	"github.com/gin-gonic/gin"
 )
 
@@ -82,7 +84,25 @@ func Error(c *gin.Context, code int, msg string) {
 		Msg:  msg,
 		Data: nil,
 	}
+	// 始终返回 200 OK
 	c.JSON(http.StatusOK, response)
+}
+
+// ErrorFrom 根据error类型返回错误响应
+func ErrorFrom(c *gin.Context, err error) {
+	if err == nil {
+		Success(c, nil)
+		return
+	}
+
+	if apiErr, ok := err.(*errors.APIError); ok {
+		Error(c, apiErr.Code, apiErr.Message)
+		// 如果有详细信息，可以记录日志或包含在响应中（根据需求）
+		return
+	}
+
+	// 默认内部错误
+	Error(c, CodeInternalError, err.Error())
 }
 
 // ErrorWithData 带数据的错误响应

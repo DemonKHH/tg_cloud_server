@@ -81,7 +81,9 @@ export default function LoginPage() {
         }
       }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "操作失败，请稍后重试")
+      if (!(err as any).isReported) {
+        toast.error(err instanceof Error ? err.message : "操作失败，请稍后重试")
+      }
     } finally {
       setLoading(false)
     }
@@ -181,8 +183,8 @@ export default function LoginPage() {
                   ? "登录中..."
                   : "注册中..."
                 : mode === "login"
-                ? "登录"
-                : "注册"}
+                  ? "登录"
+                  : "注册"}
             </Button>
           </form>
 

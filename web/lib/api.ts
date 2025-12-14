@@ -7,6 +7,8 @@
 // 生产环境可以使用完整 URL 或继续使用代理
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '/api/v1';
 
+import { toast } from "sonner";
+
 export interface APIResponse<T = any> {
   code: number;
   msg: string;
@@ -75,22 +77,29 @@ class ApiClient {
         headers,
       });
 
-      // 处理 HTTP 401 未授权错误
-      if (response.status === 401) {
-        this.handleUnauthorized();
-        throw new Error('登录已过期，请重新登录');
+      // 尝试解析 JSON
+      let data: APIResponse<T>;
+      try {
+        data = await response.json();
+      } catch (jsonError) {
+        // 如果无法解析 JSON，可能是网络错误或其他非 API 响应
+        if (!response.ok) {
+          throw new Error(`请求失败: ${response.status} ${response.statusText}`);
+        }
+        throw new Error('无效的响应格式');
       }
 
-      const data: APIResponse<T> = await response.json();
-
-      // 处理业务层面的未授权错误
-      if (data.code === ResponseCode.UNAUTHORIZED) {
-        this.handleUnauthorized();
-        throw new Error(data.msg || '登录已过期，请重新登录');
-      }
-
+      // 优先检查业务状态码
       if (data.code !== ResponseCode.SUCCESS) {
-        throw new Error(data.msg || '请求失败');
+        // 专门处理未授权
+        if (data.code === ResponseCode.UNAUTHORIZED ||
+          data.code === 40101 || // 兼容 errors.ErrCodeUnauthorized
+          data.code === 40103 || // TokenExpired
+          data.code === 40104    // TokenInvalid
+        ) {
+          this.handleUnauthorized();
+        }
+        // 不再抛出错误，也不显示Toast，直接返回数据让业务层处理
       }
 
       return data;
@@ -162,21 +171,21 @@ class ApiClient {
       body: formData,
     });
 
-    // 处理 HTTP 401 未授权错误
-    if (response.status === 401) {
-      this.handleUnauthorized();
-      throw new Error('登录已过期，请重新登录');
-    }
+    // 移除 HTTP 状态检查，完全依赖 JSON 响应
+    // 但如果非 200 OK 且不能解析 JSON，可能需要处理（此处假设 API 总是返回 JSON）
 
     const data: APIResponse<T> = await response.json();
 
-    // 处理业务层面的未授权错误
-    if (data.code === ResponseCode.UNAUTHORIZED) {
-      this.handleUnauthorized();
-      throw new Error(data.msg || '登录已过期，请重新登录');
-    }
-
+    // 优先检查业务状态码
     if (data.code !== ResponseCode.SUCCESS) {
+      // 专门处理未授权
+      if (data.code === ResponseCode.UNAUTHORIZED ||
+        data.code === 40101 || // 兼容 errors.ErrCodeUnauthorized
+        data.code === 40103 || // TokenExpired
+        data.code === 40104    // TokenInvalid
+      ) {
+        this.handleUnauthorized();
+      }
       throw new Error(data.msg || '请求失败');
     }
     return data;
@@ -385,6 +394,6 @@ export interface RiskSettings {
 
 export const settingsAPI = {
   getRiskSettings: () => apiClient.get<RiskSettings>('/settings/risk'),
-  updateRiskSettings: (data: RiskSettings) => 
+  updateRiskSettings: (data: RiskSettings) =>
     apiClient.put<RiskSettings>('/settings/risk', data),
 };

@@ -1,10 +1,9 @@
 package handlers
 
 import (
-	"net/http"
-
 	"github.com/gin-gonic/gin"
 
+	"tg_cloud_server/internal/common/response"
 	"tg_cloud_server/internal/models"
 	"tg_cloud_server/internal/services"
 )
@@ -33,10 +32,7 @@ func (h *SettingsHandler) GetRiskSettings(c *gin.Context) {
 
 	settings := h.riskControlService.GetUserRiskSettings(c.Request.Context(), userID)
 
-	c.JSON(http.StatusOK, gin.H{
-		"code": 0,
-		"data": settings,
-	})
+	response.Success(c, settings)
 }
 
 // UpdateRiskSettings 更新风控配置
@@ -52,10 +48,7 @@ func (h *SettingsHandler) UpdateRiskSettings(c *gin.Context) {
 
 	var req models.UpdateRiskSettingsRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"code":    400,
-			"message": "参数错误: " + err.Error(),
-		})
+		response.InvalidParam(c, "参数错误: "+err.Error())
 		return
 	}
 
@@ -65,16 +58,9 @@ func (h *SettingsHandler) UpdateRiskSettings(c *gin.Context) {
 	}
 
 	if err := h.riskControlService.UpdateUserRiskSettings(c.Request.Context(), userID, settings); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"code":    500,
-			"message": "更新失败: " + err.Error(),
-		})
+		response.InternalError(c, "更新失败: "+err.Error())
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"code":    0,
-		"message": "更新成功",
-		"data":    settings,
-	})
+	response.SuccessWithMessage(c, "更新成功", settings)
 }

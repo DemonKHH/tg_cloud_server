@@ -236,11 +236,8 @@ func (h *VerifyCodeHandler) GetVerifyCode(c *gin.Context) {
 			case "CODE_NOT_FOUND", "CODE_EXPIRED":
 				response.NotFound(c, verifyErr.Message)
 			case "VERIFY_TIMEOUT":
-				c.JSON(408, gin.H{
-					"success": false,
-					"message": verifyErr.Message,
-					"data":    verifyResult,
-				})
+				// 使用 ErrorsFrom 或直接 Error，保持 200 OK
+				response.ErrorWithData(c, response.CodeInternalError, verifyErr.Message, verifyResult)
 			case "ACCOUNT_NOT_FOUND", "TELEGRAM_CONNECTION_ERROR":
 				response.InternalError(c, verifyErr.Message)
 			default:
@@ -265,11 +262,7 @@ func (h *VerifyCodeHandler) GetVerifyCode(c *gin.Context) {
 			zap.String("code", code),
 			zap.Int("wait_seconds", verifyResult.WaitSeconds))
 
-		c.JSON(408, gin.H{
-			"success": false,
-			"message": verifyResult.Message,
-			"data":    verifyResult,
-		})
+		response.ErrorWithData(c, response.CodeInternalError, verifyResult.Message, verifyResult)
 	}
 }
 

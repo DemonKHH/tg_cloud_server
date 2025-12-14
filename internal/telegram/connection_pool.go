@@ -35,18 +35,27 @@ const (
 const StatusError = StatusConnectionError
 
 // ManagedConnection 托管连接封装
+// 重连相关常量
+const (
+	MaxReconnectAttempts  = 3                // 最大重连次数
+	InitialReconnectDelay = 10 * time.Second // 初始重连延迟
+	MaxReconnectDelay     = 30 * time.Second // 最大重连延迟
+)
+
 type ManagedConnection struct {
-	client      *telegram.Client
-	config      *ClientConfig
-	status      ConnectionStatus
-	lastUsed    time.Time
-	useCount    int64
-	isActive    bool
-	taskRunning bool
-	mu          sync.Mutex
-	ctx         context.Context
-	cancel      context.CancelFunc
-	logger      *zap.Logger
+	client          *telegram.Client
+	config          *ClientConfig
+	status          ConnectionStatus
+	lastUsed        time.Time
+	useCount        int64
+	isActive        bool
+	taskRunning     bool
+	reconnectCount  int       // 重连次数计数器
+	lastReconnectAt time.Time // 上次重连时间
+	mu              sync.Mutex
+	ctx             context.Context
+	cancel          context.CancelFunc
+	logger          *zap.Logger
 }
 
 // ClientConfig 客户端配置
@@ -213,6 +222,12 @@ func (cp *ConnectionPool) maintainConnection(accountID string, conn *ManagedConn
 	err := conn.client.Run(conn.ctx, func(ctx context.Context) error {
 		conn.mu.Lock()
 		conn.status = StatusConnected
+		// 连接成功，重置重连计数器
+		if conn.reconnectCount > 0 {
+			conn.logger.Info("Connection recovered after reconnect attempts",
+				zap.Int("previous_attempts", conn.reconnectCount))
+		}
+		conn.reconnectCount = 0
 		conn.mu.Unlock()
 
 		conn.logger.Info("Connection established successfully")
@@ -255,20 +270,63 @@ func (cp *ConnectionPool) maintainConnection(accountID string, conn *ManagedConn
 	}
 }
 
-// scheduleReconnect 调度重连
+// scheduleReconnect 调度重连（带重试次数限制和指数退避）
 func (cp *ConnectionPool) scheduleReconnect(accountID string, conn *ManagedConnection) {
-	conn.logger.Info("Scheduling reconnection")
+	conn.mu.Lock()
+	conn.reconnectCount++
+	currentAttempt := conn.reconnectCount
+	conn.lastReconnectAt = time.Now()
+	conn.mu.Unlock()
 
-	// 等待一段时间后重连
-	time.AfterFunc(30*time.Second, func() {
+	// 检查是否超过最大重连次数
+	if currentAttempt > MaxReconnectAttempts {
+		conn.logger.Warn("Max reconnect attempts reached, giving up",
+			zap.String("account_id", accountID),
+			zap.Int("attempts", currentAttempt-1))
+
+		// 移除连接，不再重试
+		cp.mu.Lock()
+		if currentConn, exists := cp.connections[accountID]; exists && currentConn == conn {
+			conn.cancel()
+			delete(cp.connections, accountID)
+			go cp.updateConnectionStatus(accountID, false)
+		}
+		cp.mu.Unlock()
+		return
+	}
+
+	// 计算指数退避延迟: 30s, 60s, 120s, 240s, 300s(max)
+	delay := InitialReconnectDelay * time.Duration(1<<(currentAttempt-1))
+	if delay > MaxReconnectDelay {
+		delay = MaxReconnectDelay
+	}
+
+	conn.logger.Info("Scheduling reconnection",
+		zap.Int("attempt", currentAttempt),
+		zap.Int("max_attempts", MaxReconnectAttempts),
+		zap.Duration("delay", delay))
+
+	time.AfterFunc(delay, func() {
 		cp.mu.Lock()
 		defer cp.mu.Unlock()
 
 		// 检查连接是否仍然存在且需要重连
 		if currentConn, exists := cp.connections[accountID]; exists && currentConn == conn {
 			if config, configExists := cp.configs[accountID]; configExists {
-				conn.logger.Info("Attempting to reconnect")
-				cp.createNewConnection(accountID, config)
+				conn.logger.Info("Attempting to reconnect",
+					zap.Int("attempt", currentAttempt))
+
+				// 创建新连接时继承重连计数
+				newConn, err := cp.createNewConnection(accountID, config)
+				if err != nil {
+					conn.logger.Error("Failed to create new connection during reconnect",
+						zap.Error(err))
+					return
+				}
+				// 继承重连计数到新连接
+				newConn.mu.Lock()
+				newConn.reconnectCount = currentAttempt
+				newConn.mu.Unlock()
 			}
 		}
 	})
@@ -309,33 +367,10 @@ func (cp *ConnectionPool) ExecuteTask(accountID string, task TaskInterface) erro
 		conn.mu.Unlock()
 	}()
 
-	// 等待连接建立完成，最多等待30秒
-	timeout := time.After(30 * time.Second)
-	ticker := time.NewTicker(100 * time.Millisecond)
-	defer ticker.Stop()
-
-	for {
-		conn.mu.Lock()
-		status := conn.status
-		conn.mu.Unlock()
-
-		if status == StatusConnected {
-			break
-		}
-		if status == StatusConnectionError {
-			// 连接错误，更新账号状态
-			cp.updateAccountStatusOnError(accountID, fmt.Errorf("connection failed"))
-			return fmt.Errorf("connection failed, status: %s", status.String())
-		}
-
-		select {
-		case <-timeout:
-			// 连接超时，更新账号状态
-			cp.updateAccountStatusOnError(accountID, fmt.Errorf("connection timeout"))
-			return fmt.Errorf("connection timeout, status: %s", status.String())
-		case <-ticker.C:
-			// 继续检查
-		}
+	// 等待连接建立完成，支持等待重连
+	conn, err = cp.waitForConnection(accountID, conn, config)
+	if err != nil {
+		return err
 	}
 
 	// 连接成功，更新账号状态为正常（如果之前不是正常状态）
@@ -364,6 +399,89 @@ func (cp *ConnectionPool) ExecuteTask(accountID string, task TaskInterface) erro
 	}
 
 	return taskErr
+}
+
+// waitForConnection 等待连接建立，支持等待重连
+func (cp *ConnectionPool) waitForConnection(accountID string, conn *ManagedConnection, config *ClientConfig) (*ManagedConnection, error) {
+	// 总超时时间：考虑最多等待一次完整重连周期
+	// 初始等待30秒 + 重连延迟(10s+20s+30s=60s) + 重连后等待30秒 = 最多2分钟
+	maxWaitTime := 2 * time.Minute
+	startTime := time.Now()
+
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+
+	waitedForReconnect := false
+
+	for {
+		// 检查总超时
+		if time.Since(startTime) > maxWaitTime {
+			cp.updateAccountStatusOnError(accountID, fmt.Errorf("connection timeout after waiting for reconnect"))
+			return nil, fmt.Errorf("connection timeout after %v", maxWaitTime)
+		}
+
+		// 获取当前连接（可能已被重连替换）
+		cp.mu.RLock()
+		currentConn, exists := cp.connections[accountID]
+		cp.mu.RUnlock()
+
+		if !exists {
+			// 连接已被移除（超过最大重连次数）
+			return nil, fmt.Errorf("connection removed, max reconnect attempts exceeded")
+		}
+
+		// 如果连接对象变了，说明重连创建了新连接
+		if currentConn != conn {
+			conn = currentConn
+			// 需要重新标记任务运行状态
+			conn.mu.Lock()
+			if conn.taskRunning {
+				conn.mu.Unlock()
+				// 新连接正在被其他任务使用，等待
+				<-ticker.C
+				continue
+			}
+			conn.taskRunning = true
+			conn.mu.Unlock()
+		}
+
+		conn.mu.Lock()
+		status := conn.status
+		reconnectCount := conn.reconnectCount
+		conn.mu.Unlock()
+
+		switch status {
+		case StatusConnected:
+			// 连接成功
+			if waitedForReconnect {
+				cp.logger.Info("Connection recovered, proceeding with task",
+					zap.String("account_id", accountID),
+					zap.Duration("wait_time", time.Since(startTime)))
+			}
+			return conn, nil
+
+		case StatusConnectionError:
+			// 连接错误，检查是否还有重连机会
+			if reconnectCount >= MaxReconnectAttempts {
+				cp.updateAccountStatusOnError(accountID, fmt.Errorf("connection failed after max reconnect attempts"))
+				return nil, fmt.Errorf("connection failed, max reconnect attempts (%d) exceeded", MaxReconnectAttempts)
+			}
+
+			// 还有重连机会，等待重连
+			if !waitedForReconnect {
+				cp.logger.Info("Connection error, waiting for reconnect",
+					zap.String("account_id", accountID),
+					zap.Int("reconnect_attempt", reconnectCount),
+					zap.Int("max_attempts", MaxReconnectAttempts))
+				waitedForReconnect = true
+			}
+
+		case StatusConnecting, StatusReconnecting:
+			// 正在连接/重连中，继续等待
+		}
+
+		<-ticker.C
+	}
 }
 
 // GetConnectionStatus 获取连接状态

@@ -138,6 +138,35 @@ export default function AccountsPage() {
     }
   }
 
+  // 批量绑定代理相关状态
+  const [batchBindProxyDialogOpen, setBatchBindProxyDialogOpen] = useState(false)
+  const [selectedBatchBindProxy, setSelectedBatchBindProxy] = useState<string>("")
+  const [batchBindingProxy, setBatchBindingProxy] = useState(false)
+
+  const handleBatchBindProxy = async () => {
+    if (selectedAccountIds.length === 0 || !selectedBatchBindProxy) return
+
+    try {
+      setBatchBindingProxy(true)
+      const res = await accountAPI.batchBindProxy(selectedAccountIds, parseInt(selectedBatchBindProxy))
+      if (res.code === 0) {
+        const data = res.data as any
+        toast.success(`成功绑定 ${data?.success_count || selectedAccountIds.length} 个账号的代理`)
+        setBatchBindProxyDialogOpen(false)
+        setSelectedBatchBindProxy("")
+        setSelectedAccountIds([])
+        refresh()
+        loadAccountStats()
+      } else {
+        toast.error(res.msg || "批量绑定代理失败")
+      }
+    } catch (error: any) {
+      toast.error(error instanceof Error ? error.message : "批量绑定代理失败")
+    } finally {
+      setBatchBindingProxy(false)
+    }
+  }
+
   const handleBatchDelete = async () => {
     if (selectedAccountIds.length === 0) return
     
@@ -1120,6 +1149,23 @@ export default function AccountsPage() {
                         </TooltipTrigger>
                         <TooltipContent>
                           <p>批量生成验证码访问链接</p>
+                        </TooltipContent>
+                      </Tooltip>
+
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-8 px-3 bg-background/50 hover:bg-purple-500/10 hover:text-purple-600 border-dashed"
+                            onClick={() => setBatchBindProxyDialogOpen(true)}
+                          >
+                            <Link2 className="h-4 w-4 mr-2" />
+                            绑定代理
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>批量绑定代理到选中账号</p>
                         </TooltipContent>
                       </Tooltip>
 
@@ -2129,6 +2175,59 @@ export default function AccountsPage() {
           <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={() => setBatchSet2FADialogOpen(false)}>取消</Button>
             <Button onClick={handleBatchSet2FA}>确认设置</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* 批量绑定代理对话框 */}
+      <Dialog open={batchBindProxyDialogOpen} onOpenChange={setBatchBindProxyDialogOpen}>
+        <DialogContent className="sm:max-w-[450px]">
+          <DialogHeader>
+            <DialogTitle className="text-xl flex items-center gap-2">
+              <Link2 className="h-5 w-5 text-purple-600" />
+              批量绑定代理
+            </DialogTitle>
+            <DialogDescription className="pt-2">
+              为选中的 <span className="font-semibold text-purple-600">{selectedAccountIds.length}</span> 个账号绑定代理。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="batch-bind-proxy-select">选择代理</Label>
+              <Select
+                value={selectedBatchBindProxy || ""}
+                onValueChange={setSelectedBatchBindProxy}
+                disabled={loadingProxies || batchBindingProxy}
+              >
+                <SelectTrigger id="batch-bind-proxy-select">
+                  <SelectValue placeholder={loadingProxies ? "加载中..." : "请选择代理"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {proxies.map((proxy) => (
+                    <SelectItem key={proxy.id} value={String(proxy.id)}>
+                      {proxy.name || `${proxy.ip || proxy.host}:${proxy.port}`} {proxy.username && `(${proxy.username})`}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {proxies.length === 0 && !loadingProxies && (
+                <p className="text-xs text-muted-foreground">
+                  暂无可用代理，请先在代理管理中添加
+                </p>
+              )}
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 pt-4">
+            <Button variant="outline" onClick={() => setBatchBindProxyDialogOpen(false)} className="btn-modern" disabled={batchBindingProxy}>
+              取消
+            </Button>
+            <Button
+              onClick={handleBatchBindProxy}
+              className="btn-modern"
+              disabled={batchBindingProxy || !selectedBatchBindProxy}
+            >
+              {batchBindingProxy ? "绑定中..." : "确认绑定"}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

@@ -20,6 +20,7 @@ type AccountRepository interface {
 	GetByPhone(phone string) (*models.TGAccount, error)
 	GetByUserID(userID uint64, offset, limit int) ([]*models.TGAccount, int64, error)
 	Update(account *models.TGAccount) error
+	UpdateProxyID(id uint64, proxyID *uint64) error
 	UpdateStatus(id uint64, status models.AccountStatus) error
 	Delete(id uint64) error
 	GetAccountsByStatus(status models.AccountStatus) ([]*models.TGAccount, error)
@@ -171,6 +172,16 @@ func (r *accountRepository) GetByUserID(userID uint64, offset, limit int) ([]*mo
 // Update 更新账号
 func (r *accountRepository) Update(account *models.TGAccount) error {
 	return r.db.Save(account).Error
+}
+
+// UpdateProxyID 更新账号的代理ID（支持设置为NULL）
+func (r *accountRepository) UpdateProxyID(id uint64, proxyID *uint64) error {
+	return r.db.Model(&models.TGAccount{}).
+		Where("id = ?", id).
+		Updates(map[string]interface{}{
+			"proxy_id":   proxyID,
+			"updated_at": time.Now(),
+		}).Error
 }
 
 // UpdateStatus 更新账号状态

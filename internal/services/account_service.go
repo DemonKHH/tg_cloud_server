@@ -332,7 +332,8 @@ func (s *AccountService) BindProxy(userID, accountID uint64, proxyID *uint64) (*
 		account.ProxyID = proxyID
 	}
 
-	if err := s.accountRepo.Update(account); err != nil {
+	// 使用 UpdateProxyID 方法来确保 nil 值能正确更新为 NULL
+	if err := s.accountRepo.UpdateProxyID(accountID, proxyID); err != nil {
 		s.logger.Error("Failed to bind proxy",
 			zap.Uint64("user_id", userID),
 			zap.Uint64("account_id", accountID),
@@ -340,6 +341,9 @@ func (s *AccountService) BindProxy(userID, accountID uint64, proxyID *uint64) (*
 			zap.Error(err))
 		return nil, fmt.Errorf("failed to bind proxy: %w", err)
 	}
+
+	// 重新获取更新后的账号
+	account, _ = s.accountRepo.GetByUserIDAndID(userID, accountID)
 
 	s.logger.Info("Proxy bound successfully",
 		zap.Uint64("user_id", userID),

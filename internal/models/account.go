@@ -241,6 +241,12 @@ type BatchDeleteAccountsRequest struct {
 	AccountIDs []uint64 `json:"account_ids" binding:"required,min=1"`
 }
 
+// BatchBindProxyRequest 批量绑定/解绑代理请求
+type BatchBindProxyRequest struct {
+	AccountIDs []uint64 `json:"account_ids" binding:"required,min=1"`
+	ProxyID    *uint64  `json:"proxy_id"` // nil表示解绑代理
+}
+
 // AccountHealthReport 账号健康报告
 type AccountHealthReport struct {
 	AccountID    uint64                 `json:"account_id"`

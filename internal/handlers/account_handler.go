@@ -701,6 +701,74 @@ func (h *AccountHandler) BatchDeleteAccounts(c *gin.Context) {
 	})
 }
 
+// BatchBindProxy 批量绑定/解绑代理
+// @Summary 批量绑定/解绑代理
+// @Description 批量为账号绑定或解绑代理，proxy_id为null时表示解绑
+// @Tags 账号管理
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param request body models.BatchBindProxyRequest true "绑定信息"
+// @Success 200 {object} map[string]interface{} "操作结果"
+// @Failure 400 {object} map[string]string "请求错误"
+// @Failure 401 {object} map[string]string "未授权"
+// @Failure 500 {object} map[string]string "服务器错误"
+// @Router /api/v1/accounts/batch/bind-proxy [post]
+func (h *AccountHandler) BatchBindProxy(c *gin.Context) {
+	userID := h.getUserID(c)
+	if userID == 0 {
+		return
+	}
+
+	var req models.BatchBindProxyRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		h.logger.Warn("Invalid batch bind proxy request", zap.Error(err))
+		response.InvalidParam(c, "请求参数无效："+err.Error())
+		return
+	}
+
+	if len(req.AccountIDs) == 0 {
+		response.InvalidParam(c, "账号ID列表不能为空")
+		return
+	}
+
+	action := "绑定"
+	if req.ProxyID == nil {
+		action = "解绑"
+	}
+
+	h.logger.Info("Batch binding proxy",
+		zap.Uint64("user_id", userID),
+		zap.Int("account_count", len(req.AccountIDs)),
+		zap.Any("proxy_id", req.ProxyID),
+		zap.String("action", action))
+
+	successCount, failedCount, err := h.accountService.BatchBindProxy(userID, req.AccountIDs, req.ProxyID)
+	if err != nil {
+		if err == services.ErrProxyNotFound {
+			response.ProxyNotFound(c)
+			return
+		}
+		h.logger.Error("Failed to batch bind proxy",
+			zap.Uint64("user_id", userID),
+			zap.Int("account_count", len(req.AccountIDs)),
+			zap.Error(err))
+		response.InternalError(c, "批量"+action+"代理失败: "+err.Error())
+		return
+	}
+
+	h.logger.Info("Batch bind proxy completed",
+		zap.Uint64("user_id", userID),
+		zap.Int("success_count", successCount),
+		zap.Int("failed_count", failedCount),
+		zap.String("action", action))
+
+	response.SuccessWithMessage(c, fmt.Sprintf("成功%s %d 个账号的代理，失败 %d 个", action, successCount, failedCount), gin.H{
+		"success_count": successCount,
+		"failed_count":  failedCount,
+	})
+}
+
 // handleFileUpload 处理文件上传
 func (h *AccountHandler) handleFileUpload(c *gin.Context, userID uint64, file multipart.File, header *multipart.FileHeader, proxyID *uint64) {
 	h.logger.Info("Processing file upload",

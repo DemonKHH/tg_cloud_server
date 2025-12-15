@@ -744,3 +744,62 @@ func (s *AccountService) BatchDeleteAccounts(userID uint64, accountIDs []uint64)
 
 	return successCount, failedCount, nil
 }
+
+// BatchBindProxy 批量绑定/解绑代理
+func (s *AccountService) BatchBindProxy(userID uint64, accountIDs []uint64, proxyID *uint64) (successCount int, failedCount int, err error) {
+	action := "绑定"
+	if proxyID == nil {
+		action = "解绑"
+	}
+
+	s.logger.Info("Starting batch proxy binding",
+		zap.Uint64("user_id", userID),
+		zap.Int("account_count", len(accountIDs)),
+		zap.Any("proxy_id", proxyID),
+		zap.String("action", action))
+
+	// 如果是绑定代理，先验证代理是否存在且属于该用户
+	if proxyID != nil {
+		proxy, err := s.proxyRepo.GetByUserIDAndID(userID, *proxyID)
+		if err != nil {
+			return 0, len(accountIDs), ErrProxyNotFound
+		}
+		if !proxy.IsActive {
+			return 0, len(accountIDs), errors.New("proxy is not active")
+		}
+	}
+
+	for _, accountID := range accountIDs {
+		// 验证账号属于当前用户
+		_, err := s.accountRepo.GetByUserIDAndID(userID, accountID)
+		if err != nil {
+			s.logger.Warn("Account not found or not owned by user",
+				zap.Uint64("user_id", userID),
+				zap.Uint64("account_id", accountID),
+				zap.Error(err))
+			failedCount++
+			continue
+		}
+
+		// 更新代理ID
+		if err := s.accountRepo.UpdateProxyID(accountID, proxyID); err != nil {
+			s.logger.Error("Failed to update proxy for account",
+				zap.Uint64("user_id", userID),
+				zap.Uint64("account_id", accountID),
+				zap.Any("proxy_id", proxyID),
+				zap.Error(err))
+			failedCount++
+			continue
+		}
+
+		successCount++
+	}
+
+	s.logger.Info("Batch proxy binding completed",
+		zap.Uint64("user_id", userID),
+		zap.Int("success_count", successCount),
+		zap.Int("failed_count", failedCount),
+		zap.String("action", action))
+
+	return successCount, failedCount, nil
+}

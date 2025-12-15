@@ -60,7 +60,7 @@ func RegisterAPIRoutes(
 		accounts.POST("/upload", accountHandler.UploadAccountFiles)              // 上传并解析账号文件
 
 		// 批量操作
-		accounts.POST("/batch/bind-proxy", accountHandler.BindProxy)       // 批量绑定代理
+		accounts.POST("/batch/bind-proxy", accountHandler.BatchBindProxy)  // 批量绑定/解绑代理
 		accounts.POST("/batch/set-2fa", accountHandler.BatchSet2FA)        // 批量设置2FA
 		accounts.POST("/batch/update-2fa", accountHandler.BatchUpdate2FA)  // 批量修改2FA
 		accounts.POST("/batch/delete", accountHandler.BatchDeleteAccounts) // 批量删除账号

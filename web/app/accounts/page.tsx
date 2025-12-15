@@ -113,6 +113,31 @@ export default function AccountsPage() {
   const [batchDeleteDialogOpen, setBatchDeleteDialogOpen] = useState(false)
   const [batchDeleting, setBatchDeleting] = useState(false)
 
+  // 批量解绑代理相关状态
+  const [batchUnbindingProxy, setBatchUnbindingProxy] = useState(false)
+
+  const handleBatchUnbindProxy = async () => {
+    if (selectedAccountIds.length === 0) return
+
+    try {
+      setBatchUnbindingProxy(true)
+      const res = await accountAPI.batchBindProxy(selectedAccountIds, undefined)
+      if (res.code === 0) {
+        const data = res.data as any
+        toast.success(`成功解绑 ${data?.success_count || selectedAccountIds.length} 个账号的代理`)
+        setSelectedAccountIds([])
+        refresh()
+        loadAccountStats()
+      } else {
+        toast.error(res.msg || "批量解绑代理失败")
+      }
+    } catch (error: any) {
+      toast.error(error instanceof Error ? error.message : "批量解绑代理失败")
+    } finally {
+      setBatchUnbindingProxy(false)
+    }
+  }
+
   const handleBatchDelete = async () => {
     if (selectedAccountIds.length === 0) return
     
@@ -1095,6 +1120,24 @@ export default function AccountsPage() {
                         </TooltipTrigger>
                         <TooltipContent>
                           <p>批量生成验证码访问链接</p>
+                        </TooltipContent>
+                      </Tooltip>
+
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-8 px-3 bg-background/50 hover:bg-yellow-500/10 hover:text-yellow-600 border-dashed"
+                            onClick={handleBatchUnbindProxy}
+                            disabled={batchUnbindingProxy}
+                          >
+                            <Link2 className="h-4 w-4 mr-2" />
+                            {batchUnbindingProxy ? "解绑中..." : "解绑代理"}
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>批量解绑选中账号的代理</p>
                         </TooltipContent>
                       </Tooltip>
 

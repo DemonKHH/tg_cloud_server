@@ -2,7 +2,6 @@ package telegram
 
 import (
 	"context"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"strconv"
@@ -788,28 +787,19 @@ func (cp *ConnectionPool) loadAccountConfig(accountID string) (*ClientConfig, er
 		return nil, fmt.Errorf("account is not available, status: %s", account.Status)
 	}
 
-	// 解码session数据
-	sessionData, err := base64.StdEncoding.DecodeString(account.SessionData)
-	if err != nil {
-		cp.logger.Error("Failed to decode session data",
-			zap.String("account_id", accountID),
-			zap.String("phone", account.Phone),
-			zap.Int("raw_data_len", len(account.SessionData)),
-			zap.Error(err))
-		return nil, fmt.Errorf("failed to decode session data: %w", err)
-	}
-
-	cp.logger.Debug("Session data decoded successfully",
+	// 注意：不在这里解码 session 数据
+	// session 数据的解码由 DatabaseSessionStorage.LoadSession 统一处理
+	// 这里只传递原始的 base64 编码数据，避免双重解码问题
+	cp.logger.Debug("Session data will be decoded by DatabaseSessionStorage",
 		zap.String("account_id", accountID),
-		zap.Int("raw_data_len", len(account.SessionData)),
-		zap.Int("decoded_data_len", len(sessionData)))
+		zap.Int("session_data_len", len(account.SessionData)))
 
-	// 构建配置
+	// 构建配置 - SessionData 传 nil，让 DatabaseSessionStorage 从数据库加载并解码
 	config := &ClientConfig{
 		AppID:       cp.appID,
 		AppHash:     cp.appHash,
 		Phone:       account.Phone,
-		SessionData: sessionData, // 使用解码后的JSON数据
+		SessionData: nil, // 不预加载，由 DatabaseSessionStorage 统一处理
 	}
 
 	// 如果账号绑定了代理，加载代理配置

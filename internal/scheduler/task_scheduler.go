@@ -900,6 +900,9 @@ func (ts *TaskScheduler) buildCheckTaskSummary(accountID uint64, duration time.D
 			}
 		} else {
 			sb.WriteString("失败")
+			if err, ok := result["2fa_error"].(string); ok {
+				sb.WriteString(fmt.Sprintf(" (%s)", err))
+			}
 		}
 	}
 
@@ -922,6 +925,9 @@ func (ts *TaskScheduler) buildCheckTaskSummary(accountID uint64, duration time.D
 			}
 		} else {
 			sb.WriteString("失败")
+			if err, ok := result["spam_bot_error"].(string); ok {
+				sb.WriteString(fmt.Sprintf(" (%s)", err))
+			}
 		}
 	}
 

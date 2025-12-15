@@ -135,6 +135,7 @@ func (t *AccountCheckTask) Execute(ctx context.Context, api *tg.Client) error {
 			checkScore -= 10
 			issues = append(issues, fmt.Sprintf("无法获取2FA状态: %v", err))
 			checkResults["2fa_check"] = "failed"
+			checkResults["2fa_error"] = err.Error()
 			addLog(fmt.Sprintf("2FA 状态获取失败: %v", err))
 		} else {
 			has2FA := password.HasPassword
@@ -173,6 +174,7 @@ func (t *AccountCheckTask) Execute(ctx context.Context, api *tg.Client) error {
 			checkScore -= 20
 			issues = append(issues, fmt.Sprintf("SpamBot检查失败: %v", err))
 			checkResults["spam_bot_check"] = "failed"
+			checkResults["spam_bot_error"] = err.Error()
 			addLog(fmt.Sprintf("SpamBot 检查失败: %v", err))
 		} else {
 			checkResults["spam_bot_check"] = "passed"
@@ -308,6 +310,12 @@ func (t *AccountCheckTask) Execute(ctx context.Context, api *tg.Client) error {
 	}
 	if val, ok := checkResults["is_bidirectional"]; ok {
 		t.task.Result["is_bidirectional"] = val
+	}
+	if val, ok := checkResults["2fa_error"]; ok {
+		t.task.Result["2fa_error"] = val
+	}
+	if val, ok := checkResults["spam_bot_error"]; ok {
+		t.task.Result["spam_bot_error"] = val
 	}
 
 	return nil

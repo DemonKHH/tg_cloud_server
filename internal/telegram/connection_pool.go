@@ -890,6 +890,29 @@ func (cp *ConnectionPool) updateAccountInfoFromTelegram(accountID string, conn *
 		cp.logger.Warn("Failed to get user info from Telegram",
 			zap.String("account_id", accountID),
 			zap.Error(err))
+		// 检查是否是账号被禁用等严重错误，需要更新账号状态
+		errorStr := strings.ToUpper(err.Error())
+		if strings.Contains(errorStr, "USER_DEACTIVATED") ||
+			strings.Contains(errorStr, "AUTH_KEY_UNREGISTERED") ||
+			strings.Contains(errorStr, "PHONE_NUMBER_BANNED") ||
+			strings.Contains(errorStr, "SESSION_REVOKED") {
+			account, getErr := cp.accountRepo.GetByID(accountIDNum)
+			if getErr == nil {
+				account.Status = models.AccountStatusDead
+				now := time.Now()
+				account.LastCheckAt = &now
+				if updateErr := cp.accountRepo.Update(account); updateErr != nil {
+					cp.logger.Error("Failed to update account status to dead",
+						zap.String("account_id", accountID),
+						zap.Error(updateErr))
+				} else {
+					cp.logger.Info("Account marked as dead due to Telegram error",
+						zap.String("account_id", accountID),
+						zap.String("phone", account.Phone),
+						zap.String("error_type", errorStr))
+				}
+			}
+		}
 		return
 	}
 

@@ -32,17 +32,17 @@ func APILoggerMiddleware() gin.HandlerFunc {
 			fields = append(fields, zap.String("error", param.ErrorMessage))
 		}
 
-		// 根据状态码确定日志级别
-		var level zapcore.Level
-		if param.StatusCode >= 500 {
-			level = zapcore.ErrorLevel
-		} else if param.StatusCode >= 400 {
-			level = zapcore.WarnLevel
-		} else {
-			level = zapcore.InfoLevel
-		}
+		// // 根据状态码确定日志级别
+		// var level zapcore.Level
+		// if param.StatusCode >= 500 {
+		// 	level = zapcore.ErrorLevel
+		// } else if param.StatusCode >= 400 {
+		// 	level = zapcore.WarnLevel
+		// } else {
+		// 	level = zapcore.InfoLevel
+		// }
 
-		logger.LogAPI(level, "API Request", fields...)
+		// logger.LogAPI(level, "API Request", fields...)
 		return "" // 返回空字符串，因为我们使用了自定义日志记录
 	})
 }
@@ -145,45 +145,45 @@ func isJSON(data []byte) bool {
 // TaskLoggerMiddleware 任务相关的日志中间件
 func TaskLoggerMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		start := time.Now()
+		// start := time.Now()
 
 		// 处理请求
 		c.Next()
 
-		// 如果是任务相关的API，记录到任务日志
-		if isTaskRelatedPath(c.Request.URL.Path) {
-			latency := time.Since(start)
+		// // 如果是任务相关的API，记录到任务日志
+		// if isTaskRelatedPath(c.Request.URL.Path) {
+		// 	latency := time.Since(start)
 
-			fields := []zap.Field{
-				zap.String("method", c.Request.Method),
-				zap.String("path", c.Request.URL.Path),
-				zap.Int("status_code", c.Writer.Status()),
-				zap.Duration("latency", latency),
-				zap.String("client_ip", c.ClientIP()),
-			}
+		// 	fields := []zap.Field{
+		// 		zap.String("method", c.Request.Method),
+		// 		zap.String("path", c.Request.URL.Path),
+		// 		zap.Int("status_code", c.Writer.Status()),
+		// 		zap.Duration("latency", latency),
+		// 		zap.String("client_ip", c.ClientIP()),
+		// 	}
 
-			// 添加用户ID
-			if userID, exists := c.Get("user_id"); exists {
-				fields = append(fields, zap.Any("user_id", userID))
-			}
+		// 	// 添加用户ID
+		// 	if userID, exists := c.Get("user_id"); exists {
+		// 		fields = append(fields, zap.Any("user_id", userID))
+		// 	}
 
-			// 添加任务相关参数
-			if taskID := c.Param("id"); taskID != "" {
-				fields = append(fields, zap.String("task_id", taskID))
-			}
-			if accountID := c.Query("account_id"); accountID != "" {
-				fields = append(fields, zap.String("account_id", accountID))
-			}
+		// 	// 添加任务相关参数
+		// 	if taskID := c.Param("id"); taskID != "" {
+		// 		fields = append(fields, zap.String("task_id", taskID))
+		// 	}
+		// 	if accountID := c.Query("account_id"); accountID != "" {
+		// 		fields = append(fields, zap.String("account_id", accountID))
+		// 	}
 
-			var level zapcore.Level
-			if c.Writer.Status() >= 400 {
-				level = zapcore.ErrorLevel
-			} else {
-				level = zapcore.InfoLevel
-			}
+		// 	var level zapcore.Level
+		// 	if c.Writer.Status() >= 400 {
+		// 		level = zapcore.ErrorLevel
+		// 	} else {
+		// 		level = zapcore.InfoLevel
+		// 	}
 
-			logger.LogTask(level, "Task API Request", fields...)
-		}
+		// 	logger.LogTask(level, "Task API Request", fields...)
+		// }
 	}
 }
 

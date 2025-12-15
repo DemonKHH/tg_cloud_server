@@ -14,7 +14,7 @@ import (
 
 // AccessLogMiddleware 接口访问日志和统计中间件
 func AccessLogMiddleware(redisClient *redis.Client) gin.HandlerFunc {
-	log := logger.Get().Named("access_log")
+	// log := logger.Get().Named("access_log")
 
 	return func(c *gin.Context) {
 		start := time.Now()
@@ -38,16 +38,16 @@ func AccessLogMiddleware(redisClient *redis.Client) gin.HandlerFunc {
 			}
 		}
 
-		// 记录访问日志
-		log.Info("API access",
-			zap.String("method", method),
-			zap.String("path", path),
-			zap.Int("status", statusCode),
-			zap.Duration("duration", duration),
-			zap.Uint64("user_id", userID),
-			zap.String("ip", c.ClientIP()),
-			zap.String("user_agent", c.Request.UserAgent()),
-		)
+		// // 记录访问日志
+		// log.Info("API access",
+		// 	zap.String("method", method),
+		// 	zap.String("path", path),
+		// 	zap.Int("status", statusCode),
+		// 	zap.Duration("duration", duration),
+		// 	zap.Uint64("user_id", userID),
+		// 	zap.String("ip", c.ClientIP()),
+		// 	zap.String("user_agent", c.Request.UserAgent()),
+		// )
 
 		// 统计接口调用（异步，不阻塞请求）
 		if redisClient != nil {

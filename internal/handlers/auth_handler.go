@@ -44,22 +44,35 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		return
 	}
 
+	h.logger.Info("User registration attempt",
+		zap.String("username", req.Username),
+		zap.String("email", req.Email),
+		zap.String("client_ip", c.ClientIP()))
+
 	// 调用服务层注册用户
 	user, err := h.authService.Register(&req)
 	if err != nil {
 		if err == services.ErrUserExists {
+			h.logger.Warn("Registration failed - user already exists",
+				zap.String("username", req.Username),
+				zap.String("email", req.Email))
 			response.UserExists(c)
 			return
 		}
 
-		h.logger.Error("Register failed", zap.Error(err))
+		h.logger.Error("Register failed",
+			zap.String("username", req.Username),
+			zap.String("email", req.Email),
+			zap.Error(err))
 		response.InternalError(c, "注册失败，请稍后重试")
 		return
 	}
 
-	h.logger.Info("User registered successfully", 
+	h.logger.Info("User registered successfully",
 		zap.String("username", user.Username),
-		zap.Uint64("user_id", user.ID))
+		zap.Uint64("user_id", user.ID),
+		zap.String("email", user.Email),
+		zap.String("client_ip", c.ClientIP()))
 
 	response.SuccessWithMessage(c, "注册成功", user)
 }
@@ -84,21 +97,33 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
+	h.logger.Info("Login attempt",
+		zap.String("username", req.Username),
+		zap.String("client_ip", c.ClientIP()))
+
 	// 调用服务层登录
 	loginResp, err := h.authService.Login(&req)
 	if err != nil {
 		if err == services.ErrInvalidCredentials {
+			h.logger.Warn("Login failed - invalid credentials",
+				zap.String("username", req.Username),
+				zap.String("client_ip", c.ClientIP()))
 			response.InvalidCredentials(c)
 			return
 		}
 
-		h.logger.Error("Login failed", zap.Error(err))
+		h.logger.Error("Login failed",
+			zap.String("username", req.Username),
+			zap.String("client_ip", c.ClientIP()),
+			zap.Error(err))
 		response.InternalError(c, "登录失败，请稍后重试")
 		return
 	}
 
-	h.logger.Info("User logged in successfully", 
-		zap.String("username", req.Username))
+	h.logger.Info("User logged in successfully",
+		zap.String("username", req.Username),
+		zap.Uint64("user_id", loginResp.User.ID),
+		zap.String("client_ip", c.ClientIP()))
 
 	response.SuccessWithMessage(c, "登录成功", loginResp)
 }
@@ -131,7 +156,7 @@ func (h *AuthHandler) GetProfile(c *gin.Context) {
 	// 获取用户资料
 	profile, err := h.authService.GetUserProfile(uid)
 	if err != nil {
-		h.logger.Error("Failed to get user profile", 
+		h.logger.Error("Failed to get user profile",
 			zap.Uint64("user_id", uid),
 			zap.Error(err))
 		response.InternalError(c, "获取用户资料失败")
@@ -178,14 +203,14 @@ func (h *AuthHandler) UpdateProfile(c *gin.Context) {
 	// 更新用户资料
 	profile, err := h.authService.UpdateUserProfile(uid, &req)
 	if err != nil {
-		h.logger.Error("Failed to update user profile", 
+		h.logger.Error("Failed to update user profile",
 			zap.Uint64("user_id", uid),
 			zap.Error(err))
 		response.InternalError(c, "更新用户资料失败")
 		return
 	}
 
-	h.logger.Info("User profile updated successfully", 
+	h.logger.Info("User profile updated successfully",
 		zap.Uint64("user_id", uid))
 
 	response.SuccessWithMessage(c, "更新成功", profile)
@@ -258,14 +283,14 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 
 	// 执行登出
 	if err := h.authService.Logout(uid, token); err != nil {
-		h.logger.Error("Logout failed", 
+		h.logger.Error("Logout failed",
 			zap.Uint64("user_id", uid),
 			zap.Error(err))
 		response.InternalError(c, "登出失败")
 		return
 	}
 
-	h.logger.Info("User logged out successfully", 
+	h.logger.Info("User logged out successfully",
 		zap.Uint64("user_id", uid))
 
 	response.SuccessWithMessage(c, "登出成功", nil)

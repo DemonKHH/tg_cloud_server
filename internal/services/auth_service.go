@@ -103,24 +103,40 @@ func (s *AuthService) Register(req *models.RegisterRequest) (*models.UserProfile
 
 // Login 用户登录
 func (s *AuthService) Login(req *models.LoginRequest) (*models.LoginResponse, error) {
+	s.logger.Info("User login attempt",
+		zap.String("username", req.Username))
+
 	// 获取用户
 	user, err := s.userRepo.GetByUsername(req.Username)
 	if err != nil {
+		s.logger.Warn("Login failed - user not found",
+			zap.String("username", req.Username),
+			zap.Error(err))
 		return nil, ErrInvalidCredentials
 	}
 
 	// 验证密码
 	if !user.CheckPassword(req.Password) {
+		s.logger.Warn("Login failed - invalid password",
+			zap.String("username", req.Username),
+			zap.Uint64("user_id", user.ID))
 		return nil, ErrInvalidCredentials
 	}
 
 	// 检查用户状态
 	if !user.IsActive {
+		s.logger.Warn("Login failed - user account is disabled",
+			zap.String("username", req.Username),
+			zap.Uint64("user_id", user.ID))
 		return nil, errors.New("user account is disabled")
 	}
 
 	// 检查用户是否过期
 	if user.IsExpired() {
+		s.logger.Warn("Login failed - user account is expired",
+			zap.String("username", req.Username),
+			zap.Uint64("user_id", user.ID),
+			zap.Any("expires_at", user.ExpiresAt))
 		return nil, models.NewUserExpiredError(user)
 	}
 
@@ -252,30 +268,47 @@ func (s *AuthService) UpdateUserProfile(userID uint64, req *models.UpdateProfile
 
 // RefreshToken 刷新访问令牌
 func (s *AuthService) RefreshToken(refreshToken string) (*models.LoginResponse, error) {
+	s.logger.Debug("Token refresh attempt")
+
 	// 解析刷新令牌
 	claims, err := s.parseToken(refreshToken)
 	if err != nil {
+		s.logger.Warn("Token refresh failed - invalid token",
+			zap.Error(err))
 		return nil, ErrInvalidToken
 	}
 
 	// 获取用户
 	userID, ok := claims["user_id"].(float64)
 	if !ok {
+		s.logger.Warn("Token refresh failed - invalid user_id in claims")
 		return nil, ErrInvalidToken
 	}
 
+	s.logger.Debug("Token refresh - user identified",
+		zap.Uint64("user_id", uint64(userID)))
+
 	user, err := s.userRepo.GetByID(uint64(userID))
 	if err != nil {
+		s.logger.Warn("Token refresh failed - user not found",
+			zap.Uint64("user_id", uint64(userID)),
+			zap.Error(err))
 		return nil, ErrUserNotFound
 	}
 
 	// 检查用户状态
 	if !user.IsActive {
+		s.logger.Warn("Token refresh failed - user account is disabled",
+			zap.Uint64("user_id", user.ID),
+			zap.String("username", user.Username))
 		return nil, errors.New("user account is disabled")
 	}
 
 	// 检查用户是否过期
 	if user.IsExpired() {
+		s.logger.Warn("Token refresh failed - user account is expired",
+			zap.Uint64("user_id", user.ID),
+			zap.String("username", user.Username))
 		return nil, models.NewUserExpiredError(user)
 	}
 

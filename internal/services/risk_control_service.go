@@ -59,33 +59,63 @@ func NewRiskControlService(
 
 // CanExecuteTask 检查账号是否可以执行任务
 func (s *riskControlService) CanExecuteTask(ctx context.Context, accountID uint64, taskType models.TaskType) (bool, string) {
+	s.logger.Debug("Checking if account can execute task",
+		zap.Uint64("account_id", accountID),
+		zap.String("task_type", string(taskType)))
+
 	account, err := s.accountRepo.GetByID(accountID)
 	if err != nil {
+		s.logger.Warn("Account not found for risk check",
+			zap.Uint64("account_id", accountID),
+			zap.Error(err))
 		return false, "账号不存在"
 	}
 
 	switch account.Status {
 	case models.AccountStatusDead:
+		s.logger.Warn("Task blocked - account is dead",
+			zap.Uint64("account_id", accountID),
+			zap.String("phone", account.Phone),
+			zap.String("task_type", string(taskType)))
 		return false, "账号已死亡，无法执行任务"
 
 	case models.AccountStatusFrozen:
+		s.logger.Warn("Task blocked - account is frozen",
+			zap.Uint64("account_id", accountID),
+			zap.String("phone", account.Phone),
+			zap.String("task_type", string(taskType)))
 		return false, "账号已冻结，无法执行任务"
 
 	case models.AccountStatusCooling:
 		// 检查冷却是否到期
 		if account.CoolingUntil != nil && account.CoolingUntil.After(time.Now()) {
 			remaining := time.Until(*account.CoolingUntil)
+			s.logger.Info("Task blocked - account is cooling",
+				zap.Uint64("account_id", accountID),
+				zap.String("phone", account.Phone),
+				zap.String("task_type", string(taskType)),
+				zap.Duration("remaining", remaining),
+				zap.Time("cooling_until", *account.CoolingUntil))
 			return false, "账号冷却中，剩余 " + remaining.Round(time.Minute).String()
 		}
 		// 冷却已到期，允许执行（定时任务会恢复状态）
+		s.logger.Info("Account cooling expired, allowing task execution",
+			zap.Uint64("account_id", accountID),
+			zap.String("phone", account.Phone))
 
 	case models.AccountStatusRestricted, models.AccountStatusTwoWay:
 		// 允许执行，但记录警告日志
 		s.logger.Warn("Executing task on restricted/two_way account",
 			zap.Uint64("account_id", accountID),
+			zap.String("phone", account.Phone),
 			zap.String("status", string(account.Status)),
 			zap.String("task_type", string(taskType)))
 	}
+
+	s.logger.Debug("Account allowed to execute task",
+		zap.Uint64("account_id", accountID),
+		zap.String("status", string(account.Status)),
+		zap.String("task_type", string(taskType)))
 
 	// new, normal, warning, restricted, two_way 都允许执行
 	return true, ""
@@ -93,6 +123,11 @@ func (s *riskControlService) CanExecuteTask(ctx context.Context, accountID uint6
 
 // ReportTaskResult 上报任务执行结果
 func (s *riskControlService) ReportTaskResult(ctx context.Context, accountID uint64, success bool, taskErr error) {
+	s.logger.Debug("Reporting task result",
+		zap.Uint64("account_id", accountID),
+		zap.Bool("success", success),
+		zap.Error(taskErr))
+
 	account, err := s.accountRepo.GetByID(accountID)
 	if err != nil {
 		s.logger.Error("Failed to get account for risk report",
@@ -104,6 +139,10 @@ func (s *riskControlService) ReportTaskResult(ctx context.Context, accountID uin
 	if success {
 		// 成功：重置连续失败计数
 		if account.ConsecutiveFailures > 0 {
+			s.logger.Info("Resetting consecutive failures after success",
+				zap.Uint64("account_id", accountID),
+				zap.String("phone", account.Phone),
+				zap.Uint32("previous_failures", account.ConsecutiveFailures))
 			if err := s.accountRepo.ResetConsecutiveFailures(accountID); err != nil {
 				s.logger.Error("Failed to reset consecutive failures",
 					zap.Uint64("account_id", accountID),
@@ -122,6 +161,12 @@ func (s *riskControlService) ReportTaskResult(ctx context.Context, accountID uin
 		return
 	}
 
+	s.logger.Info("Task failure recorded",
+		zap.Uint64("account_id", accountID),
+		zap.String("phone", account.Phone),
+		zap.Uint32("consecutive_failures", newCount),
+		zap.Error(taskErr))
+
 	// 获取用户风控配置
 	settings := s.GetUserRiskSettings(ctx, account.UserID)
 
@@ -138,7 +183,10 @@ func (s *riskControlService) ReportTaskResult(ctx context.Context, accountID uin
 
 		s.logger.Warn("Account triggered cooling due to consecutive failures",
 			zap.Uint64("account_id", accountID),
+			zap.String("phone", account.Phone),
 			zap.Uint32("failures", newCount),
+			zap.Int("threshold", settings.MaxConsecutiveFailures),
+			zap.Int("cooling_minutes", settings.CoolingDurationMinutes),
 			zap.Time("cooling_until", coolingUntil))
 	}
 }
@@ -148,6 +196,10 @@ func (s *riskControlService) HandleTelegramError(ctx context.Context, accountID 
 	if err == nil {
 		return
 	}
+
+	s.logger.Info("Handling Telegram error",
+		zap.Uint64("account_id", accountID),
+		zap.Error(err))
 
 	account, getErr := s.accountRepo.GetByID(accountID)
 	if getErr != nil {

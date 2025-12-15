@@ -38,18 +38,35 @@ func (h *TaskHandler) CreateTask(c *gin.Context) {
 
 	var req models.CreateTaskRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
+		h.logger.Warn("Invalid create task request",
+			zap.Uint64("user_id", userID),
+			zap.Error(err))
 		response.InvalidParam(c, err.Error())
 		return
 	}
+
+	h.logger.Info("Creating task",
+		zap.Uint64("user_id", userID),
+		zap.String("task_type", string(req.TaskType)),
+		zap.Int("account_count", len(req.AccountIDs)),
+		zap.Int("priority", req.Priority),
+		zap.Bool("auto_start", req.AutoStart))
 
 	task, err := h.taskService.CreateTask(userID, &req)
 	if err != nil {
 		h.logger.Error("Failed to create task",
 			zap.Uint64("user_id", userID),
+			zap.String("task_type", string(req.TaskType)),
 			zap.Error(err))
 		response.InternalError(c, err.Error())
 		return
 	}
+
+	h.logger.Info("Task created successfully",
+		zap.Uint64("user_id", userID),
+		zap.Uint64("task_id", task.ID),
+		zap.String("task_type", string(task.TaskType)),
+		zap.String("status", string(task.Status)))
 
 	response.SuccessWithMessage(c, "任务创建成功", task)
 }
@@ -451,6 +468,11 @@ func (h *TaskHandler) ControlTask(c *gin.Context) {
 		return
 	}
 
+	h.logger.Info("Task control request received",
+		zap.Uint64("user_id", userID),
+		zap.Uint64("task_id", taskID),
+		zap.String("action", req.Action))
+
 	var controlErr error
 	switch req.Action {
 	case "start":
@@ -462,12 +484,20 @@ func (h *TaskHandler) ControlTask(c *gin.Context) {
 	case "resume":
 		controlErr = h.taskService.ResumeTask(userID, taskID)
 	default:
+		h.logger.Warn("Unsupported task control action",
+			zap.Uint64("user_id", userID),
+			zap.Uint64("task_id", taskID),
+			zap.String("action", req.Action))
 		response.InvalidParam(c, "Unsupported action")
 		return
 	}
 
 	if controlErr != nil {
 		if controlErr == services.ErrTaskNotFound {
+			h.logger.Warn("Task not found for control",
+				zap.Uint64("user_id", userID),
+				zap.Uint64("task_id", taskID),
+				zap.String("action", req.Action))
 			response.NotFound(c, "Task not found")
 			return
 		}
@@ -479,6 +509,11 @@ func (h *TaskHandler) ControlTask(c *gin.Context) {
 		response.InternalError(c, controlErr.Error())
 		return
 	}
+
+	h.logger.Info("Task control action completed successfully",
+		zap.Uint64("user_id", userID),
+		zap.Uint64("task_id", taskID),
+		zap.String("action", req.Action))
 
 	response.SuccessWithMessage(c, fmt.Sprintf("任务%s成功", getActionName(req.Action)), gin.H{
 		"task_id": taskID,

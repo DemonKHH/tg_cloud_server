@@ -177,10 +177,23 @@ func (s *AccountService) DeleteAccount(userID, accountID uint64) error {
 
 // CheckAccountHealth 检查账号健康状态
 func (s *AccountService) CheckAccountHealth(userID, accountID uint64) (*models.AccountHealthReport, error) {
+	s.logger.Info("Starting account health check",
+		zap.Uint64("user_id", userID),
+		zap.Uint64("account_id", accountID))
+
 	account, err := s.accountRepo.GetByUserIDAndID(userID, accountID)
 	if err != nil {
+		s.logger.Warn("Account not found for health check",
+			zap.Uint64("user_id", userID),
+			zap.Uint64("account_id", accountID),
+			zap.Error(err))
 		return nil, ErrAccountNotFound
 	}
+
+	s.logger.Debug("Account found, starting health checks",
+		zap.Uint64("account_id", accountID),
+		zap.String("phone", account.Phone),
+		zap.String("current_status", string(account.Status)))
 
 	// 创建健康报告
 	now := time.Now()
@@ -200,13 +213,23 @@ func (s *AccountService) CheckAccountHealth(userID, accountID uint64) (*models.A
 
 	// 主动检查连接状态
 	if s.connectionPool != nil {
+		s.logger.Debug("Checking connection status",
+			zap.Uint64("account_id", accountID))
 		if err := s.connectionPool.CheckConnection(account.ID); err != nil {
+			s.logger.Warn("Connection check failed",
+				zap.Uint64("account_id", accountID),
+				zap.String("phone", account.Phone),
+				zap.Error(err))
 			report.Issues = append(report.Issues, fmt.Sprintf("连接检查失败: %v", err))
 			report.Suggestions = append(report.Suggestions, "请检查代理设置或账号Session是否有效")
 			// 更新状态为异常
 			if account.Status == models.AccountStatusNormal {
 				account.Status = models.AccountStatusWarning
 			}
+		} else {
+			s.logger.Info("Connection check passed",
+				zap.Uint64("account_id", accountID),
+				zap.String("phone", account.Phone))
 		}
 	}
 
@@ -214,6 +237,13 @@ func (s *AccountService) CheckAccountHealth(userID, accountID uint64) (*models.A
 	now = time.Now()
 	account.LastCheckAt = &now
 	s.accountRepo.Update(account)
+
+	s.logger.Info("Account health check completed",
+		zap.Uint64("account_id", accountID),
+		zap.String("phone", account.Phone),
+		zap.String("status", string(account.Status)),
+		zap.Int("issues_count", len(report.Issues)),
+		zap.Int("suggestions_count", len(report.Suggestions)))
 
 	return report, nil
 }
@@ -496,6 +526,11 @@ func (s *AccountService) generateDetailedHealthReport(account *models.TGAccount)
 
 // CreateAccountsFromUploadData 从上传的数据批量创建账号（使用事务）
 func (s *AccountService) CreateAccountsFromUploadData(userID uint64, accounts []models.AccountUploadItem, proxyID *uint64) ([]*models.TGAccount, []string, error) {
+	s.logger.Info("Starting batch account creation from upload",
+		zap.Uint64("user_id", userID),
+		zap.Int("total_accounts", len(accounts)),
+		zap.Any("proxy_id", proxyID))
+
 	var accountsToCreate []*models.TGAccount
 	var validationErrors []string
 
@@ -503,11 +538,21 @@ func (s *AccountService) CreateAccountsFromUploadData(userID uint64, accounts []
 	if proxyID != nil {
 		proxy, err := s.proxyRepo.GetByUserIDAndID(userID, *proxyID)
 		if err != nil {
+			s.logger.Warn("Proxy not found for batch upload",
+				zap.Uint64("user_id", userID),
+				zap.Uint64("proxy_id", *proxyID),
+				zap.Error(err))
 			return nil, nil, fmt.Errorf("代理不存在")
 		}
 		if !proxy.IsActive {
+			s.logger.Warn("Proxy is not active for batch upload",
+				zap.Uint64("user_id", userID),
+				zap.Uint64("proxy_id", *proxyID))
 			return nil, nil, fmt.Errorf("代理未激活")
 		}
+		s.logger.Debug("Proxy validated for batch upload",
+			zap.Uint64("proxy_id", *proxyID),
+			zap.String("proxy_ip", proxy.IP))
 	}
 
 	// 第一阶段：验证所有数据

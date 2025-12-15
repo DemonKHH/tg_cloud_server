@@ -171,10 +171,22 @@ func (s *proxyService) GetProxiesByStatus(userID uint64, status string, page, li
 
 // UpdateProxy 更新代理
 func (s *proxyService) UpdateProxy(userID, proxyID uint64, req *models.UpdateProxyRequest) (*models.ProxyIP, error) {
+	s.logger.Info("Updating proxy",
+		zap.Uint64("user_id", userID),
+		zap.Uint64("proxy_id", proxyID))
+
 	proxy, err := s.proxyRepo.GetByUserIDAndID(userID, proxyID)
 	if err != nil {
+		s.logger.Warn("Proxy not found for update",
+			zap.Uint64("user_id", userID),
+			zap.Uint64("proxy_id", proxyID),
+			zap.Error(err))
 		return nil, err
 	}
+
+	// 记录更新前的值
+	oldIP := proxy.IP
+	oldPort := proxy.Port
 
 	if req.Name != "" {
 		proxy.Name = req.Name
@@ -196,9 +208,18 @@ func (s *proxyService) UpdateProxy(userID, proxyID uint64, req *models.UpdatePro
 	}
 
 	if err := s.proxyRepo.Update(proxy); err != nil {
-		s.logger.Error("Failed to update proxy", zap.Error(err))
+		s.logger.Error("Failed to update proxy",
+			zap.Uint64("proxy_id", proxyID),
+			zap.Error(err))
 		return nil, fmt.Errorf("failed to update proxy: %w", err)
 	}
+
+	s.logger.Info("Proxy updated successfully",
+		zap.Uint64("proxy_id", proxyID),
+		zap.String("old_ip", oldIP),
+		zap.String("new_ip", proxy.IP),
+		zap.Int("old_port", oldPort),
+		zap.Int("new_port", proxy.Port))
 
 	return proxy, nil
 }
@@ -218,13 +239,20 @@ func (s *proxyService) DeleteProxy(userID, proxyID uint64) error {
 func (s *proxyService) TestProxy(userID, proxyID uint64) (*models.ProxyTestResult, error) {
 	proxy, err := s.proxyRepo.GetByUserIDAndID(userID, proxyID)
 	if err != nil {
+		s.logger.Warn("Proxy not found for test",
+			zap.Uint64("user_id", userID),
+			zap.Uint64("proxy_id", proxyID),
+			zap.Error(err))
 		return nil, err
 	}
 
 	s.logger.Info("Testing proxy connection",
+		zap.Uint64("user_id", userID),
 		zap.Uint64("proxy_id", proxyID),
+		zap.String("name", proxy.Name),
 		zap.String("ip", proxy.IP),
-		zap.Int("port", proxy.Port))
+		zap.Int("port", proxy.Port),
+		zap.String("protocol", string(proxy.Protocol)))
 
 	result := &models.ProxyTestResult{
 		ProxyID:    proxyID,
@@ -246,18 +274,28 @@ func (s *proxyService) TestProxy(userID, proxyID uint64) (*models.ProxyTestResul
 		proxy.Status = models.StatusError
 		s.logger.Warn("Proxy test failed",
 			zap.Uint64("proxy_id", proxyID),
+			zap.String("ip", proxy.IP),
+			zap.Int("port", proxy.Port),
+			zap.Duration("duration", duration),
 			zap.Error(err))
 	} else {
 		result.Success = true
 		proxy.Status = models.StatusActive
 		s.logger.Info("Proxy test successful",
 			zap.Uint64("proxy_id", proxyID),
-			zap.Int("latency_ms", result.Latency))
+			zap.String("ip", proxy.IP),
+			zap.Int("port", proxy.Port),
+			zap.Int("latency_ms", result.Latency),
+			zap.Duration("duration", duration))
 	}
 
 	// 更新代理状态和最后测试时间
 	proxy.LastTestAt = &result.TestedAt
-	s.proxyRepo.Update(proxy)
+	if updateErr := s.proxyRepo.Update(proxy); updateErr != nil {
+		s.logger.Error("Failed to update proxy status after test",
+			zap.Uint64("proxy_id", proxyID),
+			zap.Error(updateErr))
+	}
 
 	return result, nil
 }

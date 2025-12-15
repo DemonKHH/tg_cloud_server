@@ -68,19 +68,33 @@ func NewAgentRunner(task *models.Task, aiService AIService, pool *ConnectionPool
 
 // Run 运行智能体场景
 func (r *AgentRunner) Run(ctx context.Context) error {
+	startTime := time.Now()
 	r.logger.Info("Starting agent swarm scenario",
 		zap.String("scenario", r.scenario.Name),
 		zap.String("topic", r.scenario.Topic),
-		zap.Int("agent_count", len(r.scenario.Agents)))
+		zap.Int("agent_count", len(r.scenario.Agents)),
+		zap.Int("duration_seconds", r.scenario.Duration))
 
 	// 验证所有账号可用性并注册消息监听
+	registeredCount := 0
 	for _, agent := range r.scenario.Agents {
 		accountIDStr := fmt.Sprintf("%d", agent.AccountID)
 		if !r.connectionPool.IsAccountBusy(accountIDStr) {
 			// 注册更新处理器
 			r.connectionPool.SetUpdateHandler(accountIDStr, r.createUpdateHandler(accountIDStr))
+			registeredCount++
+			r.logger.Debug("Registered update handler for agent",
+				zap.Uint64("account_id", agent.AccountID),
+				zap.String("persona", agent.Persona.Name))
+		} else {
+			r.logger.Warn("Account is busy, skipping handler registration",
+				zap.Uint64("account_id", agent.AccountID))
 		}
 	}
+
+	r.logger.Info("Agent handlers registered",
+		zap.Int("registered_count", registeredCount),
+		zap.Int("total_agents", len(r.scenario.Agents)))
 
 	// 运行主循环
 	duration := time.Duration(r.scenario.Duration) * time.Second
@@ -94,14 +108,23 @@ func (r *AgentRunner) Run(ctx context.Context) error {
 	ticker := time.NewTicker(5 * time.Second) // 每5秒进行一次调度检查
 	defer ticker.Stop()
 
+	scheduleCount := 0
 	for {
 		select {
 		case <-ctx.Done():
+			r.logger.Info("Agent scenario cancelled by context",
+				zap.String("scenario", r.scenario.Name),
+				zap.Duration("elapsed", time.Since(startTime)),
+				zap.Int("schedule_cycles", scheduleCount))
 			return ctx.Err()
 		case <-timer.C:
-			r.logger.Info("Scenario duration reached")
+			r.logger.Info("Scenario duration reached, completing",
+				zap.String("scenario", r.scenario.Name),
+				zap.Duration("total_duration", time.Since(startTime)),
+				zap.Int("schedule_cycles", scheduleCount))
 			return nil
 		case <-ticker.C:
+			scheduleCount++
 			r.scheduleAgents(ctx)
 		}
 	}
@@ -134,6 +157,12 @@ func (r *AgentRunner) scheduleAgents(ctx context.Context) {
 // executeAgentLoop 执行单个智能体的ODA循环
 func (r *AgentRunner) executeAgentLoop(ctx context.Context, agent *models.AgentConfig) error {
 	accountIDStr := fmt.Sprintf("%d", agent.AccountID)
+	loopStartTime := time.Now()
+
+	r.logger.Debug("Starting ODA loop for agent",
+		zap.Uint64("account_id", agent.AccountID),
+		zap.String("persona", agent.Persona.Name),
+		zap.String("goal", agent.Goal))
 
 	// 1. Observe (观察)
 	// 获取最近的聊天记录
@@ -141,8 +170,15 @@ func (r *AgentRunner) executeAgentLoop(ctx context.Context, agent *models.AgentC
 	// 为了简化，我们假设可以通过 helper 方法获取
 	history, err := r.fetchChatHistory(ctx, accountIDStr)
 	if err != nil {
+		r.logger.Error("Failed to fetch chat history",
+			zap.Uint64("account_id", agent.AccountID),
+			zap.Error(err))
 		return fmt.Errorf("failed to fetch chat history: %w", err)
 	}
+
+	r.logger.Debug("Chat history fetched",
+		zap.Uint64("account_id", agent.AccountID),
+		zap.Int("message_count", len(history)))
 
 	// 2. Decide (决策)
 	decisionReq := &models.AgentDecisionRequest{
@@ -157,19 +193,28 @@ func (r *AgentRunner) executeAgentLoop(ctx context.Context, agent *models.AgentC
 
 	decision, err := r.aiService.AgentDecision(ctx, decisionReq)
 	if err != nil {
+		r.logger.Error("AI decision failed",
+			zap.Uint64("account_id", agent.AccountID),
+			zap.String("persona", agent.Persona.Name),
+			zap.Error(err))
 		return fmt.Errorf("AI decision failed: %w", err)
 	}
 
 	if !decision.ShouldSpeak {
 		r.logger.Debug("Agent decided to stay silent",
-			zap.String("thought", decision.Thought))
+			zap.Uint64("account_id", agent.AccountID),
+			zap.String("persona", agent.Persona.Name),
+			zap.String("thought", decision.Thought),
+			zap.Duration("decision_time", time.Since(loopStartTime)))
 		return nil
 	}
 
 	r.logger.Info("Agent decided to act",
+		zap.Uint64("account_id", agent.AccountID),
 		zap.String("persona", agent.Persona.Name),
 		zap.String("action", decision.Action),
-		zap.String("thought", decision.Thought))
+		zap.String("thought", decision.Thought),
+		zap.Int("delay_seconds", decision.DelaySeconds))
 
 	// 3. Act (行动)
 	// 模拟延迟

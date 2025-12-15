@@ -127,6 +127,11 @@ func (cp *ConnectionPool) GetOrCreateConnection(accountID string, config *Client
 	cp.mu.Lock()
 	defer cp.mu.Unlock()
 
+	cp.logger.Debug("GetOrCreateConnection called",
+		zap.String("account_id", accountID),
+		zap.String("phone", config.Phone),
+		zap.Bool("has_proxy", config.ProxyConfig != nil))
+
 	// 检查是否已存在连接
 	if conn, exists := cp.connections[accountID]; exists {
 		// 复用连接：只要连接是活跃的，无论是已连接、连接中还是重连中，都应该复用，
@@ -134,12 +139,18 @@ func (cp *ConnectionPool) GetOrCreateConnection(accountID string, config *Client
 		if conn.isActive && (conn.status == StatusConnected || conn.status == StatusConnecting || conn.status == StatusReconnecting) {
 			conn.lastUsed = time.Now()
 			conn.useCount++
-			cp.logger.Debug("Reusing existing connection",
+			cp.logger.Info("Reusing existing connection",
 				zap.String("account_id", accountID),
+				zap.String("phone", config.Phone),
 				zap.String("status", conn.status.String()),
-				zap.Int64("use_count", conn.useCount))
+				zap.Int64("use_count", conn.useCount),
+				zap.Duration("idle_time", time.Since(conn.lastUsed)))
 			return conn, nil
 		}
+		cp.logger.Warn("Existing connection is not active or in error state",
+			zap.String("account_id", accountID),
+			zap.String("status", conn.status.String()),
+			zap.Bool("is_active", conn.isActive))
 	}
 
 	// 检查是否已存在旧连接，如果存在，先取消它以便通知等待者
@@ -238,7 +249,12 @@ func (cp *ConnectionPool) createNewConnection(accountID string, config *ClientCo
 
 // maintainConnection 维护连接状态
 func (cp *ConnectionPool) maintainConnection(accountID string, conn *ManagedConnection) {
-	conn.logger.Info("Starting connection maintenance")
+	conn.logger.Info("Starting connection maintenance",
+		zap.String("account_id", accountID),
+		zap.String("phone", conn.config.Phone),
+		zap.Bool("has_proxy", conn.config.ProxyConfig != nil))
+
+	startTime := time.Now()
 
 	err := conn.client.Run(conn.ctx, func(ctx context.Context) error {
 		conn.mu.Lock()
@@ -246,13 +262,18 @@ func (cp *ConnectionPool) maintainConnection(accountID string, conn *ManagedConn
 		// 连接成功，重置重连计数器
 		if conn.reconnectCount > 0 {
 			conn.logger.Info("Connection recovered after reconnect attempts",
-				zap.Int("previous_attempts", conn.reconnectCount))
+				zap.String("account_id", accountID),
+				zap.Int("previous_attempts", conn.reconnectCount),
+				zap.Duration("recovery_time", time.Since(startTime)))
 		}
 		conn.reconnectCount = 0
 		conn.notifyStateChange() // 通知状态变更
 		conn.mu.Unlock()
 
-		conn.logger.Info("Connection established successfully")
+		conn.logger.Info("Connection established successfully",
+			zap.String("account_id", accountID),
+			zap.String("phone", conn.config.Phone),
+			zap.Duration("connect_time", time.Since(startTime)))
 
 		// 连接成功，更新账号状态为正常
 		cp.updateAccountStatusOnSuccess(accountID)
@@ -262,7 +283,12 @@ func (cp *ConnectionPool) maintainConnection(accountID string, conn *ManagedConn
 
 		// 更新在线状态为在线
 		cp.updateConnectionStatus(accountID, true)
-		defer cp.updateConnectionStatus(accountID, false)
+		defer func() {
+			cp.updateConnectionStatus(accountID, false)
+			conn.logger.Info("Connection closed",
+				zap.String("account_id", accountID),
+				zap.Duration("session_duration", time.Since(startTime)))
+		}()
 
 		// 保持连接直到取消
 		<-ctx.Done()
@@ -275,7 +301,9 @@ func (cp *ConnectionPool) maintainConnection(accountID string, conn *ManagedConn
 			zap.String("error_type", fmt.Sprintf("%T", err)),
 			zap.String("account_id", accountID),
 			zap.String("phone", conn.config.Phone),
-			zap.Int("session_data_length", len(conn.config.SessionData)))
+			zap.Int("session_data_length", len(conn.config.SessionData)),
+			zap.Int("reconnect_count", conn.reconnectCount),
+			zap.Duration("session_duration", time.Since(startTime)))
 
 		conn.mu.Lock()
 		conn.status = StatusReconnecting // 改为重连中，而不是 Error，以便任务等待
@@ -289,7 +317,14 @@ func (cp *ConnectionPool) maintainConnection(accountID string, conn *ManagedConn
 		cp.updateAccountStatusOnError(accountID, err)
 
 		// 自动重连逻辑
+		conn.logger.Info("Scheduling automatic reconnection",
+			zap.String("account_id", accountID),
+			zap.Int("current_reconnect_count", conn.reconnectCount))
 		cp.scheduleReconnect(accountID, conn)
+	} else if err == context.Canceled {
+		conn.logger.Info("Connection canceled by context",
+			zap.String("account_id", accountID),
+			zap.Duration("session_duration", time.Since(startTime)))
 	}
 }
 
@@ -301,11 +336,19 @@ func (cp *ConnectionPool) scheduleReconnect(accountID string, conn *ManagedConne
 	conn.lastReconnectAt = time.Now()
 	conn.mu.Unlock()
 
+	cp.logger.Info("Reconnect attempt scheduled",
+		zap.String("account_id", accountID),
+		zap.String("phone", conn.config.Phone),
+		zap.Int("attempt", currentAttempt),
+		zap.Int("max_attempts", MaxReconnectAttempts))
+
 	// 检查是否超过最大重连次数
 	if currentAttempt > MaxReconnectAttempts {
-		conn.logger.Warn("Max reconnect attempts reached, giving up",
+		cp.logger.Error("Max reconnect attempts reached, giving up",
 			zap.String("account_id", accountID),
-			zap.Int("attempts", currentAttempt-1))
+			zap.String("phone", conn.config.Phone),
+			zap.Int("attempts", currentAttempt-1),
+			zap.Duration("total_reconnect_time", time.Since(conn.lastReconnectAt)))
 
 		// 移除连接，不再重试
 		cp.mu.Lock()
@@ -330,10 +373,13 @@ func (cp *ConnectionPool) scheduleReconnect(accountID string, conn *ManagedConne
 	conn.notifyStateChange() // 通知状态变更
 	conn.mu.Unlock()
 
-	conn.logger.Info("Scheduling reconnection",
+	cp.logger.Info("Scheduling reconnection with exponential backoff",
+		zap.String("account_id", accountID),
+		zap.String("phone", conn.config.Phone),
 		zap.Int("attempt", currentAttempt),
 		zap.Int("max_attempts", MaxReconnectAttempts),
-		zap.Duration("delay", delay))
+		zap.Duration("delay", delay),
+		zap.Time("next_attempt_at", time.Now().Add(delay)))
 
 	time.AfterFunc(delay, func() {
 		cp.mu.Lock()
@@ -363,14 +409,30 @@ func (cp *ConnectionPool) scheduleReconnect(accountID string, conn *ManagedConne
 
 // ExecuteTask 执行任务 (复用连接)
 func (cp *ConnectionPool) ExecuteTask(accountID string, task TaskInterface) error {
+	taskStartTime := time.Now()
+	taskType := task.GetType()
+
+	cp.logger.Info("ExecuteTask started",
+		zap.String("account_id", accountID),
+		zap.String("task_type", taskType))
+
 	config, exists := cp.configs[accountID]
 	if !exists {
 		// 动态加载账号配置
+		cp.logger.Debug("Loading account config dynamically",
+			zap.String("account_id", accountID))
 		var err error
 		config, err = cp.loadAccountConfig(accountID)
 		if err != nil {
+			cp.logger.Error("Failed to load account configuration",
+				zap.String("account_id", accountID),
+				zap.String("task_type", taskType),
+				zap.Error(err))
 			return fmt.Errorf("failed to load account configuration: %w", err)
 		}
+		cp.logger.Info("Account config loaded successfully",
+			zap.String("account_id", accountID),
+			zap.String("phone", config.Phone))
 	}
 
 	var conn *ManagedConnection
@@ -383,6 +445,11 @@ func (cp *ConnectionPool) ExecuteTask(accountID string, task TaskInterface) erro
 		if err != nil {
 			// 连接失败，更新账号状态为警告
 			cp.updateAccountStatusOnError(accountID, err)
+			cp.logger.Error("Failed to get connection",
+				zap.String("account_id", accountID),
+				zap.String("task_type", taskType),
+				zap.Int("attempt", i+1),
+				zap.Error(err))
 			return fmt.Errorf("failed to get connection: %w", err)
 		}
 
@@ -390,15 +457,27 @@ func (cp *ConnectionPool) ExecuteTask(accountID string, task TaskInterface) erro
 		conn.mu.Lock()
 		if conn.taskRunning {
 			conn.mu.Unlock()
+			cp.logger.Warn("Account is busy with another task",
+				zap.String("account_id", accountID),
+				zap.String("task_type", taskType))
 			return errors.New("account is busy with another task")
 		}
 		conn.taskRunning = true
 		conn.mu.Unlock()
 
 		// 等待连接建立完成
+		cp.logger.Debug("Waiting for connection to be ready",
+			zap.String("account_id", accountID),
+			zap.String("task_type", taskType),
+			zap.Int("attempt", i+1))
+
 		_, err = cp.waitForConnection(accountID, conn)
 		if err == nil {
 			// 成功建立连接
+			cp.logger.Info("Connection ready for task execution",
+				zap.String("account_id", accountID),
+				zap.String("task_type", taskType),
+				zap.Duration("wait_time", time.Since(taskStartTime)))
 			break
 		}
 
@@ -411,15 +490,26 @@ func (cp *ConnectionPool) ExecuteTask(accountID string, task TaskInterface) erro
 		if strings.Contains(err.Error(), "connection was replaced") || strings.Contains(err.Error(), "please retry") {
 			cp.logger.Info("Connection replaced during wait, retrying...",
 				zap.String("account_id", accountID),
+				zap.String("task_type", taskType),
 				zap.Int("attempt", i+1))
 			continue
 		}
 
 		// 其他错误直接返回
+		cp.logger.Error("Failed to wait for connection",
+			zap.String("account_id", accountID),
+			zap.String("task_type", taskType),
+			zap.Int("attempt", i+1),
+			zap.Error(err))
 		return err
 	}
 
 	if err != nil {
+		cp.logger.Error("Failed to establish connection after all retries",
+			zap.String("account_id", accountID),
+			zap.String("task_type", taskType),
+			zap.Int("max_retries", maxRetries),
+			zap.Error(err))
 		return fmt.Errorf("failed to establish connection after retries: %w", err)
 	}
 
@@ -427,36 +517,68 @@ func (cp *ConnectionPool) ExecuteTask(accountID string, task TaskInterface) erro
 	cp.updateAccountStatusOnSuccess(accountID)
 
 	// 直接使用已建立的连接执行任务
-	conn.logger.Debug("Executing task", zap.String("task_type", task.GetType()))
+	conn.logger.Info("Executing task",
+		zap.String("account_id", accountID),
+		zap.String("task_type", taskType),
+		zap.Duration("setup_time", time.Since(taskStartTime)))
 
 	// 执行任务并捕获错误
 	// 注意：不要再次调用 conn.client.Run，因为 maintainConnection 已经在运行它了
 	// 直接执行任务逻辑
+	taskExecStartTime := time.Now()
 	taskErr := func() error {
 		ctx := context.Background()
 
 		// 安全检查：确保 client 不为 nil
 		if conn.client == nil {
+			cp.logger.Error("Connection client is nil",
+				zap.String("account_id", accountID),
+				zap.String("task_type", taskType))
 			return errors.New("connection client is nil")
 		}
 
 		if advancedTask, ok := task.(AdvancedTaskInterface); ok {
+			cp.logger.Debug("Executing advanced task",
+				zap.String("account_id", accountID),
+				zap.String("task_type", taskType))
 			return advancedTask.ExecuteAdvanced(ctx, conn.client)
 		}
 
 		// 安全检查：确保 API 不为 nil
 		api := conn.client.API()
 		if api == nil {
+			cp.logger.Error("Connection API is nil",
+				zap.String("account_id", accountID),
+				zap.String("task_type", taskType))
 			return errors.New("connection API is nil, connection may not be fully established")
 		}
 
 		return task.Execute(ctx, api)
 	}()
 
+	taskExecDuration := time.Since(taskExecStartTime)
+	totalDuration := time.Since(taskStartTime)
+
+	// 释放任务运行状态
+	conn.mu.Lock()
+	conn.taskRunning = false
+	conn.mu.Unlock()
+
 	// 根据任务执行结果更新账号状态
 	if taskErr != nil {
+		cp.logger.Error("Task execution failed",
+			zap.String("account_id", accountID),
+			zap.String("task_type", taskType),
+			zap.Duration("exec_duration", taskExecDuration),
+			zap.Duration("total_duration", totalDuration),
+			zap.Error(taskErr))
 		cp.updateAccountStatusOnTaskError(accountID, taskErr)
 	} else {
+		cp.logger.Info("Task execution completed successfully",
+			zap.String("account_id", accountID),
+			zap.String("task_type", taskType),
+			zap.Duration("exec_duration", taskExecDuration),
+			zap.Duration("total_duration", totalDuration))
 		cp.updateAccountStatusOnSuccess(accountID)
 	}
 

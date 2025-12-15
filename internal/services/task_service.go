@@ -97,8 +97,19 @@ type TaskFilter struct {
 
 // CreateTask 创建任务
 func (s *TaskService) CreateTask(userID uint64, req *models.CreateTaskRequest) (*models.Task, error) {
+	s.logger.Info("Creating new task",
+		zap.Uint64("user_id", userID),
+		zap.String("task_type", string(req.TaskType)),
+		zap.Int("account_count", len(req.AccountIDs)),
+		zap.Int("priority", req.Priority),
+		zap.Bool("auto_start", req.AutoStart))
+
 	// 验证请求
 	if err := req.Validate(); err != nil {
+		s.logger.Warn("Task validation failed",
+			zap.Uint64("user_id", userID),
+			zap.String("task_type", string(req.TaskType)),
+			zap.Error(err))
 		return nil, err
 	}
 
@@ -106,11 +117,19 @@ func (s *TaskService) CreateTask(userID uint64, req *models.CreateTaskRequest) (
 	for _, accountID := range req.AccountIDs {
 		account, err := s.accountRepo.GetByUserIDAndID(userID, accountID)
 		if err != nil {
+			s.logger.Warn("Account not found or not owned by user",
+				zap.Uint64("user_id", userID),
+				zap.Uint64("account_id", accountID),
+				zap.Error(err))
 			return nil, fmt.Errorf("account %d not found or not owned by user: %w", accountID, err)
 		}
 
 		// 检查账号状态
 		if !account.IsAvailable() {
+			s.logger.Warn("Account is not available for task",
+				zap.Uint64("user_id", userID),
+				zap.Uint64("account_id", accountID),
+				zap.String("status", string(account.Status)))
 			return nil, fmt.Errorf("account %d is not available, status: %s", accountID, account.Status)
 		}
 	}
@@ -380,18 +399,31 @@ func (s *TaskService) RetryTask(userID, taskID uint64) (*models.Task, error) {
 
 // StartTask 启动任务
 func (s *TaskService) StartTask(userID, taskID uint64) error {
+	s.logger.Info("Starting task manually",
+		zap.Uint64("user_id", userID),
+		zap.Uint64("task_id", taskID))
+
 	task, err := s.taskRepo.GetByUserIDAndID(userID, taskID)
 	if err != nil {
+		s.logger.Warn("Task not found for start",
+			zap.Uint64("user_id", userID),
+			zap.Uint64("task_id", taskID),
+			zap.Error(err))
 		return ErrTaskNotFound
 	}
 
 	// 检查任务状态是否可以启动
 	if task.Status != models.TaskStatusPending && task.Status != models.TaskStatusPaused {
+		s.logger.Warn("Task cannot be started due to status",
+			zap.Uint64("task_id", taskID),
+			zap.String("current_status", string(task.Status)))
 		return fmt.Errorf("task status %s cannot be started", task.Status)
 	}
 
 	// 提交给调度器
 	if s.scheduler == nil {
+		s.logger.Error("Task scheduler not available",
+			zap.Uint64("task_id", taskID))
 		return fmt.Errorf("task scheduler not available")
 	}
 
@@ -399,6 +431,7 @@ func (s *TaskService) StartTask(userID, taskID uint64) error {
 		logger.LogTask(zapcore.ErrorLevel, "Failed to start task",
 			zap.Uint64("task_id", taskID),
 			zap.String("task_type", string(task.TaskType)),
+			zap.Any("account_ids", task.GetAccountIDList()),
 			zap.Error(err))
 		return fmt.Errorf("failed to start task: %w", err)
 	}
@@ -406,28 +439,43 @@ func (s *TaskService) StartTask(userID, taskID uint64) error {
 	logger.LogTask(zapcore.InfoLevel, "Task started manually",
 		zap.Uint64("user_id", userID),
 		zap.Uint64("task_id", taskID),
-		zap.String("task_type", string(task.TaskType)))
+		zap.String("task_type", string(task.TaskType)),
+		zap.Any("account_ids", task.GetAccountIDList()),
+		zap.String("previous_status", string(task.Status)))
 
 	return nil
 }
 
 // PauseTask 暂停任务
 func (s *TaskService) PauseTask(userID, taskID uint64) error {
+	s.logger.Info("Pausing task",
+		zap.Uint64("user_id", userID),
+		zap.Uint64("task_id", taskID))
+
 	task, err := s.taskRepo.GetByUserIDAndID(userID, taskID)
 	if err != nil {
+		s.logger.Warn("Task not found for pause",
+			zap.Uint64("user_id", userID),
+			zap.Uint64("task_id", taskID),
+			zap.Error(err))
 		return ErrTaskNotFound
 	}
 
 	// 检查任务状态
 	if task.Status != models.TaskStatusQueued && task.Status != models.TaskStatusRunning {
+		s.logger.Warn("Task cannot be paused due to status",
+			zap.Uint64("task_id", taskID),
+			zap.String("current_status", string(task.Status)))
 		return fmt.Errorf("task status %s cannot be paused", task.Status)
 	}
 
+	previousStatus := task.Status
 	// 如果任务正在运行，只能等待其完成，但标记为paused状态
 	task.Status = models.TaskStatusPaused
 	if err := s.taskRepo.Update(task); err != nil {
 		logger.LogTask(zapcore.ErrorLevel, "Failed to pause task",
 			zap.Uint64("task_id", taskID),
+			zap.String("task_type", string(task.TaskType)),
 			zap.Error(err))
 		return fmt.Errorf("failed to pause task: %w", err)
 	}
@@ -435,7 +483,9 @@ func (s *TaskService) PauseTask(userID, taskID uint64) error {
 	logger.LogTask(zapcore.InfoLevel, "Task paused",
 		zap.Uint64("user_id", userID),
 		zap.Uint64("task_id", taskID),
-		zap.String("task_type", string(task.TaskType)))
+		zap.String("task_type", string(task.TaskType)),
+		zap.String("previous_status", string(previousStatus)),
+		zap.Any("account_ids", task.GetAccountIDList()))
 
 	return nil
 }
@@ -448,24 +498,40 @@ func (s *TaskService) StopTask(userID, taskID uint64) error {
 
 // ResumeTask 恢复任务
 func (s *TaskService) ResumeTask(userID, taskID uint64) error {
+	s.logger.Info("Resuming task",
+		zap.Uint64("user_id", userID),
+		zap.Uint64("task_id", taskID))
+
 	task, err := s.taskRepo.GetByUserIDAndID(userID, taskID)
 	if err != nil {
+		s.logger.Warn("Task not found for resume",
+			zap.Uint64("user_id", userID),
+			zap.Uint64("task_id", taskID),
+			zap.Error(err))
 		return ErrTaskNotFound
 	}
 
 	// 检查任务状态
 	if task.Status != models.TaskStatusPaused {
+		s.logger.Warn("Task cannot be resumed due to status",
+			zap.Uint64("task_id", taskID),
+			zap.String("current_status", string(task.Status)))
 		return fmt.Errorf("task status %s cannot be resumed", task.Status)
 	}
 
 	// 重新提交给调度器
 	if s.scheduler == nil {
+		s.logger.Error("Task scheduler not available for resume",
+			zap.Uint64("task_id", taskID))
 		return fmt.Errorf("task scheduler not available")
 	}
 
 	// 将状态改回pending
 	task.Status = models.TaskStatusPending
 	if err := s.taskRepo.Update(task); err != nil {
+		s.logger.Error("Failed to update task status for resume",
+			zap.Uint64("task_id", taskID),
+			zap.Error(err))
 		return fmt.Errorf("failed to update task status: %w", err)
 	}
 
@@ -473,6 +539,7 @@ func (s *TaskService) ResumeTask(userID, taskID uint64) error {
 		logger.LogTask(zapcore.ErrorLevel, "Failed to resume task",
 			zap.Uint64("task_id", taskID),
 			zap.String("task_type", string(task.TaskType)),
+			zap.Any("account_ids", task.GetAccountIDList()),
 			zap.Error(err))
 		return fmt.Errorf("failed to resume task: %w", err)
 	}
@@ -480,7 +547,8 @@ func (s *TaskService) ResumeTask(userID, taskID uint64) error {
 	logger.LogTask(zapcore.InfoLevel, "Task resumed",
 		zap.Uint64("user_id", userID),
 		zap.Uint64("task_id", taskID),
-		zap.String("task_type", string(task.TaskType)))
+		zap.String("task_type", string(task.TaskType)),
+		zap.Any("account_ids", task.GetAccountIDList()))
 
 	return nil
 }

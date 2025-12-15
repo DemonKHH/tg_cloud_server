@@ -290,8 +290,17 @@ func (ts *TaskScheduler) processQueues() {
 
 	// 标记任务为运行中
 	ts.runningTasks[task.ID] = true
+	runningCount := len(ts.runningTasks)
+	queueSize := len(ts.taskQueue)
 
 	ts.mu.Unlock()
+
+	ts.logger.Info("Task dequeued for execution",
+		zap.Uint64("task_id", task.ID),
+		zap.String("task_type", string(task.TaskType)),
+		zap.Int("priority", task.Priority),
+		zap.Int("running_tasks", runningCount),
+		zap.Int("remaining_queue_size", queueSize))
 
 	// 异步执行任务
 	go func() {
@@ -607,33 +616,61 @@ func (ts *TaskScheduler) completeTaskWithSuccess(task *models.Task) {
 
 // performRiskControlCheck 执行风控检查
 func (ts *TaskScheduler) performRiskControlCheck(task *models.Task, accountID string) error {
+	ts.logger.Debug("Starting risk control check",
+		zap.Uint64("task_id", task.ID),
+		zap.String("account_id", accountID),
+		zap.String("task_type", string(task.TaskType)))
+
 	// 获取账号信息
 	accountIDUint, err := strconv.ParseUint(accountID, 10, 64)
 	if err != nil {
+		ts.logger.Error("Invalid account ID format",
+			zap.String("account_id", accountID),
+			zap.Error(err))
 		return fmt.Errorf("invalid account ID: %w", err)
 	}
 
 	// 使用风控服务检查（如果已设置）
 	if ts.riskControlService != nil {
+		ts.logger.Debug("Checking with risk control service",
+			zap.Uint64("task_id", task.ID),
+			zap.Uint64("account_id", accountIDUint))
 		allowed, reason := ts.riskControlService.CanExecuteTask(ts.ctx, accountIDUint, task.TaskType)
 		if !allowed {
+			ts.logger.Warn("Risk control service denied task execution",
+				zap.Uint64("task_id", task.ID),
+				zap.Uint64("account_id", accountIDUint),
+				zap.String("task_type", string(task.TaskType)),
+				zap.String("reason", reason))
 			return fmt.Errorf("risk control check failed: %s", reason)
 		}
 	}
 
 	account, err := ts.accountRepo.GetByID(accountIDUint)
 	if err != nil {
+		ts.logger.Error("Failed to get account for risk check",
+			zap.Uint64("account_id", accountIDUint),
+			zap.Error(err))
 		return fmt.Errorf("failed to get account: %w", err)
 	}
 
 	// 检查账号是否忙碌
 	if ts.connectionPool.IsAccountBusy(accountID) {
+		ts.logger.Warn("Account is busy with another task",
+			zap.Uint64("task_id", task.ID),
+			zap.String("account_id", accountID),
+			zap.String("phone", account.Phone))
 		return fmt.Errorf("account is busy with another task")
 	}
 
 	// 连接状态检查移到实际执行时进行，这里只检查连接是否处于错误状态
 	connStatus := ts.connectionPool.GetConnectionStatus(accountID)
 	if connStatus == telegram.StatusConnectionError {
+		ts.logger.Warn("Account connection has persistent error",
+			zap.Uint64("task_id", task.ID),
+			zap.String("account_id", accountID),
+			zap.String("phone", account.Phone),
+			zap.String("connection_status", connStatus.String()))
 		return fmt.Errorf("account connection has persistent error")
 	}
 
@@ -650,16 +687,20 @@ func (ts *TaskScheduler) performRiskControlCheck(task *models.Task, accountID st
 		// 同一类型任务队列中超过5个，记录警告
 		if sameTypeCount >= 5 {
 			ts.logger.Warn("Too many tasks of same type in queue",
+				zap.Uint64("task_id", task.ID),
 				zap.String("account_id", accountID),
+				zap.String("phone", account.Phone),
 				zap.String("task_type", string(task.TaskType)),
 				zap.Int("count", sameTypeCount))
 		}
 	}
 
-	ts.logger.Debug("Risk control check passed",
+	ts.logger.Info("Risk control check passed",
 		zap.Uint64("task_id", task.ID),
 		zap.String("account_id", accountID),
-		zap.String("status", string(account.Status)))
+		zap.String("phone", account.Phone),
+		zap.String("account_status", string(account.Status)),
+		zap.String("connection_status", connStatus.String()))
 
 	return nil
 }

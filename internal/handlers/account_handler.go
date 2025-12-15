@@ -589,11 +589,22 @@ func (h *AccountHandler) BatchSet2FA(c *gin.Context) {
 		return
 	}
 
+	h.logger.Info("Batch setting 2FA passwords",
+		zap.Uint64("user_id", userID),
+		zap.Int("account_count", len(req.AccountIDs)))
+
 	if err := h.accountService.BatchSet2FA(userID, &req); err != nil {
-		h.logger.Error("Failed to batch set 2fa", zap.Error(err))
+		h.logger.Error("Failed to batch set 2fa",
+			zap.Uint64("user_id", userID),
+			zap.Int("account_count", len(req.AccountIDs)),
+			zap.Error(err))
 		response.InternalError(c, "批量设置2FA失败")
 		return
 	}
+
+	h.logger.Info("Batch 2FA passwords set successfully",
+		zap.Uint64("user_id", userID),
+		zap.Int("account_count", len(req.AccountIDs)))
 
 	response.SuccessWithMessage(c, "批量设置2FA密码成功", nil)
 }
@@ -636,8 +647,18 @@ func (h *AccountHandler) BatchUpdate2FA(c *gin.Context) {
 
 // handleFileUpload 处理文件上传
 func (h *AccountHandler) handleFileUpload(c *gin.Context, userID uint64, file multipart.File, header *multipart.FileHeader, proxyID *uint64) {
+	h.logger.Info("Processing file upload",
+		zap.Uint64("user_id", userID),
+		zap.String("filename", header.Filename),
+		zap.Int64("file_size", header.Size),
+		zap.Any("proxy_id", proxyID))
+
 	// 验证文件大小（100MB限制）
 	if header.Size > 100*1024*1024 {
+		h.logger.Warn("File size exceeds limit",
+			zap.Uint64("user_id", userID),
+			zap.String("filename", header.Filename),
+			zap.Int64("file_size", header.Size))
 		response.InvalidParam(c, "文件大小超过100MB限制")
 		return
 	}
@@ -645,7 +666,9 @@ func (h *AccountHandler) handleFileUpload(c *gin.Context, userID uint64, file mu
 	// 创建临时文件
 	tempDir, err := os.MkdirTemp("", "account_upload_*")
 	if err != nil {
-		h.logger.Error("创建临时目录失败", zap.Error(err))
+		h.logger.Error("创建临时目录失败",
+			zap.Uint64("user_id", userID),
+			zap.Error(err))
 		response.InternalError(c, "创建临时目录失败")
 		return
 	}

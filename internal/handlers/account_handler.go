@@ -1,12 +1,15 @@
 package handlers
 
 import (
+	"archive/zip"
+	"bytes"
 	"fmt"
 	"io"
 	"mime/multipart"
 	"os"
 	"path/filepath"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -890,4 +893,118 @@ func (h *AccountHandler) handleFileUpload(c *gin.Context, userID uint64, file mu
 		zap.Int("failed", len(allErrors)))
 
 	response.SuccessWithMessage(c, fmt.Sprintf("成功创建 %d 个账号，失败 %d 个", len(createdAccounts), len(allErrors)), result)
+}
+
+// ExportAccounts 导出账号
+// @Summary 导出账号
+// @Description 导出选中的账号为zip文件，每个账号一个文件夹，包含session文件
+// @Tags 账号管理
+// @Accept json
+// @Produce application/zip
+// @Security ApiKeyAuth
+// @Param request body models.ExportAccountsRequest true "导出请求"
+// @Success 200 {file} file "zip文件"
+// @Failure 400 {object} map[string]string "请求错误"
+// @Failure 401 {object} map[string]string "未授权"
+// @Failure 500 {object} map[string]string "服务器错误"
+// @Router /api/v1/accounts/export [post]
+func (h *AccountHandler) ExportAccounts(c *gin.Context) {
+	userID := h.getUserID(c)
+	if userID == 0 {
+		return
+	}
+
+	var req models.ExportAccountsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		h.logger.Warn("Invalid export accounts request", zap.Error(err))
+		response.InvalidParam(c, "请求参数无效："+err.Error())
+		return
+	}
+
+	if len(req.AccountIDs) == 0 {
+		response.InvalidParam(c, "账号ID列表不能为空")
+		return
+	}
+
+	h.logger.Info("Exporting accounts",
+		zap.Uint64("user_id", userID),
+		zap.Int("account_count", len(req.AccountIDs)))
+
+	// 获取账号数据
+	accounts, err := h.accountService.GetAccountsForExport(userID, req.AccountIDs)
+	if err != nil {
+		h.logger.Error("Failed to get accounts for export",
+			zap.Uint64("user_id", userID),
+			zap.Error(err))
+		response.InternalError(c, "获取账号数据失败")
+		return
+	}
+
+	if len(accounts) == 0 {
+		response.InvalidParam(c, "没有找到可导出的账号")
+		return
+	}
+
+	// 创建zip文件
+	buf := new(bytes.Buffer)
+	zipWriter := zip.NewWriter(buf)
+
+	exportedCount := 0
+	for _, account := range accounts {
+		if account.SessionData == "" {
+			h.logger.Warn("Account has no session data, skipping",
+				zap.Uint64("account_id", account.ID),
+				zap.String("phone", account.Phone))
+			continue
+		}
+
+		// 创建文件夹路径: 手机号/手机号.session
+		folderPath := account.Phone + "/"
+		sessionFileName := folderPath + account.Phone + ".session"
+
+		// 创建session文件
+		fileWriter, err := zipWriter.Create(sessionFileName)
+		if err != nil {
+			h.logger.Error("Failed to create file in zip",
+				zap.String("phone", account.Phone),
+				zap.Error(err))
+			continue
+		}
+
+		// 写入session数据
+		_, err = fileWriter.Write([]byte(account.SessionData))
+		if err != nil {
+			h.logger.Error("Failed to write session data",
+				zap.String("phone", account.Phone),
+				zap.Error(err))
+			continue
+		}
+
+		exportedCount++
+	}
+
+	// 关闭zip writer
+	if err := zipWriter.Close(); err != nil {
+		h.logger.Error("Failed to close zip writer", zap.Error(err))
+		response.InternalError(c, "创建zip文件失败")
+		return
+	}
+
+	if exportedCount == 0 {
+		response.InvalidParam(c, "没有可导出的账号数据")
+		return
+	}
+
+	h.logger.Info("Accounts exported successfully",
+		zap.Uint64("user_id", userID),
+		zap.Int("exported_count", exportedCount))
+
+	// 设置响应头
+	fileName := fmt.Sprintf("accounts_export_%s.zip", time.Now().Format("20060102_150405"))
+	c.Header("Content-Type", "application/zip")
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s", fileName))
+	c.Header("Content-Length", fmt.Sprintf("%d", buf.Len()))
+
+	// 发送文件
+	c.Data(200, "application/zip", buf.Bytes())
 }

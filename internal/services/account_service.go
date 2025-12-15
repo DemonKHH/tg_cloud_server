@@ -803,3 +803,30 @@ func (s *AccountService) BatchBindProxy(userID uint64, accountIDs []uint64, prox
 
 	return successCount, failedCount, nil
 }
+
+// GetAccountsForExport 获取用于导出的账号数据
+func (s *AccountService) GetAccountsForExport(userID uint64, accountIDs []uint64) ([]*models.TGAccount, error) {
+	s.logger.Info("Getting accounts for export",
+		zap.Uint64("user_id", userID),
+		zap.Int("account_count", len(accountIDs)))
+
+	var accounts []*models.TGAccount
+
+	for _, accountID := range accountIDs {
+		account, err := s.accountRepo.GetByUserIDAndID(userID, accountID)
+		if err != nil {
+			s.logger.Warn("Account not found or not owned by user",
+				zap.Uint64("user_id", userID),
+				zap.Uint64("account_id", accountID),
+				zap.Error(err))
+			continue
+		}
+		accounts = append(accounts, account)
+	}
+
+	s.logger.Info("Accounts retrieved for export",
+		zap.Uint64("user_id", userID),
+		zap.Int("found_count", len(accounts)))
+
+	return accounts, nil
+}

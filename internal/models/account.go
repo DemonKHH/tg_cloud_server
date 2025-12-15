@@ -247,6 +247,11 @@ type BatchBindProxyRequest struct {
 	ProxyID    *uint64  `json:"proxy_id"` // nil表示解绑代理
 }
 
+// ExportAccountsRequest 导出账号请求
+type ExportAccountsRequest struct {
+	AccountIDs []uint64 `json:"account_ids" binding:"required,min=1"`
+}
+
 // AccountHealthReport 账号健康报告
 type AccountHealthReport struct {
 	AccountID    uint64                 `json:"account_id"`

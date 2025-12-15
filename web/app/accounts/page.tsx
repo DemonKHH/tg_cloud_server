@@ -12,7 +12,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import { Plus, CheckCircle2, XCircle, AlertCircle, Upload, FileArchive, Search, Lock, Unlock, LogOut, Copy } from "lucide-react"
+import { Plus, CheckCircle2, XCircle, AlertCircle, Upload, FileArchive, Search, Lock, Unlock, LogOut, Copy, Download } from "lucide-react"
 import {
   Tooltip,
   TooltipContent,
@@ -186,6 +186,35 @@ export default function AccountsPage() {
       toast.error(error instanceof Error ? error.message : "批量删除失败")
     } finally {
       setBatchDeleting(false)
+    }
+  }
+
+  // 导出账号相关状态
+  const [exporting, setExporting] = useState(false)
+
+  const handleExportAccounts = async () => {
+    if (selectedAccountIds.length === 0) return
+
+    try {
+      setExporting(true)
+      const blob = await accountAPI.export(selectedAccountIds)
+      
+      // 创建下载链接
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `accounts_export_${new Date().toISOString().slice(0, 10)}.zip`
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+      
+      toast.success(`成功导出 ${selectedAccountIds.length} 个账号`)
+      setSelectedAccountIds([])
+    } catch (error: any) {
+      toast.error(error instanceof Error ? error.message : "导出失败")
+    } finally {
+      setExporting(false)
     }
   }
 
@@ -1184,6 +1213,24 @@ export default function AccountsPage() {
                         </TooltipTrigger>
                         <TooltipContent>
                           <p>批量解绑选中账号的代理</p>
+                        </TooltipContent>
+                      </Tooltip>
+
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-8 px-3 bg-background/50 hover:bg-green-500/10 hover:text-green-600 border-dashed"
+                            onClick={handleExportAccounts}
+                            disabled={exporting}
+                          >
+                            <Download className="h-4 w-4 mr-2" />
+                            {exporting ? "导出中..." : "导出账号"}
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>导出选中账号为zip文件</p>
                         </TooltipContent>
                       </Tooltip>
 

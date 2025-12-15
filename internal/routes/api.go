@@ -58,6 +58,7 @@ func RegisterAPIRoutes(
 		accounts.GET("/:id/availability", accountHandler.GetAccountAvailability) // 获取可用性
 		accounts.POST("/:id/bind-proxy", accountHandler.BindProxy)               // 绑定代理
 		accounts.POST("/upload", accountHandler.UploadAccountFiles)              // 上传并解析账号文件
+		accounts.POST("/export", accountHandler.ExportAccounts)                  // 导出账号
 
 		// 批量操作
 		accounts.POST("/batch/bind-proxy", accountHandler.BatchBindProxy)  // 批量绑定/解绑代理

@@ -235,6 +235,23 @@ export const accountAPI = {
     apiClient.post('/accounts/batch/update-2fa', { account_ids: accountIds.map(Number), new_password: newPassword, old_password: oldPassword }),
   batchDelete: (accountIds: string[]) =>
     apiClient.post('/accounts/batch/delete', { account_ids: accountIds.map(Number) }),
+  export: async (accountIds: string[]) => {
+    const url = `${process.env.NEXT_PUBLIC_API_URL || '/api/v1'}/accounts/export`;
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ account_ids: accountIds.map(Number) }),
+    });
+    if (!response.ok) {
+      const data = await response.json();
+      throw new Error(data.msg || '导出失败');
+    }
+    return response.blob();
+  },
 };
 
 // 任务管理API

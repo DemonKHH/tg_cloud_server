@@ -272,6 +272,8 @@ func (s *proxyService) TestProxy(userID, proxyID uint64) (*models.ProxyTestResul
 		result.Success = false
 		result.Error = err.Error()
 		proxy.Status = models.StatusError
+		// 测试失败时降低成功率（简单实现：设为0%，可以改为滑动窗口计算）
+		proxy.SuccessRate = 0.0
 		s.logger.Warn("Proxy test failed",
 			zap.Uint64("proxy_id", proxyID),
 			zap.String("ip", proxy.IP),
@@ -281,6 +283,10 @@ func (s *proxyService) TestProxy(userID, proxyID uint64) (*models.ProxyTestResul
 	} else {
 		result.Success = true
 		proxy.Status = models.StatusActive
+		// 更新平均延迟（简单实现：直接使用本次延迟，可以改为滑动平均）
+		proxy.AvgLatency = result.Latency
+		// 更新成功率（简单实现：成功则设为100%，可以改为滑动窗口计算）
+		proxy.SuccessRate = 100.0
 		s.logger.Info("Proxy test successful",
 			zap.Uint64("proxy_id", proxyID),
 			zap.String("ip", proxy.IP),
@@ -289,7 +295,7 @@ func (s *proxyService) TestProxy(userID, proxyID uint64) (*models.ProxyTestResul
 			zap.Duration("duration", duration))
 	}
 
-	// 更新代理状态和最后测试时间
+	// 更新代理状态、延迟和最后测试时间
 	proxy.LastTestAt = &result.TestedAt
 	if updateErr := s.proxyRepo.Update(proxy); updateErr != nil {
 		s.logger.Error("Failed to update proxy status after test",

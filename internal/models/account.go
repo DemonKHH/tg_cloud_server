@@ -290,6 +290,7 @@ type UpdateTaskRequest struct {
 // TelegramAccountInfo Telegram 账号信息（用于更新）
 type TelegramAccountInfo struct {
 	TgUserID  *int64  `json:"tg_user_id,omitempty"`
+	Phone     *string `json:"phone,omitempty"`
 	Username  *string `json:"username,omitempty"`
 	FirstName *string `json:"first_name,omitempty"`
 	LastName  *string `json:"last_name,omitempty"`

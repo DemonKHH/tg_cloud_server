@@ -938,6 +938,10 @@ func (cp *ConnectionPool) updateAccountInfoFromTelegram(accountID string, conn *
 		info.TgUserID = &userID
 	}
 
+	if user.Phone != "" {
+		info.Phone = &user.Phone
+	}
+
 	if user.Username != "" {
 		info.Username = &user.Username
 	}
@@ -996,6 +1000,9 @@ func (cp *ConnectionPool) updateAccountInfoFromTelegram(accountID string, conn *
 	// 更新字段
 	if info.TgUserID != nil {
 		account.TgUserID = info.TgUserID
+	}
+	if info.Phone != nil && *info.Phone != "" {
+		account.Phone = *info.Phone
 	}
 	if info.Username != nil {
 		account.Username = info.Username

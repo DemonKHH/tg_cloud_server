@@ -233,6 +233,8 @@ export const accountAPI = {
     apiClient.post('/accounts/batch/set-2fa', { account_ids: accountIds.map(Number), password }),
   batchUpdate2FA: (accountIds: string[], newPassword: string, oldPassword?: string) =>
     apiClient.post('/accounts/batch/update-2fa', { account_ids: accountIds.map(Number), new_password: newPassword, old_password: oldPassword }),
+  batchDelete: (accountIds: string[]) =>
+    apiClient.post('/accounts/batch/delete', { account_ids: accountIds.map(Number) }),
 };
 
 // 任务管理API

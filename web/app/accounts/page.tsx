@@ -92,6 +92,32 @@ export default function AccountsPage() {
   const [batchSet2FADialogOpen, setBatchSet2FADialogOpen] = useState(false)
   const [batchSet2FAPassword, setBatchSet2FAPassword] = useState("")
 
+  // 批量删除相关状态
+  const [batchDeleteDialogOpen, setBatchDeleteDialogOpen] = useState(false)
+  const [batchDeleting, setBatchDeleting] = useState(false)
+
+  const handleBatchDelete = async () => {
+    if (selectedAccountIds.length === 0) return
+    
+    try {
+      setBatchDeleting(true)
+      const res = await accountAPI.batchDelete(selectedAccountIds)
+      if (res.code === 0) {
+        const data = res.data as any
+        toast.success(`成功删除 ${data?.success_count || selectedAccountIds.length} 个账号`)
+        setBatchDeleteDialogOpen(false)
+        setSelectedAccountIds([])
+        refresh()
+      } else {
+        toast.error(res.msg || "批量删除失败")
+      }
+    } catch (error: any) {
+      toast.error(error instanceof Error ? error.message : "批量删除失败")
+    } finally {
+      setBatchDeleting(false)
+    }
+  }
+
   const handleBatchSet2FA = async () => {
     if (!batchSet2FAPassword) {
       toast.error("请输入密码")
@@ -1025,6 +1051,23 @@ export default function AccountsPage() {
                         </TooltipTrigger>
                         <TooltipContent>
                           <p>批量生成验证码访问链接</p>
+                        </TooltipContent>
+                      </Tooltip>
+
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-8 px-3 bg-background/50 hover:bg-red-500/10 hover:text-red-600 border-dashed"
+                            onClick={() => setBatchDeleteDialogOpen(true)}
+                          >
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            批量删除
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>批量删除选中的账号</p>
                         </TooltipContent>
                       </Tooltip>
                     </TooltipProvider>
@@ -2003,6 +2046,33 @@ export default function AccountsPage() {
         </DialogContent>
       </Dialog>
 
+      {/* 批量删除确认对话框 */}
+      <Dialog open={batchDeleteDialogOpen} onOpenChange={setBatchDeleteDialogOpen}>
+        <DialogContent className="sm:max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle className="text-xl text-red-600 flex items-center gap-2">
+              <AlertCircle className="h-5 w-5" />
+              确认批量删除
+            </DialogTitle>
+            <DialogDescription className="pt-2">
+              您确定要删除选中的 <span className="font-semibold text-red-600">{selectedAccountIds.length}</span> 个账号吗？此操作不可撤销。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2 pt-4">
+            <Button variant="outline" onClick={() => setBatchDeleteDialogOpen(false)} className="btn-modern" disabled={batchDeleting}>
+              取消
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleBatchDelete}
+              className="btn-modern bg-red-600 hover:bg-red-700"
+              disabled={batchDeleting}
+            >
+              {batchDeleting ? "删除中..." : "确认删除"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
     </MainLayout >
   )

@@ -701,3 +701,42 @@ func (s *AccountService) BatchUpdate2FA(userID uint64, req *models.BatchUpdate2F
 
 	return results, nil
 }
+
+// BatchDeleteAccounts 批量删除账号
+func (s *AccountService) BatchDeleteAccounts(userID uint64, accountIDs []uint64) (successCount int, failedCount int, err error) {
+	s.logger.Info("Starting batch delete accounts",
+		zap.Uint64("user_id", userID),
+		zap.Int("account_count", len(accountIDs)))
+
+	for _, accountID := range accountIDs {
+		// 验证账号属于当前用户
+		_, err := s.accountRepo.GetByUserIDAndID(userID, accountID)
+		if err != nil {
+			s.logger.Warn("Account not found or not owned by user",
+				zap.Uint64("user_id", userID),
+				zap.Uint64("account_id", accountID),
+				zap.Error(err))
+			failedCount++
+			continue
+		}
+
+		// 删除账号
+		if err := s.accountRepo.Delete(accountID); err != nil {
+			s.logger.Error("Failed to delete account",
+				zap.Uint64("user_id", userID),
+				zap.Uint64("account_id", accountID),
+				zap.Error(err))
+			failedCount++
+			continue
+		}
+
+		successCount++
+	}
+
+	s.logger.Info("Batch delete accounts completed",
+		zap.Uint64("user_id", userID),
+		zap.Int("success_count", successCount),
+		zap.Int("failed_count", failedCount))
+
+	return successCount, failedCount, nil
+}

@@ -236,6 +236,11 @@ type BatchUpdate2FARequest struct {
 	NewPassword string   `json:"new_password" binding:"required"`
 }
 
+// BatchDeleteAccountsRequest 批量删除账号请求
+type BatchDeleteAccountsRequest struct {
+	AccountIDs []uint64 `json:"account_ids" binding:"required,min=1"`
+}
+
 // AccountHealthReport 账号健康报告
 type AccountHealthReport struct {
 	AccountID    uint64                 `json:"account_id"`

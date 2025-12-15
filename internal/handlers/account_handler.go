@@ -645,6 +645,62 @@ func (h *AccountHandler) BatchUpdate2FA(c *gin.Context) {
 	response.SuccessWithMessage(c, "批量修改2FA操作完成", results)
 }
 
+// BatchDeleteAccounts 批量删除账号
+// @Summary 批量删除账号
+// @Description 批量删除指定的TG账号
+// @Tags 账号管理
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param request body models.BatchDeleteAccountsRequest true "删除信息"
+// @Success 200 {object} map[string]interface{} "操作结果"
+// @Failure 400 {object} map[string]string "请求错误"
+// @Failure 401 {object} map[string]string "未授权"
+// @Failure 500 {object} map[string]string "服务器错误"
+// @Router /api/v1/accounts/batch/delete [post]
+func (h *AccountHandler) BatchDeleteAccounts(c *gin.Context) {
+	userID := h.getUserID(c)
+	if userID == 0 {
+		return
+	}
+
+	var req models.BatchDeleteAccountsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		h.logger.Warn("Invalid batch delete accounts request", zap.Error(err))
+		response.InvalidParam(c, "请求参数无效："+err.Error())
+		return
+	}
+
+	if len(req.AccountIDs) == 0 {
+		response.InvalidParam(c, "账号ID列表不能为空")
+		return
+	}
+
+	h.logger.Info("Batch deleting accounts",
+		zap.Uint64("user_id", userID),
+		zap.Int("account_count", len(req.AccountIDs)))
+
+	successCount, failedCount, err := h.accountService.BatchDeleteAccounts(userID, req.AccountIDs)
+	if err != nil {
+		h.logger.Error("Failed to batch delete accounts",
+			zap.Uint64("user_id", userID),
+			zap.Int("account_count", len(req.AccountIDs)),
+			zap.Error(err))
+		response.InternalError(c, "批量删除账号失败")
+		return
+	}
+
+	h.logger.Info("Batch delete accounts completed",
+		zap.Uint64("user_id", userID),
+		zap.Int("success_count", successCount),
+		zap.Int("failed_count", failedCount))
+
+	response.SuccessWithMessage(c, fmt.Sprintf("成功删除 %d 个账号，失败 %d 个", successCount, failedCount), gin.H{
+		"success_count": successCount,
+		"failed_count":  failedCount,
+	})
+}
+
 // handleFileUpload 处理文件上传
 func (h *AccountHandler) handleFileUpload(c *gin.Context, userID uint64, file multipart.File, header *multipart.FileHeader, proxyID *uint64) {
 	h.logger.Info("Processing file upload",

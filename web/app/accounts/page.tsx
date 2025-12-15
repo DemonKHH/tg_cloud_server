@@ -51,6 +51,8 @@ export default function AccountsPage() {
     setSearch,
     setPage,
     refresh,
+    filters,
+    updateFilter,
   } = usePagination({
     fetchFn: accountAPI.list,
     pageSize: 50, // 每页50个
@@ -810,7 +812,7 @@ export default function AccountsPage() {
         {/* Search Bar */}
         <Card className="border-none shadow-sm">
           <CardContent className="p-4">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-3">
               <div className="relative flex-1 max-w-md">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
@@ -820,15 +822,38 @@ export default function AccountsPage() {
                   className="pl-9 input-modern"
                 />
               </div>
-              {search && (
+              <Select
+                value={filters.status || "all"}
+                onValueChange={(value) => updateFilter("status", value === "all" ? "" : value)}
+              >
+                <SelectTrigger className="w-[140px]">
+                  <SelectValue placeholder="全部状态" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">全部状态</SelectItem>
+                  <SelectItem value="new">新建</SelectItem>
+                  <SelectItem value="normal">正常</SelectItem>
+                  <SelectItem value="warning">警告</SelectItem>
+                  <SelectItem value="restricted">限制</SelectItem>
+                  <SelectItem value="dead">死亡</SelectItem>
+                  <SelectItem value="cooling">冷却</SelectItem>
+                  <SelectItem value="maintenance">维护</SelectItem>
+                  <SelectItem value="two_way">双向</SelectItem>
+                  <SelectItem value="frozen">冻结</SelectItem>
+                </SelectContent>
+              </Select>
+              {(search || filters.status) && (
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => setSearch("")}
+                  onClick={() => {
+                    setSearch("")
+                    updateFilter("status", "")
+                  }}
                   className="text-muted-foreground hover:text-foreground"
                 >
                   <XCircle className="h-4 w-4 mr-1" />
-                  清除
+                  清除筛选
                 </Button>
               )}
             </div>

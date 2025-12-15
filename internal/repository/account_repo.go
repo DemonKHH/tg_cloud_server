@@ -25,7 +25,7 @@ type AccountRepository interface {
 	GetAccountsByStatus(status models.AccountStatus) ([]*models.TGAccount, error)
 	CountByUserID(userID uint64) (int64, error)
 	CountActiveByUserID(userID uint64) (int64, error)
-	GetAccountSummaries(userID uint64, page, limit int, search string) ([]*models.AccountSummary, int64, error)
+	GetAccountSummaries(userID uint64, page, limit int, search, status string) ([]*models.AccountSummary, int64, error)
 	GetAll() ([]*models.TGAccount, error)
 	UpdateSessionData(accountID uint64, sessionData []byte) error
 	UpdateConnectionStatus(id uint64, isOnline bool) error
@@ -273,7 +273,7 @@ func (r *accountRepository) GetAccountsWithFilters(filters map[string]interface{
 }
 
 // GetAccountSummaries 获取账号摘要列表（分页）
-func (r *accountRepository) GetAccountSummaries(userID uint64, page, limit int, search string) ([]*models.AccountSummary, int64, error) {
+func (r *accountRepository) GetAccountSummaries(userID uint64, page, limit int, search, status string) ([]*models.AccountSummary, int64, error) {
 	var summaries []*models.AccountSummary
 	var total int64
 
@@ -285,6 +285,11 @@ func (r *accountRepository) GetAccountSummaries(userID uint64, page, limit int, 
 	// 添加搜索条件（仅搜索手机号）
 	if search != "" {
 		query = query.Where("tg_accounts.phone LIKE ?", "%"+search+"%")
+	}
+
+	// 添加状态过滤条件
+	if status != "" {
+		query = query.Where("tg_accounts.status = ?", status)
 	}
 
 	// 获取总数

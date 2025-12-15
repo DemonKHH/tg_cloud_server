@@ -95,7 +95,7 @@ func (s *AccountService) CreateAccount(userID uint64, req *models.CreateAccountR
 
 // GetAccounts 获取账号列表
 func (s *AccountService) GetAccounts(filter *AccountFilter) ([]*models.AccountSummary, int64, error) {
-	return s.accountRepo.GetAccountSummaries(filter.UserID, filter.Page, filter.Limit, filter.Search)
+	return s.accountRepo.GetAccountSummaries(filter.UserID, filter.Page, filter.Limit, filter.Search, filter.Status)
 }
 
 // GetAccount 获取账号详情

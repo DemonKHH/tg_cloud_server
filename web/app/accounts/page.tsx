@@ -22,7 +22,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { cn } from "@/lib/utils"
-import { verifyCodeAPI, accountAPI, proxyAPI } from "@/lib/api"
+import { verifyCodeAPI, accountAPI, proxyAPI, statsAPI } from "@/lib/api"
 import { useState, useEffect, useRef } from "react"
 import {
   Select,
@@ -65,6 +65,21 @@ export default function AccountsPage() {
   const [proxies, setProxies] = useState<any[]>([])
   const [loadingProxies, setLoadingProxies] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // 账号统计数据
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [accountStats, setAccountStats] = useState<any>(null)
+
+  const loadAccountStats = async () => {
+    try {
+      const response = await statsAPI.getAccountStats()
+      if (response.code === 0 && response.data) {
+        setAccountStats(response.data)
+      }
+    } catch (error) {
+      console.error("加载账号统计失败:", error)
+    }
+  }
 
   // 编辑账号相关状态
   const [editDialogOpen, setEditDialogOpen] = useState(false)
@@ -250,6 +265,7 @@ export default function AccountsPage() {
 
   useEffect(() => {
     loadProxies()
+    loadAccountStats()
   }, [])
 
   const loadProxies = async () => {
@@ -727,7 +743,7 @@ export default function AccountsPage() {
                 </div>
               </CardHeader>
               <CardContent>
-                <div className="text-3xl font-bold text-blue-900 dark:text-blue-100">{total}</div>
+                <div className="text-3xl font-bold text-blue-900 dark:text-blue-100">{accountStats?.total_accounts ?? 0}</div>
                 <p className="text-xs text-blue-700/70 dark:text-blue-300/70 mt-1">
                   当前系统中的所有账号
                 </p>
@@ -750,7 +766,7 @@ export default function AccountsPage() {
               </CardHeader>
               <CardContent>
                 <div className="text-3xl font-bold text-green-900 dark:text-green-100">
-                  {accounts.filter(a => a.status === 'normal').length}
+                  {accountStats?.status_distribution?.normal ?? 0}
                 </div>
                 <p className="text-xs text-green-700/70 dark:text-green-300/70 mt-1">
                   健康状态良好的账号
@@ -767,17 +783,17 @@ export default function AccountsPage() {
           >
             <Card className="relative overflow-hidden border-none shadow-sm bg-gradient-to-br from-purple-50 to-purple-100/50 dark:from-purple-950/50 dark:to-purple-900/30">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium text-purple-900 dark:text-purple-100">已同步信息</CardTitle>
+                <CardTitle className="text-sm font-medium text-purple-900 dark:text-purple-100">活跃账号</CardTitle>
                 <div className="h-10 w-10 rounded-full bg-purple-500/10 flex items-center justify-center">
                   <CheckCircle2 className="h-5 w-5 text-purple-600 dark:text-purple-400" />
                 </div>
               </CardHeader>
               <CardContent>
                 <div className="text-3xl font-bold text-purple-900 dark:text-purple-100">
-                  {accounts.filter(a => (a.username && a.username.length > 0) || (a.first_name && a.first_name.length > 0)).length}
+                  {accountStats?.active_accounts ?? 0}
                 </div>
                 <p className="text-xs text-purple-700/70 dark:text-purple-300/70 mt-1">
-                  已同步 Telegram 信息的账号
+                  当前活跃的账号数量
                 </p>
               </CardContent>
               <div className="absolute -right-4 -bottom-4 h-24 w-24 rounded-full bg-purple-500/5" />
@@ -791,17 +807,20 @@ export default function AccountsPage() {
           >
             <Card className="relative overflow-hidden border-none shadow-sm bg-gradient-to-br from-orange-50 to-orange-100/50 dark:from-orange-950/50 dark:to-orange-900/30">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium text-orange-900 dark:text-orange-100">正常账号</CardTitle>
+                <CardTitle className="text-sm font-medium text-orange-900 dark:text-orange-100">异常账号</CardTitle>
                 <div className="h-10 w-10 rounded-full bg-orange-500/10 flex items-center justify-center">
                   <Activity className="h-5 w-5 text-orange-600 dark:text-orange-400" />
                 </div>
               </CardHeader>
               <CardContent>
                 <div className="text-3xl font-bold text-orange-900 dark:text-orange-100">
-                  {accounts.filter(a => a.status === 'normal').length}
+                  {(accountStats?.status_distribution?.warning ?? 0) + 
+                   (accountStats?.status_distribution?.restricted ?? 0) + 
+                   (accountStats?.status_distribution?.dead ?? 0) +
+                   (accountStats?.status_distribution?.frozen ?? 0)}
                 </div>
                 <p className="text-xs text-orange-700/70 dark:text-orange-300/70 mt-1">
-                  状态正常的账号数量
+                  需要关注的账号数量
                 </p>
               </CardContent>
               <div className="absolute -right-4 -bottom-4 h-24 w-24 rounded-full bg-orange-500/5" />

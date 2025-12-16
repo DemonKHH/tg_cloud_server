@@ -139,6 +139,15 @@ func (sc *SessionConverter) LoadSessionFromFiles(sessionPath, phone string) (*Se
 func (sc *SessionConverter) parseSessionDatabase(db *sql.DB, phone string) (*SessionData, error) {
 	sessionData := &SessionData{Phone: phone}
 
+	// 尝试从peers表中获取手机号（如果phone为空或unknown）
+	if phone == "" || phone == "unknown" {
+		extractedPhone := sc.extractPhoneFromPeers(db)
+		if extractedPhone != "" {
+			sessionData.Phone = extractedPhone
+			sc.logger.Debug("从peers表中提取到手机号", zap.String("phone", extractedPhone))
+		}
+	}
+
 	// 构建查询语句
 	query, err := sc.buildSessionQuery(db)
 	if err != nil {
@@ -412,4 +421,64 @@ func (sc *SessionConverter) isTDataDirectory(path string) bool {
 	}
 
 	return true
+}
+
+// extractPhoneFromPeers 从peers表中提取当前用户的手机号
+func (sc *SessionConverter) extractPhoneFromPeers(db *sql.DB) string {
+	// 首先检查peers表是否存在
+	columns, err := sc.getTableColumns(db, "peers")
+	if err != nil {
+		sc.logger.Debug("peers表不存在", zap.Error(err))
+		return ""
+	}
+
+	// 检查是否有phone_number列
+	if !sc.hasColumn(columns, "phone_number") {
+		sc.logger.Debug("peers表中没有phone_number列")
+		return ""
+	}
+
+	// 查询当前用户的手机号（通常是第一条记录，或者通过sessions表的user_id关联）
+	// 方法1：尝试通过sessions表的user_id关联
+	var phone sql.NullString
+	query := `
+		SELECT p.phone_number 
+		FROM peers p 
+		INNER JOIN sessions s ON p.id = s.user_id 
+		WHERE p.phone_number IS NOT NULL AND p.phone_number != '' 
+		LIMIT 1
+	`
+	err = db.QueryRow(query).Scan(&phone)
+	if err == nil && phone.Valid && phone.String != "" {
+		return sc.normalizePhone(phone.String)
+	}
+
+	// 方法2：直接查询peers表中有手机号的记录
+	query = `
+		SELECT phone_number 
+		FROM peers 
+		WHERE phone_number IS NOT NULL AND phone_number != '' 
+		LIMIT 1
+	`
+	err = db.QueryRow(query).Scan(&phone)
+	if err == nil && phone.Valid && phone.String != "" {
+		return sc.normalizePhone(phone.String)
+	}
+
+	return ""
+}
+
+// normalizePhone 标准化手机号格式
+func (sc *SessionConverter) normalizePhone(phone string) string {
+	// 移除空格和特殊字符
+	phone = strings.TrimSpace(phone)
+	phone = strings.ReplaceAll(phone, " ", "")
+	phone = strings.ReplaceAll(phone, "-", "")
+
+	// 如果不是以+开头，添加+
+	if phone != "" && !strings.HasPrefix(phone, "+") {
+		phone = "+" + phone
+	}
+
+	return phone
 }

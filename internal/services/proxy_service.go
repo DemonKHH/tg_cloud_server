@@ -2,14 +2,21 @@ package services
 
 import (
 	"fmt"
-	"net"
+	"net/http"
+	"net/url"
 	"time"
 
 	"go.uber.org/zap"
+	"golang.org/x/net/proxy"
 
 	"tg_cloud_server/internal/common/logger"
 	"tg_cloud_server/internal/models"
 	"tg_cloud_server/internal/repository"
+)
+
+const (
+	telegramAPITestURL = "https://api.telegram.org"
+	proxyTestTimeout   = 10 * time.Second
 )
 
 // ProxyService 代理服务接口
@@ -311,25 +318,77 @@ func (s *proxyService) GetProxyStats(userID uint64) (*models.ProxyStats, error) 
 	return s.proxyRepo.GetStatsByUserID(userID)
 }
 
-// testProxyConnection 测试代理连接
-func (s *proxyService) testProxyConnection(proxy *models.ProxyIP) error {
-	// 构建代理URL
-	proxyURL := fmt.Sprintf("%s://%s:%s@%s:%d",
-		proxy.Protocol, proxy.Username, proxy.Password, proxy.IP, proxy.Port)
+// testProxyConnection 测试代理连接 - 通过代理访问 Telegram API
+func (s *proxyService) testProxyConnection(p *models.ProxyIP) error {
+	var client *http.Client
 
-	// 简单的连接测试 - 尝试连接到代理服务器
-	address := net.JoinHostPort(proxy.IP, fmt.Sprintf("%d", proxy.Port))
-	conn, err := net.DialTimeout("tcp", address, 5*time.Second)
-	if err != nil {
-		return fmt.Errorf("failed to connect to proxy server: %w", err)
+	switch p.Protocol {
+	case models.ProxySOCKS5:
+		// SOCKS5 代理
+		var auth *proxy.Auth
+		if p.Username != "" && p.Password != "" {
+			auth = &proxy.Auth{
+				User:     p.Username,
+				Password: p.Password,
+			}
+		}
+
+		dialer, err := proxy.SOCKS5("tcp", fmt.Sprintf("%s:%d", p.IP, p.Port), auth, proxy.Direct)
+		if err != nil {
+			return fmt.Errorf("failed to create SOCKS5 dialer: %w", err)
+		}
+
+		transport := &http.Transport{
+			Dial: dialer.Dial,
+		}
+		client = &http.Client{
+			Transport: transport,
+			Timeout:   proxyTestTimeout,
+		}
+
+	case models.ProxyHTTP, models.ProxyHTTPS:
+		// HTTP/HTTPS 代理
+		var proxyURLStr string
+		if p.Username != "" && p.Password != "" {
+			proxyURLStr = fmt.Sprintf("http://%s:%s@%s:%d",
+				url.QueryEscape(p.Username), url.QueryEscape(p.Password), p.IP, p.Port)
+		} else {
+			proxyURLStr = fmt.Sprintf("http://%s:%d", p.IP, p.Port)
+		}
+
+		proxyURL, err := url.Parse(proxyURLStr)
+		if err != nil {
+			return fmt.Errorf("failed to parse proxy URL: %w", err)
+		}
+
+		transport := &http.Transport{
+			Proxy: http.ProxyURL(proxyURL),
+		}
+		client = &http.Client{
+			Transport: transport,
+			Timeout:   proxyTestTimeout,
+		}
+
+	default:
+		return fmt.Errorf("unsupported proxy protocol: %s", p.Protocol)
 	}
-	defer conn.Close()
 
-	// TODO: 这里可以添加更复杂的代理功能测试
-	// 比如通过代理发送HTTP请求到测试URL
+	// 通过代理请求 Telegram API
+	resp, err := client.Get(telegramAPITestURL)
+	if err != nil {
+		return fmt.Errorf("failed to connect to Telegram API via proxy: %w", err)
+	}
+	defer resp.Body.Close()
 
-	s.logger.Debug("Proxy connection test completed",
-		zap.String("proxy_url", proxyURL))
+	// Telegram API 返回 200 或 404 都说明连接成功
+	// 404 是因为没有提供 bot token，但能收到响应说明代理工作正常
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNotFound {
+		return fmt.Errorf("unexpected status code from Telegram API: %d", resp.StatusCode)
+	}
+
+	s.logger.Debug("Proxy connection test to Telegram API completed",
+		zap.String("proxy", fmt.Sprintf("%s:%d", p.IP, p.Port)),
+		zap.Int("status_code", resp.StatusCode))
 
 	return nil
 }

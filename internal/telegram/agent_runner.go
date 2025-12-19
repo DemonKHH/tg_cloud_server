@@ -30,10 +30,14 @@ type AgentRunner struct {
 	connectionPool *ConnectionPool
 	logger         *zap.Logger
 	rnd            *rand.Rand
+	ctx            context.Context // 运行上下文
 
 	// 消息缓存: accountID -> []ChatMessage
 	messageCache map[string][]models.ChatMessage
 	cacheMu      sync.RWMutex
+
+	// 消息触发通道
+	messageTrigger chan string // accountID
 }
 
 // NewAgentRunner 创建智能体运行器
@@ -57,11 +61,13 @@ func NewAgentRunner(task *models.Task, aiService AIService, pool *ConnectionPool
 		logger:         logger.Get().Named("agent_runner"),
 		rnd:            rand.New(rand.NewSource(time.Now().UnixNano())),
 		messageCache:   make(map[string][]models.ChatMessage),
+		messageTrigger: make(chan string, 100), // 缓冲通道，避免阻塞
 	}, nil
 }
 
 // Run 运行智能体场景
 func (r *AgentRunner) Run(ctx context.Context) error {
+	r.ctx = ctx
 	startTime := time.Now()
 	r.logger.Info("Starting agent swarm scenario",
 		zap.String("scenario", r.scenario.Name),
@@ -106,49 +112,87 @@ func (r *AgentRunner) Run(ctx context.Context) error {
 		zap.Int("registered_count", registeredCount),
 		zap.Int("total_agents", len(r.scenario.Agents)))
 
-	// 运行主循环
+	// 运行主循环 - 消息驱动模式
 	duration := time.Duration(r.scenario.Duration) * time.Second
 	if duration == 0 {
 		duration = 10 * time.Minute // 默认10分钟
 	}
 
-	r.logger.Info("Starting main scheduling loop",
+	r.logger.Info("Starting message-driven scheduling loop",
 		zap.String("scenario", r.scenario.Name),
-		zap.Duration("duration", duration),
-		zap.Int("tick_interval_seconds", 5))
+		zap.Duration("duration", duration))
 
 	timer := time.NewTimer(duration)
 	defer timer.Stop()
 
-	ticker := time.NewTicker(5 * time.Second) // 每5秒进行一次调度检查
-	defer ticker.Stop()
-
-	scheduleCount := 0
+	messageCount := 0
 	for {
 		select {
 		case <-ctx.Done():
 			r.logger.Info("Agent scenario cancelled by context",
 				zap.String("scenario", r.scenario.Name),
 				zap.Duration("elapsed", time.Since(startTime)),
-				zap.Int("schedule_cycles", scheduleCount))
+				zap.Int("messages_processed", messageCount))
 			return ctx.Err()
 		case <-timer.C:
 			r.logger.Info("Scenario duration reached, completing",
 				zap.String("scenario", r.scenario.Name),
 				zap.Duration("total_duration", time.Since(startTime)),
-				zap.Int("schedule_cycles", scheduleCount))
+				zap.Int("messages_processed", messageCount))
 			return nil
-		case <-ticker.C:
-			scheduleCount++
-			r.logger.Debug("Schedule tick",
-				zap.Int("cycle", scheduleCount),
-				zap.Duration("elapsed", time.Since(startTime)))
-			r.scheduleAgents(ctx)
+		case accountID := <-r.messageTrigger:
+			messageCount++
+			r.logger.Info("Message trigger received, scheduling agent decision",
+				zap.String("account_id", accountID),
+				zap.Int("message_count", messageCount))
+			// 异步执行决策，避免阻塞消息处理
+			go r.triggerAgentDecision(ctx, accountID)
 		}
 	}
 }
 
-// scheduleAgents 调度智能体
+// triggerAgentDecision 触发智能体决策（消息驱动）
+func (r *AgentRunner) triggerAgentDecision(ctx context.Context, accountID string) {
+	// 找到对应的智能体配置
+	var agent *models.AgentConfig
+	for i := range r.scenario.Agents {
+		if fmt.Sprintf("%d", r.scenario.Agents[i].AccountID) == accountID {
+			agent = &r.scenario.Agents[i]
+			break
+		}
+	}
+
+	if agent == nil {
+		r.logger.Warn("Agent not found for account",
+			zap.String("account_id", accountID))
+		return
+	}
+
+	// 检查活跃度
+	roll := r.rnd.Float64()
+	if roll > agent.ActiveRate {
+		r.logger.Debug("Agent skipped due to activity rate",
+			zap.Uint64("account_id", agent.AccountID),
+			zap.Float64("active_rate", agent.ActiveRate),
+			zap.Float64("roll", roll))
+		return
+	}
+
+	r.logger.Info("Agent triggered for decision",
+		zap.Uint64("account_id", agent.AccountID),
+		zap.String("persona", agent.Persona.Name),
+		zap.Float64("active_rate", agent.ActiveRate),
+		zap.Float64("roll", roll))
+
+	// 执行决策循环
+	if err := r.executeAgentLoop(ctx, agent); err != nil {
+		r.logger.Error("Agent execution failed",
+			zap.Uint64("account_id", agent.AccountID),
+			zap.Error(err))
+	}
+}
+
+// scheduleAgents 调度智能体（保留用于兼容，但不再主动调用）
 func (r *AgentRunner) scheduleAgents(ctx context.Context) {
 	// 随机选择一个智能体进行决策
 	// 为了避免过于频繁，每次只选一个
@@ -451,8 +495,11 @@ func (r *AgentRunner) processNewMessage(accountID string, msg *tg.Message, users
 		IsBot:     false,
 	}
 
+	var senderUserID int64
+	var isBot bool
 	if fromID, ok := msg.FromID.(*tg.PeerUser); ok {
-		chatMsg.UserID = int64(fromID.UserID)
+		senderUserID = int64(fromID.UserID)
+		chatMsg.UserID = senderUserID
 		if u, exists := usersMap[fromID.UserID]; exists {
 			if u.Username != "" {
 				chatMsg.Username = u.Username
@@ -460,12 +507,11 @@ func (r *AgentRunner) processNewMessage(accountID string, msg *tg.Message, users
 				chatMsg.Username = strings.TrimSpace(fmt.Sprintf("%s %s", u.FirstName, u.LastName))
 			}
 			chatMsg.IsBot = u.Bot
+			isBot = u.Bot
 		}
 	}
 
 	r.cacheMu.Lock()
-	defer r.cacheMu.Unlock()
-
 	// 追加新消息
 	r.messageCache[accountID] = append(r.messageCache[accountID], chatMsg)
 
@@ -473,13 +519,72 @@ func (r *AgentRunner) processNewMessage(accountID string, msg *tg.Message, users
 	if len(r.messageCache[accountID]) > 100 {
 		r.messageCache[accountID] = r.messageCache[accountID][len(r.messageCache[accountID])-100:]
 	}
+	cacheSize := len(r.messageCache[accountID])
+	r.cacheMu.Unlock()
 
 	r.logger.Info("New message cached",
 		zap.String("account_id", accountID),
 		zap.String("sender", chatMsg.Username),
 		zap.Int64("user_id", chatMsg.UserID),
+		zap.Bool("is_bot", isBot),
 		zap.String("content", chatMsg.Message),
-		zap.Int("cache_size", len(r.messageCache[accountID])))
+		zap.Int("cache_size", cacheSize))
+
+	// 忽略 Bot 消息
+	if isBot {
+		r.logger.Debug("Skipping bot message",
+			zap.String("account_id", accountID),
+			zap.String("sender", chatMsg.Username),
+			zap.Int64("sender_user_id", senderUserID))
+		return
+	}
+
+	// 检查是否是自己发送的消息（避免自己触发自己）
+	isOwnMessage := r.isOwnMessage(accountID, senderUserID)
+	if isOwnMessage {
+		r.logger.Debug("Skipping own message",
+			zap.String("account_id", accountID),
+			zap.Int64("sender_user_id", senderUserID))
+		return
+	}
+
+	// 忽略空消息
+	if strings.TrimSpace(msg.Message) == "" {
+		r.logger.Debug("Skipping empty message",
+			zap.String("account_id", accountID))
+		return
+	}
+
+	// 触发智能体决策
+	select {
+	case r.messageTrigger <- accountID:
+		r.logger.Debug("Message trigger sent",
+			zap.String("account_id", accountID))
+	default:
+		r.logger.Warn("Message trigger channel full, skipping",
+			zap.String("account_id", accountID))
+	}
+}
+
+// isOwnMessage 检查消息是否是自己发送的
+func (r *AgentRunner) isOwnMessage(accountID string, senderUserID int64) bool {
+	// 遍历所有智能体，检查发送者是否是其中之一
+	for _, agent := range r.scenario.Agents {
+		// 需要获取账号的 TG User ID 来比较
+		// 这里简单处理：如果 accountID 对应的账号发送了消息，就认为是自己的消息
+		// 实际上需要从账号信息中获取 tg_user_id
+		if fmt.Sprintf("%d", agent.AccountID) == accountID {
+			// 这个账号收到了消息，检查发送者是否是任何一个智能体账号
+			for _, a := range r.scenario.Agents {
+				// 这里需要账号的 tg_user_id，暂时跳过精确检查
+				// 如果发送者 ID 和任何智能体账号匹配，就认为是自己的消息
+				_ = a
+			}
+		}
+	}
+	// 暂时返回 false，让所有消息都触发决策
+	// TODO: 实现精确的自己消息检测
+	return false
 }
 
 // simulateTyping 模拟输入状态

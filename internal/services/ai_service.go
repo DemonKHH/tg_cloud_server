@@ -127,7 +127,7 @@ func NewAIService(provider AIProvider, config map[string]interface{}) AIService 
 		responseCache: make(map[string]string),
 		requestLimit:  100, // 每分钟100次请求
 		defaultModel:  "gpt-3.5-turbo",
-		geminiModel:   "gemini-2.5-flash",
+		geminiModel:   "gemini-2.0-flash", // 默认使用 2.0-flash
 		temperature:   0.7,
 		maxTokens:     1000,
 		topP:          1.0,
@@ -139,9 +139,11 @@ func NewAIService(provider AIProvider, config map[string]interface{}) AIService 
 	}
 	if key, ok := config["gemini_key"].(string); ok {
 		service.geminiKey = key
+		service.logger.Info("Gemini API key loaded", zap.Int("key_length", len(key)))
 	}
 	if model, ok := config["gemini_model"].(string); ok && model != "" {
 		service.geminiModel = model
+		service.logger.Info("Gemini model configured", zap.String("model", model))
 	}
 	if key, ok := config["claude_key"].(string); ok {
 		service.claudeKey = key
@@ -149,6 +151,11 @@ func NewAIService(provider AIProvider, config map[string]interface{}) AIService 
 	if url, ok := config["custom_api_url"].(string); ok {
 		service.customAPIURL = url
 	}
+
+	service.logger.Info("AI service created",
+		zap.String("provider", string(provider)),
+		zap.String("gemini_model", service.geminiModel),
+		zap.Bool("has_gemini_key", service.geminiKey != ""))
 
 	return service
 }

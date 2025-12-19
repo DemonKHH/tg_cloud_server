@@ -119,6 +119,10 @@ func main() {
 	aiConfig := map[string]interface{}{}
 
 	switch cfg.AI.Provider {
+	case "deepseek":
+		aiProvider = services.ProviderDeepSeek
+		aiConfig["deepseek_key"] = cfg.AI.DeepSeek.APIKey
+		aiConfig["deepseek_model"] = cfg.AI.DeepSeek.Model
 	case "gemini":
 		aiProvider = services.ProviderGemini
 		aiConfig["gemini_key"] = cfg.AI.Gemini.APIKey

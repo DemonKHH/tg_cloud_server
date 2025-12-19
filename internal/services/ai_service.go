@@ -19,11 +19,12 @@ import (
 type AIProvider string
 
 const (
-	ProviderOpenAI AIProvider = "openai"
-	ProviderGemini AIProvider = "gemini"
-	ProviderClaude AIProvider = "claude"
-	ProviderLocal  AIProvider = "local"
-	ProviderCustom AIProvider = "custom"
+	ProviderOpenAI   AIProvider = "openai"
+	ProviderGemini   AIProvider = "gemini"
+	ProviderClaude   AIProvider = "claude"
+	ProviderDeepSeek AIProvider = "deepseek"
+	ProviderLocal    AIProvider = "local"
+	ProviderCustom   AIProvider = "custom"
 )
 
 // AIService AI服务接口
@@ -105,6 +106,7 @@ type aiService struct {
 	openAIKey    string
 	geminiKey    string
 	claudeKey    string
+	deepSeekKey  string
 	customAPIURL string
 
 	// 缓存和限制
@@ -112,11 +114,12 @@ type aiService struct {
 	requestLimit  int
 
 	// 模型配置
-	defaultModel string
-	geminiModel  string
-	temperature  float64
-	maxTokens    int
-	topP         float64
+	defaultModel  string
+	geminiModel   string
+	deepSeekModel string
+	temperature   float64
+	maxTokens     int
+	topP          float64
 }
 
 // NewAIService 创建AI服务
@@ -127,7 +130,8 @@ func NewAIService(provider AIProvider, config map[string]interface{}) AIService 
 		responseCache: make(map[string]string),
 		requestLimit:  100, // 每分钟100次请求
 		defaultModel:  "gpt-3.5-turbo",
-		geminiModel:   "gemini-2.0-flash", // 默认使用 2.0-flash
+		geminiModel:   "gemini-2.0-flash",
+		deepSeekModel: "deepseek-chat", // 默认使用 deepseek-chat
 		temperature:   0.7,
 		maxTokens:     1000,
 		topP:          1.0,
@@ -145,6 +149,14 @@ func NewAIService(provider AIProvider, config map[string]interface{}) AIService 
 		service.geminiModel = model
 		service.logger.Info("Gemini model configured", zap.String("model", model))
 	}
+	if key, ok := config["deepseek_key"].(string); ok {
+		service.deepSeekKey = key
+		service.logger.Info("DeepSeek API key loaded", zap.Int("key_length", len(key)))
+	}
+	if model, ok := config["deepseek_model"].(string); ok && model != "" {
+		service.deepSeekModel = model
+		service.logger.Info("DeepSeek model configured", zap.String("model", model))
+	}
 	if key, ok := config["claude_key"].(string); ok {
 		service.claudeKey = key
 	}
@@ -155,7 +167,9 @@ func NewAIService(provider AIProvider, config map[string]interface{}) AIService 
 	service.logger.Info("AI service created",
 		zap.String("provider", string(provider)),
 		zap.String("gemini_model", service.geminiModel),
-		zap.Bool("has_gemini_key", service.geminiKey != ""))
+		zap.String("deepseek_model", service.deepSeekModel),
+		zap.Bool("has_gemini_key", service.geminiKey != ""),
+		zap.Bool("has_deepseek_key", service.deepSeekKey != ""))
 
 	return service
 }
@@ -461,6 +475,8 @@ func (s *aiService) generateResponse(ctx context.Context, prompt string, maxLeng
 		return s.generateGeminiResponse(ctx, prompt, maxLength)
 	case ProviderClaude:
 		return s.generateClaudeResponse(ctx, prompt, maxLength)
+	case ProviderDeepSeek:
+		return s.generateDeepSeekResponse(ctx, prompt, maxLength)
 	case ProviderLocal:
 		return s.generateLocalResponse(ctx, prompt, maxLength)
 	case ProviderCustom:
@@ -641,6 +657,57 @@ func (s *aiService) generateGeminiResponse(ctx context.Context, prompt string, m
 // generateClaudeResponse 调用Claude API
 func (s *aiService) generateClaudeResponse(ctx context.Context, prompt string, maxLength int) (string, error) {
 	return "", fmt.Errorf("Claude API is not implemented")
+}
+
+// generateDeepSeekResponse 调用DeepSeek API (兼容OpenAI格式)
+func (s *aiService) generateDeepSeekResponse(ctx context.Context, prompt string, maxLength int) (string, error) {
+	if s.deepSeekKey == "" {
+		return "", fmt.Errorf("DeepSeek API key is not configured")
+	}
+
+	reqBody := openAIChatRequest{
+		Model: s.deepSeekModel,
+		Messages: []openAIMessage{
+			{Role: "user", Content: prompt},
+		},
+		Temperature: s.temperature,
+		MaxTokens:   maxLength,
+	}
+
+	jsonBody, err := json.Marshal(reqBody)
+	if err != nil {
+		return "", err
+	}
+
+	// DeepSeek API URL
+	req, err := http.NewRequestWithContext(ctx, "POST", "https://api.deepseek.com/chat/completions", bytes.NewBuffer(jsonBody))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+s.deepSeekKey)
+
+	client := &http.Client{Timeout: 60 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	var result openAIChatResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", err
+	}
+
+	if result.Error != nil {
+		return "", fmt.Errorf("deepseek api error: %s", result.Error.Message)
+	}
+
+	if len(result.Choices) > 0 {
+		return result.Choices[0].Message.Content, nil
+	}
+
+	return "", fmt.Errorf("no response from deepseek")
 }
 
 // generateLocalResponse 使用本地模型

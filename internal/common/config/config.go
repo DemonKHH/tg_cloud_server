@@ -92,9 +92,10 @@ type RateLimitConfig struct {
 
 // AIConfig AI服务配置
 type AIConfig struct {
-	Provider string       `mapstructure:"provider"` // openai, gemini
-	OpenAI   OpenAIConfig `mapstructure:"openai"`
-	Gemini   GeminiConfig `mapstructure:"gemini"`
+	Provider string         `mapstructure:"provider"` // openai, gemini, deepseek
+	OpenAI   OpenAIConfig   `mapstructure:"openai"`
+	Gemini   GeminiConfig   `mapstructure:"gemini"`
+	DeepSeek DeepSeekConfig `mapstructure:"deepseek"`
 }
 
 // OpenAIConfig OpenAI配置
@@ -108,6 +109,15 @@ type OpenAIConfig struct {
 
 // GeminiConfig Gemini配置
 type GeminiConfig struct {
+	APIKey      string        `mapstructure:"api_key"`
+	Model       string        `mapstructure:"model"`
+	MaxTokens   int           `mapstructure:"max_tokens"`
+	Temperature float32       `mapstructure:"temperature"`
+	Timeout     time.Duration `mapstructure:"timeout"`
+}
+
+// DeepSeekConfig DeepSeek配置
+type DeepSeekConfig struct {
 	APIKey      string        `mapstructure:"api_key"`
 	Model       string        `mapstructure:"model"`
 	MaxTokens   int           `mapstructure:"max_tokens"`

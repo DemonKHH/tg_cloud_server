@@ -92,11 +92,22 @@ type RateLimitConfig struct {
 
 // AIConfig AI服务配置
 type AIConfig struct {
-	OpenAI OpenAIConfig `mapstructure:"openai"`
+	Provider string       `mapstructure:"provider"` // openai, gemini
+	OpenAI   OpenAIConfig `mapstructure:"openai"`
+	Gemini   GeminiConfig `mapstructure:"gemini"`
 }
 
 // OpenAIConfig OpenAI配置
 type OpenAIConfig struct {
+	APIKey      string        `mapstructure:"api_key"`
+	Model       string        `mapstructure:"model"`
+	MaxTokens   int           `mapstructure:"max_tokens"`
+	Temperature float32       `mapstructure:"temperature"`
+	Timeout     time.Duration `mapstructure:"timeout"`
+}
+
+// GeminiConfig Gemini配置
+type GeminiConfig struct {
 	APIKey      string        `mapstructure:"api_key"`
 	Model       string        `mapstructure:"model"`
 	MaxTokens   int           `mapstructure:"max_tokens"`
@@ -115,21 +126,21 @@ type RiskControlConfig struct {
 
 // LoggingConfig 日志配置
 type LoggingConfig struct {
-	Level      string           `mapstructure:"level"`
-	Format     string           `mapstructure:"format"`
-	Output     string           `mapstructure:"output"`
-	Filename   string           `mapstructure:"filename"`
-	MaxSize    int              `mapstructure:"max_size"`
-	MaxBackups int              `mapstructure:"max_backups"`
-	MaxAge     int              `mapstructure:"max_age"`
-	Compress   bool             `mapstructure:"compress"`
-	Files      LogFileConfig    `mapstructure:"files"`
+	Level      string        `mapstructure:"level"`
+	Format     string        `mapstructure:"format"`
+	Output     string        `mapstructure:"output"`
+	Filename   string        `mapstructure:"filename"`
+	MaxSize    int           `mapstructure:"max_size"`
+	MaxBackups int           `mapstructure:"max_backups"`
+	MaxAge     int           `mapstructure:"max_age"`
+	Compress   bool          `mapstructure:"compress"`
+	Files      LogFileConfig `mapstructure:"files"`
 }
 
 // LogFileConfig 日志文件配置
 type LogFileConfig struct {
 	ErrorLog string `mapstructure:"error_log"`
-	WarnLog  string `mapstructure:"warn_log"`  
+	WarnLog  string `mapstructure:"warn_log"`
 	InfoLog  string `mapstructure:"info_log"`
 	DebugLog string `mapstructure:"debug_log"`
 	TaskLog  string `mapstructure:"task_log"`
@@ -236,7 +247,7 @@ func setDefaults() {
 	viper.SetDefault("logging.max_backups", 7)
 	viper.SetDefault("logging.max_age", 30)
 	viper.SetDefault("logging.compress", true)
-	
+
 	// 分级日志文件配置
 	viper.SetDefault("logging.files.error_log", "logs/error.log")
 	viper.SetDefault("logging.files.warn_log", "logs/warn.log")

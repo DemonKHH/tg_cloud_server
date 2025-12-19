@@ -115,10 +115,23 @@ func main() {
 		zap.Duration("idle_timeout", cfg.Telegram.ConnectionPool.IdleTimeout))
 
 	// 初始化AI服务
-	aiService := services.NewAIService(services.ProviderLocal, map[string]interface{}{
-		"api_key": "",
-		"model":   "default",
-	})
+	var aiProvider services.AIProvider
+	aiConfig := map[string]interface{}{}
+
+	switch cfg.AI.Provider {
+	case "gemini":
+		aiProvider = services.ProviderGemini
+		aiConfig["gemini_key"] = cfg.AI.Gemini.APIKey
+		aiConfig["gemini_model"] = cfg.AI.Gemini.Model
+	case "openai":
+		aiProvider = services.ProviderOpenAI
+		aiConfig["openai_key"] = cfg.AI.OpenAI.APIKey
+	default:
+		aiProvider = services.ProviderLocal
+	}
+
+	aiService := services.NewAIService(aiProvider, aiConfig)
+	logger.Info("AI service initialized", zap.String("provider", string(aiProvider)))
 
 	// 初始化任务调度器
 	taskScheduler := scheduler.NewTaskScheduler(connectionPool, accountRepo, taskRepo, aiService)

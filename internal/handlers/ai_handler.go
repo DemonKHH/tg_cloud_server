@@ -324,7 +324,7 @@ func (h *AIHandler) GetAIConfig(c *gin.Context) {
 
 // TestAIService 测试AI服务连接
 // @Summary 测试AI服务连接
-// @Description 测试AI服务是否可用
+// @Description 测试AI服务是否可用，包括AI生成能力测试
 // @Tags AI服务
 // @Produce json
 // @Security ApiKeyAuth
@@ -348,6 +348,17 @@ func (h *AIHandler) TestAIService(c *gin.Context) {
 	// 测试关键词提取
 	keywordsResult, keywordsErr := h.aiService.ExtractKeywords(c.Request.Context(), testText)
 
+	// 测试AI生成能力（调用实际的AI API）
+	generateConfig := &services.GroupChatConfig{
+		GroupName:    "测试群组",
+		GroupTopic:   "技术讨论",
+		AIPersona:    "友好的技术爱好者",
+		ResponseType: "casual",
+		MaxLength:    100,
+		Language:     "zh",
+	}
+	generateResult, generateErr := h.aiService.GenerateGroupChatResponse(c.Request.Context(), generateConfig)
+
 	result := gin.H{
 		"service_status": "available",
 		"tests": gin.H{
@@ -361,12 +372,23 @@ func (h *AIHandler) TestAIService(c *gin.Context) {
 				"result":  keywordsResult,
 				"error":   getErrorString(keywordsErr),
 			},
+			"ai_generation": gin.H{
+				"success": generateErr == nil,
+				"result":  generateResult,
+				"error":   getErrorString(generateErr),
+			},
 		},
 		"timestamp": c.GetHeader("X-Request-ID"),
 	}
 
+	// 如果AI生成测试失败，标记为部分可用
+	if generateErr != nil {
+		result["service_status"] = "partial"
+		h.logger.Warn("AI generation test failed", zap.Error(generateErr))
+	}
+
 	// 如果所有测试都失败，返回错误状态
-	if sentimentErr != nil && keywordsErr != nil {
+	if sentimentErr != nil && keywordsErr != nil && generateErr != nil {
 		result["service_status"] = "unavailable"
 		response.Error(c, response.CodeInternalError, "AI服务不可用")
 		return

@@ -20,6 +20,7 @@ type AIProvider string
 
 const (
 	ProviderOpenAI AIProvider = "openai"
+	ProviderGemini AIProvider = "gemini"
 	ProviderClaude AIProvider = "claude"
 	ProviderLocal  AIProvider = "local"
 	ProviderCustom AIProvider = "custom"
@@ -102,6 +103,7 @@ type aiService struct {
 
 	// AI服务配置
 	openAIKey    string
+	geminiKey    string
 	claudeKey    string
 	customAPIURL string
 
@@ -111,6 +113,7 @@ type aiService struct {
 
 	// 模型配置
 	defaultModel string
+	geminiModel  string
 	temperature  float64
 	maxTokens    int
 	topP         float64
@@ -124,6 +127,7 @@ func NewAIService(provider AIProvider, config map[string]interface{}) AIService 
 		responseCache: make(map[string]string),
 		requestLimit:  100, // 每分钟100次请求
 		defaultModel:  "gpt-3.5-turbo",
+		geminiModel:   "gemini-2.5-flash",
 		temperature:   0.7,
 		maxTokens:     1000,
 		topP:          1.0,
@@ -132,6 +136,12 @@ func NewAIService(provider AIProvider, config map[string]interface{}) AIService 
 	// 从配置中加载API密钥
 	if key, ok := config["openai_key"].(string); ok {
 		service.openAIKey = key
+	}
+	if key, ok := config["gemini_key"].(string); ok {
+		service.geminiKey = key
+	}
+	if model, ok := config["gemini_model"].(string); ok && model != "" {
+		service.geminiModel = model
 	}
 	if key, ok := config["claude_key"].(string); ok {
 		service.claudeKey = key
@@ -447,6 +457,8 @@ func (s *aiService) generateResponse(ctx context.Context, prompt string, maxLeng
 	switch s.provider {
 	case ProviderOpenAI:
 		return s.generateOpenAIResponse(ctx, prompt, maxLength)
+	case ProviderGemini:
+		return s.generateGeminiResponse(ctx, prompt, maxLength)
 	case ProviderClaude:
 		return s.generateClaudeResponse(ctx, prompt, maxLength)
 	case ProviderLocal:
@@ -531,6 +543,101 @@ func (s *aiService) generateOpenAIResponse(ctx context.Context, prompt string, m
 	}
 
 	return "", fmt.Errorf("no response from openai")
+}
+
+// Gemini API Request/Response structures
+type geminiRequest struct {
+	Contents         []geminiContent        `json:"contents"`
+	GenerationConfig geminiGenerationConfig `json:"generationConfig,omitempty"`
+}
+
+type geminiContent struct {
+	Parts []geminiPart `json:"parts"`
+}
+
+type geminiPart struct {
+	Text string `json:"text"`
+}
+
+type geminiGenerationConfig struct {
+	Temperature     float64 `json:"temperature,omitempty"`
+	MaxOutputTokens int     `json:"maxOutputTokens,omitempty"`
+	TopP            float64 `json:"topP,omitempty"`
+}
+
+type geminiResponse struct {
+	Candidates []struct {
+		Content struct {
+			Parts []struct {
+				Text string `json:"text"`
+			} `json:"parts"`
+		} `json:"content"`
+	} `json:"candidates"`
+	Error *struct {
+		Message string `json:"message"`
+		Code    int    `json:"code"`
+	} `json:"error"`
+}
+
+// generateGeminiResponse 调用Gemini API
+func (s *aiService) generateGeminiResponse(ctx context.Context, prompt string, maxLength int) (string, error) {
+	if s.geminiKey == "" {
+		s.logger.Warn("Gemini key is missing, using fallback response")
+		return s.generateFallbackResponse(prompt), nil
+	}
+
+	reqBody := geminiRequest{
+		Contents: []geminiContent{
+			{
+				Parts: []geminiPart{
+					{Text: prompt},
+				},
+			},
+		},
+		GenerationConfig: geminiGenerationConfig{
+			Temperature:     s.temperature,
+			MaxOutputTokens: maxLength,
+			TopP:            s.topP,
+		},
+	}
+
+	jsonBody, err := json.Marshal(reqBody)
+	if err != nil {
+		return "", err
+	}
+
+	// Gemini API URL (使用请求头认证方式)
+	apiURL := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent",
+		s.geminiModel)
+
+	req, err := http.NewRequestWithContext(ctx, "POST", apiURL, bytes.NewBuffer(jsonBody))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("x-goog-api-key", s.geminiKey)
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	var result geminiResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", err
+	}
+
+	if result.Error != nil {
+		return "", fmt.Errorf("gemini api error: %s (code: %d)", result.Error.Message, result.Error.Code)
+	}
+
+	if len(result.Candidates) > 0 && len(result.Candidates[0].Content.Parts) > 0 {
+		return result.Candidates[0].Content.Parts[0].Text, nil
+	}
+
+	return "", fmt.Errorf("no response from gemini")
 }
 
 // generateClaudeResponse 调用Claude API

@@ -69,6 +69,27 @@ func (r *AgentRunner) Run(ctx context.Context) error {
 		zap.Int("agent_count", len(r.scenario.Agents)),
 		zap.Int("duration_seconds", r.scenario.Duration))
 
+	// 首先让所有智能体加入目标群组
+	if r.scenario.Topic != "" {
+		r.logger.Info("Ensuring all agents join the target group", zap.String("topic", r.scenario.Topic))
+		for _, agent := range r.scenario.Agents {
+			accountIDStr := fmt.Sprintf("%d", agent.AccountID)
+			if err := r.ensureJoinGroup(ctx, accountIDStr, r.scenario.Topic); err != nil {
+				r.logger.Warn("Failed to join group for agent",
+					zap.Uint64("account_id", agent.AccountID),
+					zap.String("topic", r.scenario.Topic),
+					zap.Error(err))
+				// 继续尝试其他账号，不中断整个任务
+			} else {
+				r.logger.Info("Agent joined group successfully",
+					zap.Uint64("account_id", agent.AccountID),
+					zap.String("topic", r.scenario.Topic))
+			}
+			// 加入群组之间稍微等待，避免频率限制
+			time.Sleep(2 * time.Second)
+		}
+	}
+
 	// 验证所有账号可用性并注册消息监听
 	registeredCount := 0
 	for _, agent := range r.scenario.Agents {
@@ -508,4 +529,101 @@ func (t *GenericTask) ExecuteAdvanced(ctx context.Context, client *gotd_telegram
 
 func (t *GenericTask) GetType() string {
 	return t.Type
+}
+
+// ensureJoinGroup 确保账号加入目标群组
+func (r *AgentRunner) ensureJoinGroup(ctx context.Context, accountID string, target string) error {
+	task := &GenericTask{
+		Type: "join_group",
+		ExecuteFunc: func(ctx context.Context, client *gotd_telegram.Client) error {
+			api := client.API()
+
+			// 处理邀请链接
+			if r.isInviteLink(target) {
+				hash := r.extractInviteHash(target)
+				if hash == "" {
+					return fmt.Errorf("invalid invite link format")
+				}
+				_, err := api.MessagesImportChatInvite(ctx, hash)
+				if err != nil {
+					// 如果已经是成员，忽略错误
+					if strings.Contains(err.Error(), "USER_ALREADY_PARTICIPANT") {
+						r.logger.Debug("Already a member of the group", zap.String("account_id", accountID))
+						return nil
+					}
+					return err
+				}
+				return nil
+			}
+
+			// 处理公开用户名/链接
+			username := r.extractUsername(target)
+			if username == "" {
+				return fmt.Errorf("invalid group username or link")
+			}
+
+			// 解析用户名
+			resolved, err := api.ContactsResolveUsername(ctx, &tg.ContactsResolveUsernameRequest{
+				Username: username,
+			})
+			if err != nil {
+				return fmt.Errorf("resolve username failed: %w", err)
+			}
+
+			// 加入频道/超级群
+			if len(resolved.Chats) > 0 {
+				if channel, ok := resolved.Chats[0].(*tg.Channel); ok {
+					// 检查是否已经是成员
+					if channel.Left {
+						// 尝试加入
+						_, err = api.ChannelsJoinChannel(ctx, &tg.InputChannel{
+							ChannelID:  channel.ID,
+							AccessHash: channel.AccessHash,
+						})
+						if err != nil {
+							// 如果已经是成员，忽略错误
+							if strings.Contains(err.Error(), "USER_ALREADY_PARTICIPANT") {
+								return nil
+							}
+							return err
+						}
+					}
+					return nil
+				}
+				return fmt.Errorf("target is not a channel or supergroup")
+			}
+
+			return fmt.Errorf("group not found")
+		},
+	}
+	return r.connectionPool.ExecuteTask(accountID, task)
+}
+
+// isInviteLink 检查是否为邀请链接
+func (r *AgentRunner) isInviteLink(input string) bool {
+	return strings.Contains(input, "joinchat") || strings.Contains(input, "/+")
+}
+
+// extractInviteHash 提取邀请哈希
+func (r *AgentRunner) extractInviteHash(input string) string {
+	// 处理 https://t.me/joinchat/Hash
+	if idx := strings.Index(input, "joinchat/"); idx != -1 {
+		return input[idx+9:]
+	}
+	// 处理 https://t.me/+Hash
+	if idx := strings.Index(input, "/+"); idx != -1 {
+		return input[idx+2:]
+	}
+	return ""
+}
+
+// extractUsername 提取用户名
+func (r *AgentRunner) extractUsername(input string) string {
+	// 移除 https://t.me/ 或 t.me/
+	input = strings.TrimPrefix(input, "https://")
+	input = strings.TrimPrefix(input, "http://")
+	input = strings.TrimPrefix(input, "t.me/")
+	// 移除 @ 前缀
+	input = strings.TrimPrefix(input, "@")
+	return input
 }

@@ -385,6 +385,38 @@ func (ts *TaskScheduler) executeTask(task *models.Task) {
 		// 记录账号开始执行日志
 		ts.createTaskLog(task.ID, &accountID, "account_started", fmt.Sprintf("开始使用账号 %d 执行任务 (%d/%d)", accountID, i+1, len(accountIDs)), nil)
 
+		// 先检查账号状态，死亡账号直接跳过
+		account, err := ts.accountRepo.GetByID(accountID)
+		if err != nil {
+			ts.logger.Warn("Failed to get account info",
+				zap.Uint64("task_id", task.ID),
+				zap.Uint64("account_id", accountID),
+				zap.Error(err))
+			accountResults[accountIDStr] = map[string]interface{}{
+				"status": "skipped",
+				"error":  fmt.Sprintf("获取账号信息失败: %v", err),
+			}
+			ts.createTaskLog(task.ID, &accountID, "account_skipped", fmt.Sprintf("账号 %d 获取信息失败，跳过执行", accountID), nil)
+			failCount++
+			lastError = err
+			continue
+		}
+
+		// 检查账号是否为死亡状态
+		if account.Status == models.AccountStatusDead {
+			ts.logger.Info("Skipping dead account",
+				zap.Uint64("task_id", task.ID),
+				zap.Uint64("account_id", accountID),
+				zap.String("phone", account.Phone))
+			accountResults[accountIDStr] = map[string]interface{}{
+				"status": "skipped",
+				"reason": "账号已死亡，跳过执行",
+			}
+			ts.createTaskLog(task.ID, &accountID, "account_skipped", fmt.Sprintf("账号 %d 已死亡，跳过执行", accountID), nil)
+			// 死亡账号不计入失败，直接跳过
+			continue
+		}
+
 		// 执行风控检查
 		if err := ts.performRiskControlCheck(task, accountIDStr); err != nil {
 			ts.logger.Warn("Risk control check failed for account",

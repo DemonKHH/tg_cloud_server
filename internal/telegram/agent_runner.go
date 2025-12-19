@@ -5,19 +5,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/rand"
+	"strings"
+	"sync"
 	"time"
 
-	"net/http"
-	"strings"
-
 	gotd_telegram "github.com/gotd/td/telegram"
-	"github.com/gotd/td/telegram/message"
-	"github.com/gotd/td/telegram/message/styling"
-	"github.com/gotd/td/telegram/uploader"
 	"github.com/gotd/td/tg"
 	"go.uber.org/zap"
 
-	"sync"
 	"tg_cloud_server/internal/common/logger"
 	"tg_cloud_server/internal/models"
 )
@@ -25,7 +20,6 @@ import (
 // AIService AI服务接口 (本地定义以避免循环引用)
 type AIService interface {
 	AgentDecision(ctx context.Context, req *models.AgentDecisionRequest) (*models.AgentDecisionResponse, error)
-	GenerateImage(ctx context.Context, prompt string) (string, error)
 }
 
 // AgentRunner 智能体集群运行器
@@ -185,10 +179,8 @@ func (r *AgentRunner) executeAgentLoop(ctx context.Context, agent *models.AgentC
 		ScenarioTopic: r.scenario.Topic,
 		AgentPersona: fmt.Sprintf("%s (Age: %d, Job: %s, Style: %v, Beliefs: %v)",
 			agent.Persona.Name, agent.Persona.Age, agent.Persona.Occupation, agent.Persona.Style, agent.Persona.Beliefs),
-		AgentGoal:       agent.Goal,
-		ChatHistory:     history,
-		ImagePool:       agent.ImagePool,
-		ImageGenEnabled: agent.ImageGenEnabled,
+		AgentGoal:   agent.Goal,
+		ChatHistory: history,
 	}
 
 	decision, err := r.aiService.AgentDecision(ctx, decisionReq)
@@ -226,17 +218,8 @@ func (r *AgentRunner) executeAgentLoop(ctx context.Context, agent *models.AgentC
 	// 模拟输入状态
 	r.simulateTyping(ctx, accountIDStr, delay)
 
-	// 执行具体动作
-	switch decision.Action {
-	case "send_text":
-		return r.sendTextMessage(ctx, accountIDStr, decision.Content, decision.ReplyToMsgID)
-	case "send_photo":
-		return r.sendPhotoFromPool(ctx, accountIDStr, decision.MediaPath, decision.Content)
-	case "generate_photo":
-		return r.generateAndSendPhoto(ctx, accountIDStr, decision.ImagePrompt, decision.Content)
-	default:
-		return r.sendTextMessage(ctx, accountIDStr, decision.Content, decision.ReplyToMsgID)
-	}
+	// 执行发送文本消息
+	return r.sendTextMessage(ctx, accountIDStr, decision.Content, 0)
 }
 
 // fetchChatHistory 获取聊天记录
@@ -474,49 +457,6 @@ func (r *AgentRunner) sendTextMessage(ctx context.Context, accountID string, con
 	return r.connectionPool.ExecuteTask(accountID, task)
 }
 
-// sendPhotoFromPool 发送图片池中的图片
-func (r *AgentRunner) sendPhotoFromPool(ctx context.Context, accountID string, mediaPath string, caption string) error {
-	task := &GenericTask{
-		Type: "send_photo",
-		ExecuteFunc: func(ctx context.Context, client *gotd_telegram.Client) error {
-			api := client.API()
-			sender := message.NewSender(api).WithUploader(uploader.NewUploader(api))
-
-			peer, err := r.resolvePeer(ctx, api, r.scenario.Topic)
-			if err != nil {
-				return err
-			}
-
-			var file tg.InputFileClass
-			if strings.HasPrefix(mediaPath, "http") {
-				resp, err := http.Get(mediaPath)
-				if err != nil {
-					return fmt.Errorf("failed to download image: %w", err)
-				}
-				defer resp.Body.Close()
-
-				u := uploader.NewUploader(api)
-				upload, err := u.Upload(ctx, uploader.NewUpload(mediaPath, resp.Body, resp.ContentLength))
-				if err != nil {
-					return fmt.Errorf("failed to upload image: %w", err)
-				}
-				file = upload
-			} else {
-				u := uploader.NewUploader(api)
-				upload, err := u.FromPath(ctx, mediaPath)
-				if err != nil {
-					return fmt.Errorf("failed to upload local image: %w", err)
-				}
-				file = upload
-			}
-
-			_, err = sender.To(peer).Media(ctx, message.UploadedPhoto(file, styling.Plain(caption)))
-			return err
-		},
-	}
-	return r.connectionPool.ExecuteTask(accountID, task)
-}
-
 // resolvePeer 解析目标Peer
 func (r *AgentRunner) resolvePeer(ctx context.Context, api *tg.Client, target string) (tg.InputPeerClass, error) {
 	// Simple username resolution
@@ -563,19 +503,4 @@ func (t *GenericTask) ExecuteAdvanced(ctx context.Context, client *gotd_telegram
 
 func (t *GenericTask) GetType() string {
 	return t.Type
-}
-
-// generateAndSendPhoto 生成并发送图片
-func (r *AgentRunner) generateAndSendPhoto(ctx context.Context, accountID string, prompt string, caption string) error {
-	// 1. 调用 AI 生成图片
-	imageURL, err := r.aiService.GenerateImage(ctx, prompt)
-	if err != nil {
-		return fmt.Errorf("failed to generate image: %w", err)
-	}
-
-	r.logger.Info("Image generated", zap.String("url", imageURL))
-
-	// 2. 发送生成的图片
-	// 这里通常需要下载图片然后上传，或者直接发送 URL (如果支持)
-	return r.sendPhotoFromPool(ctx, accountID, imageURL, caption)
 }

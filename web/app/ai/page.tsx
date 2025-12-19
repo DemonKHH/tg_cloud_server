@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
-import { Switch } from "@/components/ui/switch"
+
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   Select,
@@ -61,8 +61,6 @@ interface AgentConfig {
   }
   goal: string
   active_rate: number
-  image_pool: string[]
-  image_gen_enabled: boolean
 }
 
 interface ScenarioConfig {
@@ -140,8 +138,6 @@ export default function AIPage() {
           },
           goal: "积极参与群聊讨论",
           active_rate: 0.5,
-          image_pool: [],
-          image_gen_enabled: false,
         }
       })
 
@@ -210,8 +206,6 @@ export default function AIPage() {
           persona: agent.persona,
           goal: agent.goal,
           active_rate: agent.active_rate,
-          image_pool: agent.image_pool,
-          image_gen_enabled: agent.image_gen_enabled,
         })),
       }
 
@@ -838,15 +832,6 @@ export default function AIPage() {
                 />
               </div>
 
-              <div className="flex items-center justify-between">
-                <Label>启用AI生图</Label>
-                <Switch
-                  checked={editingAgent.image_gen_enabled}
-                  onCheckedChange={checked =>
-                    setEditingAgent({ ...editingAgent, image_gen_enabled: checked })
-                  }
-                />
-              </div>
             </div>
           )}
 

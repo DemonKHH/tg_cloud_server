@@ -368,36 +368,29 @@ func (s *aiService) buildAgentDecisionPrompt(req *models.AgentDecisionRequest) s
 
 	sb.WriteString("你是一个Telegram群组中的用户。请根据以下信息决定你的下一步行动。\n\n")
 
-	sb.WriteString(fmt.Sprintf("当前话题: %s\n", req.ScenarioTopic))
+	sb.WriteString(fmt.Sprintf("当前话题/群组: %s\n", req.ScenarioTopic))
 	sb.WriteString(fmt.Sprintf("你的人设: %s\n", req.AgentPersona))
 	sb.WriteString(fmt.Sprintf("你的目标: %s\n", req.AgentGoal))
 
 	sb.WriteString("\n最近的聊天记录:\n")
-	for _, msg := range req.ChatHistory {
-		sb.WriteString(fmt.Sprintf("[%s] %s: %s\n", msg.Timestamp.Format("15:04"), msg.Username, msg.Message))
-	}
-
-	sb.WriteString("\n可用资源:\n")
-	if len(req.ImagePool) > 0 {
-		sb.WriteString(fmt.Sprintf("- 图片库: %d 张图片可用 (ID: 0-%d)\n", len(req.ImagePool), len(req.ImagePool)-1))
+	if len(req.ChatHistory) == 0 {
+		sb.WriteString("(暂无聊天记录)\n")
 	} else {
-		sb.WriteString("- 图片库: 无\n")
-	}
-	if req.ImageGenEnabled {
-		sb.WriteString("- AI生图: 已启用 (可以使用 generate_photo 动作)\n")
-	} else {
-		sb.WriteString("- AI生图: 未启用\n")
+		for _, msg := range req.ChatHistory {
+			sb.WriteString(fmt.Sprintf("[%s] %s: %s\n", msg.Timestamp.Format("15:04"), msg.Username, msg.Message))
+		}
 	}
 
 	sb.WriteString("\n请以JSON格式输出你的决策，包含以下字段:\n")
-	sb.WriteString("- should_speak: boolean, 是否需要发言\n")
-	sb.WriteString("- thought: string, 你的思考过程\n")
-	sb.WriteString("- action: string, 动作类型 (send_text, send_photo, generate_photo)\n")
-	sb.WriteString("- content: string, 发送的文本内容 (如果是发图，则是配文)\n")
-	sb.WriteString("- media_path: string, 如果action是send_photo，填写图片库中的图片路径/索引\n")
-	sb.WriteString("- image_prompt: string, 如果action是generate_photo，填写生图提示词\n")
-	sb.WriteString("- reply_to_msg_id: int, 回复的消息ID (可选)\n")
-	sb.WriteString("- delay_seconds: int, 模拟打字/思考延迟秒数 (1-10)\n")
+	sb.WriteString("- should_speak: boolean, 是否需要发言 (根据聊天内容和你的目标判断)\n")
+	sb.WriteString("- thought: string, 你的思考过程 (简短说明为什么发言或不发言)\n")
+	sb.WriteString("- content: string, 发送的文本内容 (如果should_speak为true)\n")
+	sb.WriteString("- delay_seconds: int, 模拟打字延迟秒数 (2-8秒，让发言更自然)\n")
+	sb.WriteString("\n注意:\n")
+	sb.WriteString("1. 不要频繁发言，要像真人一样自然\n")
+	sb.WriteString("2. 发言内容要符合你的人设和目标\n")
+	sb.WriteString("3. 如果最近已经发过言，可以选择不发言\n")
+	sb.WriteString("4. 回复要简短自然，像真人聊天一样\n")
 
 	return sb.String()
 }
@@ -466,7 +459,7 @@ func (s *aiService) generateResponse(ctx context.Context, prompt string, maxLeng
 	case ProviderCustom:
 		return s.generateCustomResponse(ctx, prompt, maxLength)
 	default:
-		return s.generateFallbackResponse(prompt), nil
+		return "", fmt.Errorf("unsupported AI provider: %s", s.provider)
 	}
 }
 
@@ -497,8 +490,7 @@ type openAIChatResponse struct {
 // generateOpenAIResponse 调用OpenAI API
 func (s *aiService) generateOpenAIResponse(ctx context.Context, prompt string, maxLength int) (string, error) {
 	if s.openAIKey == "" {
-		s.logger.Warn("OpenAI key is missing, using fallback response")
-		return s.generateFallbackResponse(prompt), nil
+		return "", fmt.Errorf("OpenAI API key is not configured")
 	}
 
 	reqBody := openAIChatRequest{
@@ -582,8 +574,7 @@ type geminiResponse struct {
 // generateGeminiResponse 调用Gemini API
 func (s *aiService) generateGeminiResponse(ctx context.Context, prompt string, maxLength int) (string, error) {
 	if s.geminiKey == "" {
-		s.logger.Warn("Gemini key is missing, using fallback response")
-		return s.generateFallbackResponse(prompt), nil
+		return "", fmt.Errorf("Gemini API key is not configured")
 	}
 
 	reqBody := geminiRequest{
@@ -642,39 +633,17 @@ func (s *aiService) generateGeminiResponse(ctx context.Context, prompt string, m
 
 // generateClaudeResponse 调用Claude API
 func (s *aiService) generateClaudeResponse(ctx context.Context, prompt string, maxLength int) (string, error) {
-	// TODO: 实现Claude API调用
-	s.logger.Debug("Using Claude API (mock implementation)")
-	return s.generateFallbackResponse(prompt), nil
+	return "", fmt.Errorf("Claude API is not implemented")
 }
 
 // generateLocalResponse 使用本地模型
 func (s *aiService) generateLocalResponse(ctx context.Context, prompt string, maxLength int) (string, error) {
-	// TODO: 实现本地AI模型调用
-	s.logger.Debug("Using local AI model (mock implementation)")
-	return s.generateFallbackResponse(prompt), nil
+	return "", fmt.Errorf("local AI model is not implemented")
 }
 
 // generateCustomResponse 使用自定义API
 func (s *aiService) generateCustomResponse(ctx context.Context, prompt string, maxLength int) (string, error) {
-	// TODO: 实现自定义API调用
-	s.logger.Debug("Using custom API (mock implementation)")
-	return s.generateFallbackResponse(prompt), nil
-}
-
-// generateFallbackResponse 备用响应生成
-func (s *aiService) generateFallbackResponse(prompt string) string {
-	// 简单的规则基础回复生成
-	fallbackResponses := []string{
-		"这是一个不错的观点！",
-		"我觉得这个话题很有意思。",
-		"确实如此，值得深入思考。",
-		"感谢分享这个信息。",
-		"这让我想到了类似的经历。",
-	}
-
-	// 基于prompt长度选择回复
-	index := len(prompt) % len(fallbackResponses)
-	return fallbackResponses[index]
+	return "", fmt.Errorf("custom API is not implemented")
 }
 
 // 辅助函数

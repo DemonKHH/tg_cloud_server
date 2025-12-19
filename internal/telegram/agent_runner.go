@@ -90,21 +90,16 @@ func (r *AgentRunner) Run(ctx context.Context) error {
 		}
 	}
 
-	// 验证所有账号可用性并注册消息监听
+	// 注册消息监听（无论账号是否忙碌，场景任务需要监听消息）
 	registeredCount := 0
 	for _, agent := range r.scenario.Agents {
 		accountIDStr := fmt.Sprintf("%d", agent.AccountID)
-		if !r.connectionPool.IsAccountBusy(accountIDStr) {
-			// 注册更新处理器
-			r.connectionPool.SetUpdateHandler(accountIDStr, r.createUpdateHandler(accountIDStr))
-			registeredCount++
-			r.logger.Debug("Registered update handler for agent",
-				zap.Uint64("account_id", agent.AccountID),
-				zap.String("persona", agent.Persona.Name))
-		} else {
-			r.logger.Warn("Account is busy, skipping handler registration",
-				zap.Uint64("account_id", agent.AccountID))
-		}
+		// 注册更新处理器 - 场景任务需要监听消息，不检查 IsAccountBusy
+		r.connectionPool.SetUpdateHandler(accountIDStr, r.createUpdateHandler(accountIDStr))
+		registeredCount++
+		r.logger.Info("Registered update handler for agent",
+			zap.Uint64("account_id", agent.AccountID),
+			zap.String("persona", agent.Persona.Name))
 	}
 
 	r.logger.Info("Agent handlers registered",
@@ -116,6 +111,11 @@ func (r *AgentRunner) Run(ctx context.Context) error {
 	if duration == 0 {
 		duration = 10 * time.Minute // 默认10分钟
 	}
+
+	r.logger.Info("Starting main scheduling loop",
+		zap.String("scenario", r.scenario.Name),
+		zap.Duration("duration", duration),
+		zap.Int("tick_interval_seconds", 5))
 
 	timer := time.NewTimer(duration)
 	defer timer.Stop()
@@ -140,6 +140,9 @@ func (r *AgentRunner) Run(ctx context.Context) error {
 			return nil
 		case <-ticker.C:
 			scheduleCount++
+			r.logger.Debug("Schedule tick",
+				zap.Int("cycle", scheduleCount),
+				zap.Duration("elapsed", time.Since(startTime)))
 			r.scheduleAgents(ctx)
 		}
 	}
@@ -153,13 +156,20 @@ func (r *AgentRunner) scheduleAgents(ctx context.Context) {
 	agent := r.scenario.Agents[agentIndex]
 
 	// 检查活跃度
-	if r.rnd.Float64() > agent.ActiveRate {
+	roll := r.rnd.Float64()
+	if roll > agent.ActiveRate {
+		r.logger.Debug("Agent skipped due to activity rate",
+			zap.Uint64("account_id", agent.AccountID),
+			zap.Float64("active_rate", agent.ActiveRate),
+			zap.Float64("roll", roll))
 		return // 该智能体此次不活跃
 	}
 
-	r.logger.Debug("Agent selected for decision",
+	r.logger.Info("Agent selected for decision",
 		zap.Uint64("account_id", agent.AccountID),
-		zap.String("persona", agent.Persona.Name))
+		zap.String("persona", agent.Persona.Name),
+		zap.Float64("active_rate", agent.ActiveRate),
+		zap.Float64("roll", roll))
 
 	// 执行决策循环
 	if err := r.executeAgentLoop(ctx, &agent); err != nil {
@@ -356,21 +366,38 @@ func (r *AgentRunner) fetchChatHistory(ctx context.Context, accountID string) ([
 // createUpdateHandler 创建更新处理器
 func (r *AgentRunner) createUpdateHandler(accountID string) gotd_telegram.UpdateHandler {
 	return gotd_telegram.UpdateHandlerFunc(func(ctx context.Context, u tg.UpdatesClass) error {
+		r.logger.Debug("Received update",
+			zap.String("account_id", accountID),
+			zap.String("update_type", fmt.Sprintf("%T", u)))
+
 		switch updates := u.(type) {
 		case *tg.Updates:
+			r.logger.Debug("Processing Updates batch",
+				zap.String("account_id", accountID),
+				zap.Int("update_count", len(updates.Updates)))
 			for _, update := range updates.Updates {
 				r.handleUpdate(ctx, accountID, update, updates.Users)
 			}
 		case *tg.UpdatesCombined:
+			r.logger.Debug("Processing UpdatesCombined batch",
+				zap.String("account_id", accountID),
+				zap.Int("update_count", len(updates.Updates)))
 			for _, update := range updates.Updates {
 				r.handleUpdate(ctx, accountID, update, updates.Users)
 			}
 		case *tg.UpdateShort:
 			r.handleUpdate(ctx, accountID, updates.Update, nil)
 		case *tg.UpdateShortMessage:
-			// 简化处理，暂不处理ShortMessage
+			r.logger.Debug("Received UpdateShortMessage",
+				zap.String("account_id", accountID),
+				zap.Int64("from_id", updates.UserID),
+				zap.String("message", updates.Message))
 		case *tg.UpdateShortChatMessage:
-			// 简化处理，暂不处理ShortChatMessage
+			r.logger.Debug("Received UpdateShortChatMessage",
+				zap.String("account_id", accountID),
+				zap.Int64("chat_id", updates.ChatID),
+				zap.Int64("from_id", updates.FromID),
+				zap.String("message", updates.Message))
 		}
 		return nil
 	})
@@ -378,15 +405,33 @@ func (r *AgentRunner) createUpdateHandler(accountID string) gotd_telegram.Update
 
 // handleUpdate 处理单个更新
 func (r *AgentRunner) handleUpdate(ctx context.Context, accountID string, update tg.UpdateClass, users []tg.UserClass) {
+	r.logger.Debug("Handling update",
+		zap.String("account_id", accountID),
+		zap.String("update_type", fmt.Sprintf("%T", update)))
+
 	switch u := update.(type) {
 	case *tg.UpdateNewMessage:
 		if msg, ok := u.Message.(*tg.Message); ok {
+			r.logger.Info("Received new message",
+				zap.String("account_id", accountID),
+				zap.Int("message_id", msg.ID),
+				zap.String("content", msg.Message))
 			r.processNewMessage(accountID, msg, users)
 		}
 	case *tg.UpdateNewChannelMessage:
 		if msg, ok := u.Message.(*tg.Message); ok {
+			r.logger.Info("Received new channel message",
+				zap.String("account_id", accountID),
+				zap.Int("message_id", msg.ID),
+				zap.String("content", msg.Message))
 			r.processNewMessage(accountID, msg, users)
 		}
+	case *tg.UpdateEditMessage:
+		r.logger.Debug("Received edit message update",
+			zap.String("account_id", accountID))
+	case *tg.UpdateEditChannelMessage:
+		r.logger.Debug("Received edit channel message update",
+			zap.String("account_id", accountID))
 	}
 }
 
@@ -429,10 +474,12 @@ func (r *AgentRunner) processNewMessage(accountID string, msg *tg.Message, users
 		r.messageCache[accountID] = r.messageCache[accountID][len(r.messageCache[accountID])-100:]
 	}
 
-	r.logger.Debug("New message cached",
+	r.logger.Info("New message cached",
 		zap.String("account_id", accountID),
 		zap.String("sender", chatMsg.Username),
-		zap.String("content", chatMsg.Message))
+		zap.Int64("user_id", chatMsg.UserID),
+		zap.String("content", chatMsg.Message),
+		zap.Int("cache_size", len(r.messageCache[accountID])))
 }
 
 // simulateTyping 模拟输入状态

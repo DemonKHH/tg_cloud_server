@@ -921,12 +921,49 @@ func (ts *TaskScheduler) executeScenarioTask(task *models.Task) {
 			zap.Error(err))
 	}
 
+	// 记录任务开始日志，包含配置信息
+	configInfo := make(map[string]interface{})
+	if name, ok := task.Config["name"].(string); ok {
+		configInfo["name"] = name
+	}
+	if topic, ok := task.Config["topic"].(string); ok {
+		configInfo["topic"] = topic
+	}
+	if duration, ok := task.Config["duration"].(float64); ok {
+		configInfo["duration"] = duration
+	}
+	ts.createTaskLog(task.ID, nil, "scenario_start", fmt.Sprintf("场景任务开始执行: %v", configInfo), configInfo)
+
 	// 创建 AgentRunner
 	runner, err := telegram.NewAgentRunner(task, ts.aiService, ts.connectionPool)
 	if err != nil {
 		ts.logger.Error("Failed to create agent runner", zap.Error(err))
+		ts.createTaskLog(task.ID, nil, "scenario_error", fmt.Sprintf("创建智能体运行器失败: %v", err), nil)
 		ts.completeTaskWithError(task, err)
 		return
+	}
+
+	// 记录智能体信息
+	if agents, ok := task.Config["agents"].([]interface{}); ok {
+		agentInfo := make([]map[string]interface{}, 0)
+		for _, a := range agents {
+			if agent, ok := a.(map[string]interface{}); ok {
+				info := map[string]interface{}{}
+				if accountID, ok := agent["account_id"].(float64); ok {
+					info["account_id"] = uint64(accountID)
+				}
+				if persona, ok := agent["persona"].(map[string]interface{}); ok {
+					if name, ok := persona["name"].(string); ok {
+						info["persona"] = name
+					}
+				}
+				if activeRate, ok := agent["active_rate"].(float64); ok {
+					info["active_rate"] = activeRate
+				}
+				agentInfo = append(agentInfo, info)
+			}
+		}
+		ts.createTaskLog(task.ID, nil, "scenario_agents", fmt.Sprintf("已配置 %d 个智能体", len(agents)), map[string]interface{}{"agents": agentInfo})
 	}
 
 	// 执行任务
@@ -939,11 +976,13 @@ func (ts *TaskScheduler) executeScenarioTask(task *models.Task) {
 			zap.Uint64("task_id", task.ID),
 			zap.Duration("duration", duration),
 			zap.Error(err))
+		ts.createTaskLog(task.ID, nil, "scenario_error", fmt.Sprintf("场景任务执行失败: %v", err), nil)
 		ts.completeTaskWithError(task, err)
 	} else {
 		logger.LogTask(zapcore.InfoLevel, "Scenario task execution completed successfully",
 			zap.Uint64("task_id", task.ID),
 			zap.Duration("duration", duration))
+		ts.createTaskLog(task.ID, nil, "scenario_complete", fmt.Sprintf("场景任务执行完成，耗时: %s", duration), nil)
 		ts.completeTaskWithSuccess(task)
 	}
 }

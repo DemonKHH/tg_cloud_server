@@ -4,9 +4,9 @@ import { toast } from "sonner"
 import { MainLayout } from "@/components/layout/main-layout"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { X, RefreshCw, CheckCircle2, Clock, PlayCircle, AlertCircle, Ban, FileText, MoreVertical, Pause, Play, Square, Trash2, Search, ChevronDown } from "lucide-react"
+import { X, RefreshCw, CheckCircle2, Clock, PlayCircle, AlertCircle, Ban, FileText, Pause, Play, Square, Trash2, Search, ChevronDown, Eye } from "lucide-react"
 import { taskAPI } from "@/lib/api"
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import {
@@ -15,7 +15,6 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog"
 import {
   Tooltip,
@@ -33,6 +32,14 @@ import {
 import { cn } from "@/lib/utils"
 import { usePagination } from "@/hooks/use-pagination"
 import { Card, CardContent } from "@/components/ui/card"
+import {
+  getTaskTypeLabel,
+  getTaskStatusLabel,
+  getPersonalityLabel,
+  getConfigFieldLabel,
+  formatDuration,
+  formatPercent,
+} from "@/lib/task-config"
 
 export default function TasksPage() {
   const {
@@ -67,6 +74,10 @@ export default function TasksPage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [deletingTask, setDeletingTask] = useState<any>(null)
 
+  // 查看详情状态
+  const [detailDialogOpen, setDetailDialogOpen] = useState(false)
+  const [detailTask, setDetailTask] = useState<any>(null)
+
 
 
   const loadLogs = async (taskId: string) => {
@@ -92,19 +103,7 @@ export default function TasksPage() {
   }
 
   const getTaskTypeText = (type: string) => {
-    const typeMap: Record<string, string> = {
-      check: "账号检查",
-      private_message: "私信发送",
-      broadcast: "群发消息",
-      verify_code: "验证码接收",
-      group_chat: "AI炒群",
-      join_group: "批量加群",
-      scenario: "场景炒群",
-      force_add_group: "强拉进群",
-      terminate_sessions: "踢出设备",
-      update_2fa: "修改2FA",
-    }
-    return typeMap[type] || type
+    return getTaskTypeLabel(type)
   }
 
   const getStatusIcon = (status: string) => {
@@ -150,16 +149,7 @@ export default function TasksPage() {
   }
 
   const getStatusText = (status: string) => {
-    const statusMap: Record<string, string> = {
-      pending: "待执行",
-      queued: "已排队",
-      running: "执行中",
-      paused: "已暂停",
-      completed: "已完成",
-      failed: "失败",
-      cancelled: "已取消",
-    }
-    return statusMap[status] || status
+    return getTaskStatusLabel(status)
   }
 
   // 取消任务
@@ -389,6 +379,294 @@ export default function TasksPage() {
     await loadLogs(String(task.id))
   }
 
+  // 查看详情
+  const handleViewDetail = (task: any) => {
+    setDetailTask(task)
+    setDetailDialogOpen(true)
+  }
+
+  // 渲染任务配置详情
+  const renderTaskConfig = (task: any) => {
+    const config = task.config || task.task_config
+    if (!config || Object.keys(config).length === 0) {
+      return <p className="text-muted-foreground text-sm">无配置信息</p>
+    }
+
+    switch (task.task_type) {
+      case 'scenario':
+        return (
+          <div className="space-y-3">
+            {config.name && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">{getConfigFieldLabel('name')}</span>
+                <span>{config.name}</span>
+              </div>
+            )}
+            {config.topic && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">{getConfigFieldLabel('topic')}</span>
+                <span className="font-mono">{config.topic}</span>
+              </div>
+            )}
+            {config.duration && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">{getConfigFieldLabel('duration')}</span>
+                <span>{formatDuration(config.duration)}</span>
+              </div>
+            )}
+            {config.agents && config.agents.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-muted-foreground">{getConfigFieldLabel('agents')} ({config.agents.length}个)</p>
+                <div className="space-y-2 pl-2 border-l-2 border-muted">
+                  {config.agents.map((agent: any, idx: number) => (
+                    <div key={idx} className="bg-muted/50 p-2 rounded text-sm">
+                      <div className="font-medium">{agent.persona?.name || `智能体 ${idx + 1}`}</div>
+                      {agent.persona?.style && (
+                        <div className="text-xs text-muted-foreground">{getConfigFieldLabel('style')}: {Array.isArray(agent.persona.style) ? agent.persona.style.join(', ') : agent.persona.style}</div>
+                      )}
+                      {agent.goal && <div className="text-xs text-muted-foreground">{getConfigFieldLabel('goal')}: {agent.goal}</div>}
+                      <div className="text-xs text-muted-foreground">{getConfigFieldLabel('active_rate')}: {formatPercent(agent.active_rate || 0.5)}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )
+
+      case 'group_chat':
+        return (
+          <div className="space-y-3">
+            {(config.group_name || config.group_id) && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">{getConfigFieldLabel('target_group')}</span>
+                <span className="font-mono">{config.group_name || config.group_id}</span>
+              </div>
+            )}
+            {config.monitor_duration_seconds && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">{getConfigFieldLabel('monitor_duration_seconds')}</span>
+                <span>{formatDuration(config.monitor_duration_seconds)}</span>
+              </div>
+            )}
+            {config.ai_config && (
+              <>
+                {config.ai_config.personality && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">{getConfigFieldLabel('personality')}</span>
+                    <span>{getPersonalityLabel(config.ai_config.personality)}</span>
+                  </div>
+                )}
+                {config.ai_config.response_rate && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">{getConfigFieldLabel('response_rate')}</span>
+                    <span>{formatPercent(config.ai_config.response_rate)}</span>
+                  </div>
+                )}
+                {config.ai_config.keywords && config.ai_config.keywords.length > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">{getConfigFieldLabel('keywords')}</span>
+                    <span>{config.ai_config.keywords.join(', ')}</span>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )
+
+      case 'private_message':
+        return (
+          <div className="space-y-3">
+            {config.target_user && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">{getConfigFieldLabel('target_user')}</span>
+                <span>{config.target_user}</span>
+              </div>
+            )}
+            {config.message && (
+              <div className="space-y-1">
+                <span className="text-muted-foreground">{getConfigFieldLabel('message')}</span>
+                <p className="bg-muted p-2 rounded text-sm">{config.message}</p>
+              </div>
+            )}
+          </div>
+        )
+
+      case 'join_group':
+        return (
+          <div className="space-y-3">
+            {config.group_link && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">{getConfigFieldLabel('group_link')}</span>
+                <span className="font-mono text-sm break-all">{config.group_link}</span>
+              </div>
+            )}
+            {config.group_username && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">{getConfigFieldLabel('group_username')}</span>
+                <span>@{config.group_username}</span>
+              </div>
+            )}
+          </div>
+        )
+
+      case 'force_add_group':
+        return (
+          <div className="space-y-3">
+            {config.group_id && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">{getConfigFieldLabel('group_id')}</span>
+                <span className="font-mono">{config.group_id}</span>
+              </div>
+            )}
+            {config.user_ids && config.user_ids.length > 0 && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">{getConfigFieldLabel('user_ids')}</span>
+                <span>{config.user_ids.length} 人</span>
+              </div>
+            )}
+          </div>
+        )
+
+      case 'terminate_sessions':
+        return (
+          <div className="space-y-3">
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">操作类型</span>
+              <span>踢出其他设备</span>
+            </div>
+            {config.keep_current !== undefined && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">{getConfigFieldLabel('keep_current')}</span>
+                <span>{config.keep_current ? "是" : "否"}</span>
+              </div>
+            )}
+          </div>
+        )
+
+      case 'update_2fa':
+        return (
+          <div className="space-y-3">
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">操作类型</span>
+              <span>修改两步验证密码</span>
+            </div>
+            {config.hint && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">{getConfigFieldLabel('hint')}</span>
+                <span>{config.hint}</span>
+              </div>
+            )}
+          </div>
+        )
+
+      case 'check':
+        return (
+          <div className="space-y-3">
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">操作类型</span>
+              <span>账号状态检查</span>
+            </div>
+            {config.check_type && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">{getConfigFieldLabel('check_type')}</span>
+                <span>{config.check_type === 'health_check' ? '健康检查' : config.check_type}</span>
+              </div>
+            )}
+            {config.timeout && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">{getConfigFieldLabel('timeout')}</span>
+                <span>{config.timeout}</span>
+              </div>
+            )}
+            {/* 显示检查项配置 */}
+            {Object.entries(config)
+              .filter(([key]) => !['check_type', 'timeout'].includes(key) && !key.startsWith('_'))
+              .map(([key, value]) => (
+                <div key={key} className="flex justify-between">
+                  <span className="text-muted-foreground">{getConfigFieldLabel(key)}</span>
+                  <span>{typeof value === 'boolean' ? (value ? '是' : '否') : (typeof value === 'object' ? JSON.stringify(value) : String(value))}</span>
+                </div>
+              ))}
+          </div>
+        )
+
+      case 'broadcast':
+        return (
+          <div className="space-y-3">
+            {config.message && (
+              <div className="space-y-1">
+                <span className="text-muted-foreground">{getConfigFieldLabel('message')}</span>
+                <p className="bg-muted p-2 rounded text-sm">{config.message}</p>
+              </div>
+            )}
+            {config.target_groups && config.target_groups.length > 0 && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">目标群组数</span>
+                <span>{config.target_groups.length} 个</span>
+              </div>
+            )}
+            {config.interval && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">{getConfigFieldLabel('interval')}</span>
+                <span>{formatDuration(config.interval)}</span>
+              </div>
+            )}
+          </div>
+        )
+
+      default:
+        // 默认：尝试智能解析常见字段
+        return (
+          <div className="space-y-3">
+            {renderGenericConfig(config)}
+          </div>
+        )
+    }
+  }
+
+  // 通用配置渲染（用于未知任务类型）
+  const renderGenericConfig = (config: any) => {
+    const entries = Object.entries(config).filter(([key]) => !key.startsWith('_'))
+    
+    if (entries.length === 0) {
+      return <p className="text-muted-foreground text-sm">无配置信息</p>
+    }
+
+    return entries.map(([key, value]) => {
+      const label = getConfigFieldLabel(key)
+      let displayValue: React.ReactNode = String(value)
+
+      if (typeof value === 'boolean') {
+        displayValue = value ? "是" : "否"
+      } else if (Array.isArray(value)) {
+        displayValue = value.length > 0 ? value.join(', ') : "无"
+      } else if (typeof value === 'object' && value !== null) {
+        displayValue = (
+          <pre className="bg-muted p-2 rounded text-xs overflow-x-auto whitespace-pre-wrap">
+            {JSON.stringify(value, null, 2)}
+          </pre>
+        )
+      } else if (key.includes('duration') || key.includes('seconds') || key.includes('interval')) {
+        const seconds = Number(value)
+        if (!isNaN(seconds)) {
+          displayValue = formatDuration(seconds)
+        }
+      } else if (key.includes('rate') && typeof value === 'number' && value <= 1) {
+        displayValue = formatPercent(value)
+      } else if (key === 'personality') {
+        displayValue = getPersonalityLabel(String(value))
+      }
+
+      return (
+        <div key={key} className={typeof value === 'object' && value !== null && !Array.isArray(value) ? "space-y-1" : "flex justify-between"}>
+          <span className="text-muted-foreground">{label}</span>
+          {typeof value === 'object' && value !== null && !Array.isArray(value) ? displayValue : <span>{displayValue}</span>}
+        </div>
+      )
+    })
+  }
+
 
 
 
@@ -545,6 +823,23 @@ export default function TasksPage() {
                         <TableCell>
                           <TooltipProvider>
                             <div className="flex items-center gap-1">
+                              {/* 查看详情 */}
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 hover:bg-purple-50 text-purple-600 hover:text-purple-700"
+                                    onClick={() => handleViewDetail(record)}
+                                  >
+                                    <Eye className="h-4 w-4" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent side="top">
+                                  <p className="text-xs">查看任务详情</p>
+                                </TooltipContent>
+                              </Tooltip>
+
                               {/* 查看日志 - 始终可用 */}
                               <Tooltip>
                                 <TooltipTrigger asChild>
@@ -764,6 +1059,90 @@ export default function TasksPage() {
                 确认删除
               </Button>
             </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* 任务详情对话框 */}
+        <Dialog open={detailDialogOpen} onOpenChange={setDetailDialogOpen}>
+          <DialogContent className="sm:max-w-[600px] max-h-[80vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Eye className="h-5 w-5" />
+                任务详情 - #{detailTask?.id}
+              </DialogTitle>
+              <DialogDescription>
+                {detailTask && `${getTaskTypeText(detailTask.task_type)}`}
+              </DialogDescription>
+            </DialogHeader>
+            {detailTask && (
+              <div className="space-y-4 py-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <p className="text-sm text-muted-foreground">任务ID</p>
+                    <p className="font-mono">#{detailTask.id}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-sm text-muted-foreground">任务类型</p>
+                    <Badge variant="secondary">{getTaskTypeText(detailTask.task_type)}</Badge>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-sm text-muted-foreground">状态</p>
+                    <div className="flex items-center gap-2">
+                      {getStatusIcon(detailTask.status)}
+                      <Badge className={getStatusColor(detailTask.status)}>
+                        {getStatusText(detailTask.status)}
+                      </Badge>
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-sm text-muted-foreground">优先级</p>
+                    <p>{detailTask.priority}/10</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-sm text-muted-foreground">账号</p>
+                    <p>{detailTask.account_phone || detailTask.account?.phone || `ID: ${detailTask.account_id}`}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-sm text-muted-foreground">创建时间</p>
+                    <p className="text-sm">{new Date(detailTask.created_at).toLocaleString()}</p>
+                  </div>
+                  {detailTask.started_at && (
+                    <div className="space-y-1">
+                      <p className="text-sm text-muted-foreground">开始时间</p>
+                      <p className="text-sm">{new Date(detailTask.started_at).toLocaleString()}</p>
+                    </div>
+                  )}
+                  {detailTask.completed_at && (
+                    <div className="space-y-1">
+                      <p className="text-sm text-muted-foreground">完成时间</p>
+                      <p className="text-sm">{new Date(detailTask.completed_at).toLocaleString()}</p>
+                    </div>
+                  )}
+                </div>
+                {(detailTask.config || detailTask.task_config) && (
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium text-muted-foreground border-b pb-2">任务配置</p>
+                    {renderTaskConfig(detailTask)}
+                  </div>
+                )}
+                {detailTask.result && (
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium text-muted-foreground border-b pb-2">执行结果</p>
+                    <pre className="bg-muted p-4 rounded-lg text-xs overflow-x-auto whitespace-pre-wrap">
+                      {typeof detailTask.result === 'string' ? detailTask.result : JSON.stringify(detailTask.result, null, 2)}
+                    </pre>
+                  </div>
+                )}
+                {detailTask.error && (
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium text-red-500 border-b pb-2">错误信息</p>
+                    <pre className="bg-red-50 dark:bg-red-900/20 p-4 rounded-lg text-xs text-red-600 dark:text-red-400 overflow-x-auto whitespace-pre-wrap">
+                      {detailTask.error}
+                    </pre>
+                  </div>
+                )}
+              </div>
+            )}
           </DialogContent>
         </Dialog>
       </div>

@@ -258,6 +258,7 @@ type TaskSummary struct {
 	Status       TaskStatus `json:"status"`
 	AccountPhone string     `json:"account_phone"` // 显示账号信息（如 "1个账号" 或 "3个账号"）
 	Priority     int        `json:"priority"`
+	Config       TaskConfig `json:"config"` // 任务配置
 	CreatedAt    time.Time  `json:"created_at"`
 	StartedAt    *time.Time `json:"started_at"`
 	CompletedAt  *time.Time `json:"completed_at"`

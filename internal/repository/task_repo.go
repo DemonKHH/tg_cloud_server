@@ -150,7 +150,7 @@ func (r *taskRepository) GetTaskSummaries(conditions map[string]interface{}, off
 	// 构建查询
 	query := r.db.Model(&models.Task{}).
 		Select(`tasks.id, tasks.task_type, tasks.status, tasks.account_ids, 
-		        tasks.priority, tasks.created_at, tasks.started_at, tasks.completed_at`).
+		        tasks.priority, tasks.config, tasks.created_at, tasks.started_at, tasks.completed_at`).
 		Where(conditions)
 
 	// 添加 account_id 条件（如果有）
@@ -170,9 +170,10 @@ func (r *taskRepository) GetTaskSummaries(conditions map[string]interface{}, off
 	// 获取数据并计算持续时间
 	type TaskWithDuration struct {
 		models.TaskSummary
-		AccountIDs     string     `gorm:"column:account_ids"`
-		StartedAtRaw   *time.Time `gorm:"column:started_at"`
-		CompletedAtRaw *time.Time `gorm:"column:completed_at"`
+		AccountIDs     string            `gorm:"column:account_ids"`
+		ConfigRaw      models.TaskConfig `gorm:"column:config"`
+		StartedAtRaw   *time.Time        `gorm:"column:started_at"`
+		CompletedAtRaw *time.Time        `gorm:"column:completed_at"`
 	}
 
 	var rawTasks []TaskWithDuration
@@ -189,6 +190,7 @@ func (r *taskRepository) GetTaskSummaries(conditions map[string]interface{}, off
 		task := rawTask.TaskSummary
 		task.StartedAt = rawTask.StartedAtRaw
 		task.CompletedAt = rawTask.CompletedAtRaw
+		task.Config = rawTask.ConfigRaw
 
 		// 设置账号信息（显示账号数量）
 		if rawTask.AccountIDs != "" {

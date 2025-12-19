@@ -14,8 +14,8 @@ import (
 
 	"github.com/gotd/td/session"
 	"github.com/gotd/td/session/tdesktop"
-	_ "github.com/mattn/go-sqlite3"
 	"go.uber.org/zap"
+	_ "modernc.org/sqlite" // 纯Go实现的SQLite，不需要CGO
 
 	"tg_cloud_server/internal/common/logger"
 )
@@ -47,8 +47,8 @@ type SessionData struct {
 
 // LoadPyrogramSession 加载Pyrogram .session文件并转换为SessionString
 func (sc *SessionConverter) LoadPyrogramSession(sessionFile, phone string) (*SessionData, error) {
-	// 打开SQLite数据库
-	db, err := sql.Open("sqlite3", sessionFile)
+	// 打开SQLite数据库 (使用 modernc.org/sqlite 驱动名为 "sqlite")
+	db, err := sql.Open("sqlite", sessionFile)
 	if err != nil {
 		return nil, fmt.Errorf("打开session数据库失败: %w", err)
 	}

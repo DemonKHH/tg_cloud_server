@@ -175,12 +175,17 @@ func (r *AgentRunner) executeAgentLoop(ctx context.Context, agent *models.AgentC
 		zap.Int("message_count", len(history)))
 
 	// 2. Decide (决策)
+	// 构建简化的人设描述
+	personaDesc := agent.Persona.Name
+	if len(agent.Persona.Style) > 0 {
+		personaDesc += fmt.Sprintf(" (风格: %v)", agent.Persona.Style)
+	}
+
 	decisionReq := &models.AgentDecisionRequest{
 		ScenarioTopic: r.scenario.Topic,
-		AgentPersona: fmt.Sprintf("%s (Age: %d, Job: %s, Style: %v, Beliefs: %v)",
-			agent.Persona.Name, agent.Persona.Age, agent.Persona.Occupation, agent.Persona.Style, agent.Persona.Beliefs),
-		AgentGoal:   agent.Goal,
-		ChatHistory: history,
+		AgentPersona:  personaDesc,
+		AgentGoal:     agent.Goal,
+		ChatHistory:   history,
 	}
 
 	decision, err := r.aiService.AgentDecision(ctx, decisionReq)

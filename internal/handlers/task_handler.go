@@ -477,12 +477,8 @@ func (h *TaskHandler) ControlTask(c *gin.Context) {
 	switch req.Action {
 	case "start":
 		controlErr = h.taskService.StartTask(userID, taskID)
-	case "pause":
-		controlErr = h.taskService.PauseTask(userID, taskID)
-	case "stop":
+	case "pause", "stop":
 		controlErr = h.taskService.StopTask(userID, taskID)
-	case "resume":
-		controlErr = h.taskService.ResumeTask(userID, taskID)
 	default:
 		h.logger.Warn("Unsupported task control action",
 			zap.Uint64("user_id", userID),
@@ -559,12 +555,8 @@ func getActionName(action string) string {
 	switch action {
 	case "start":
 		return "启动"
-	case "pause":
-		return "暂停"
-	case "stop":
+	case "pause", "stop":
 		return "停止"
-	case "resume":
-		return "恢复"
 	case "cancel":
 		return "取消"
 	default:

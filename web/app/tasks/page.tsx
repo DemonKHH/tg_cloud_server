@@ -242,40 +242,6 @@ export default function TasksPage() {
     }
   }
 
-  // 暂停任务
-  const handlePauseTask = async (task: any) => {
-    try {
-      const res = await taskAPI.control(String(task.id), 'pause')
-      if (res.code === 0) {
-        toast.success("任务已暂停")
-        refresh()
-      } else {
-        toast.error(res.msg || "暂停任务失败")
-      }
-    } catch (error: any) {
-      console.error('暂停任务失败:', error)
-      const errorMessage = error instanceof Error ? error.message : "暂停任务失败"
-      toast.error(errorMessage)
-    }
-  }
-
-  // 恢复任务
-  const handleResumeTask = async (task: any) => {
-    try {
-      const res = await taskAPI.control(String(task.id), 'resume')
-      if (res.code === 0) {
-        toast.success("任务已恢复")
-        refresh()
-      } else {
-        toast.error(res.msg || "恢复任务失败")
-      }
-    } catch (error: any) {
-      console.error('恢复任务失败:', error)
-      const errorMessage = error instanceof Error ? error.message : "恢复任务失败"
-      toast.error(errorMessage)
-    }
-  }
-
   // 停止任务
   const handleStopTask = async (task: any) => {
     try {
@@ -298,12 +264,8 @@ export default function TasksPage() {
     switch (action) {
       case 'start':
         return status === 'pending'
-      case 'pause':
-        return status === 'running'
-      case 'resume':
-        return status === 'paused'
       case 'stop':
-        return ['running', 'paused', 'queued'].includes(status)
+        return ['running', 'pending', 'queued'].includes(status)
       case 'cancel':
         return ['pending', 'queued'].includes(status)
       case 'retry':
@@ -323,12 +285,8 @@ export default function TasksPage() {
     switch (action) {
       case 'start':
         return enabled ? '启动任务' : `启动任务 - 只有待执行的任务才能启动（当前: ${statusText}）`
-      case 'pause':
-        return enabled ? '暂停任务' : `暂停任务 - 只有运行中的任务才能暂停（当前: ${statusText}）`
-      case 'resume':
-        return enabled ? '恢复任务' : `恢复任务 - 只有已暂停的任务才能恢复（当前: ${statusText}）`
       case 'stop':
-        return enabled ? '停止任务' : `停止任务 - 只有运行中、暂停或排队的任务才能停止（当前: ${statusText}）`
+        return enabled ? '停止任务' : `停止任务 - 只有运行中、待执行或排队的任务才能停止（当前: ${statusText}）`
       case 'cancel':
         return enabled ? '取消任务' : `取消任务 - 只有待执行或排队的任务才能取消（当前: ${statusText}）`
       case 'retry':
@@ -869,24 +827,6 @@ export default function TasksPage() {
                               {/* 暂停任务 */}
                               {renderActionButton(
                                 'pause',
-                                record,
-                                <Pause className="h-4 w-4" />,
-                                () => handlePauseTask(record),
-                                "hover:bg-orange-50 text-orange-600 hover:text-orange-700"
-                              )}
-
-                              {/* 恢复任务 */}
-                              {renderActionButton(
-                                'resume',
-                                record,
-                                <PlayCircle className="h-4 w-4" />,
-                                () => handleResumeTask(record),
-                                "hover:bg-emerald-50 text-emerald-600 hover:text-emerald-700"
-                              )}
-
-                              {/* 停止任务 */}
-                              {renderActionButton(
-                                'stop',
                                 record,
                                 <Square className="h-4 w-4" />,
                                 () => handleStopTask(record),

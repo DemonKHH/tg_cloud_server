@@ -21,13 +21,14 @@ import (
 
 // TaskScheduler 任务调度器
 type TaskScheduler struct {
-	taskQueue          []*models.Task               // 任务队列
-	runningTasks       map[uint64]bool              // 正在运行的任务 (taskID -> true)
-	connectionPool     *telegram.ConnectionPool     // 连接池引用
-	accountRepo        repository.AccountRepository // 账号仓库
-	taskRepo           repository.TaskRepository    // 任务仓库
-	aiService          services.AIService           // AI服务
-	riskControlService services.RiskControlService  // 风控服务
+	taskQueue          []*models.Task                // 任务队列
+	runningTasks       map[uint64]bool               // 正在运行的任务 (taskID -> true)
+	taskCancels        map[uint64]context.CancelFunc // 任务取消函数 (taskID -> cancelFunc)
+	connectionPool     *telegram.ConnectionPool      // 连接池引用
+	accountRepo        repository.AccountRepository  // 账号仓库
+	taskRepo           repository.TaskRepository     // 任务仓库
+	aiService          services.AIService            // AI服务
+	riskControlService services.RiskControlService   // 风控服务
 	logger             *zap.Logger
 	mu                 sync.RWMutex
 	ctx                context.Context
@@ -47,6 +48,7 @@ func NewTaskScheduler(
 	ts := &TaskScheduler{
 		taskQueue:      make([]*models.Task, 0),
 		runningTasks:   make(map[uint64]bool),
+		taskCancels:    make(map[uint64]context.CancelFunc),
 		connectionPool: connectionPool,
 		accountRepo:    accountRepo,
 		taskRepo:       taskRepo,
@@ -95,6 +97,36 @@ func (ts *TaskScheduler) Stop() {
 	}
 
 	ts.logger.Info("Task scheduler stopped")
+}
+
+// StopTask 停止指定任务（从队列移除或取消正在执行的任务）
+func (ts *TaskScheduler) StopTask(taskID uint64) bool {
+	ts.mu.Lock()
+	defer ts.mu.Unlock()
+
+	// 1. 尝试从队列中移除
+	for i, task := range ts.taskQueue {
+		if task.ID == taskID {
+			ts.taskQueue = append(ts.taskQueue[:i], ts.taskQueue[i+1:]...)
+			ts.logger.Info("Task removed from queue",
+				zap.Uint64("task_id", taskID))
+			return true
+		}
+	}
+
+	// 2. 如果任务正在运行，取消它
+	if _, running := ts.runningTasks[taskID]; running {
+		if cancelFunc, exists := ts.taskCancels[taskID]; exists {
+			cancelFunc()
+			ts.logger.Info("Task cancellation signal sent",
+				zap.Uint64("task_id", taskID))
+			return true
+		}
+	}
+
+	ts.logger.Warn("Task not found in queue or running tasks",
+		zap.Uint64("task_id", taskID))
+	return false
 }
 
 // SubmitTask 提交任务到指定账号队列
@@ -302,12 +334,21 @@ func (ts *TaskScheduler) processQueues() {
 		zap.Int("running_tasks", runningCount),
 		zap.Int("remaining_queue_size", queueSize))
 
+	// 为任务创建可取消的 context
+	taskCtx, taskCancel := context.WithCancel(ts.ctx)
+
+	// 保存取消函数
+	ts.mu.Lock()
+	ts.taskCancels[task.ID] = taskCancel
+	ts.mu.Unlock()
+
 	// 异步执行任务
 	go func() {
 		defer func() {
-			// 从运行列表中移除
+			// 从运行列表和取消函数映射中移除
 			ts.mu.Lock()
 			delete(ts.runningTasks, task.ID)
+			delete(ts.taskCancels, task.ID)
 			ts.mu.Unlock()
 
 			// 处理panic
@@ -321,15 +362,15 @@ func (ts *TaskScheduler) processQueues() {
 			}
 		}()
 
-		ts.executeTask(task)
+		ts.executeTaskWithContext(taskCtx, task)
 	}()
 }
 
-// executeTask 执行任务
-func (ts *TaskScheduler) executeTask(task *models.Task) {
-	//如果是场景任务，使用专门的执行逻辑
+// executeTaskWithContext 带 context 执行任务（支持取消）
+func (ts *TaskScheduler) executeTaskWithContext(ctx context.Context, task *models.Task) {
+	// 如果是场景任务，使用专门的执行逻辑
 	if task.TaskType == models.TaskTypeScenario {
-		ts.executeScenarioTask(task)
+		ts.executeScenarioTaskWithContext(ctx, task)
 		return
 	}
 
@@ -374,6 +415,19 @@ func (ts *TaskScheduler) executeTask(task *models.Task) {
 	ts.createTaskLog(task.ID, nil, "task_started", fmt.Sprintf("开始执行任务，共 %d 个账号", len(accountIDs)), nil)
 
 	for i, accountID := range accountIDs {
+		// 检查任务是否被取消
+		select {
+		case <-ctx.Done():
+			logger.LogTask(zapcore.InfoLevel, "Task cancelled by user",
+				zap.Uint64("task_id", task.ID),
+				zap.Int("completed_accounts", i),
+				zap.Int("total_accounts", len(accountIDs)))
+			ts.createTaskLog(task.ID, nil, "task_cancelled", fmt.Sprintf("任务被用户取消，已完成 %d/%d 个账号", i, len(accountIDs)), nil)
+			// 任务被取消，不更新状态（由 StopTask 处理）
+			return
+		default:
+		}
+
 		accountIDStr := fmt.Sprintf("%d", accountID)
 
 		logger.LogTask(zapcore.InfoLevel, "Executing task with account",
@@ -900,8 +954,13 @@ func (ts *TaskScheduler) createTaskLog(taskID uint64, accountID *uint64, action,
 	}
 }
 
-// executeScenarioTask 执行场景任务
+// executeScenarioTask 执行场景任务 - 已废弃，使用 executeScenarioTaskWithContext
 func (ts *TaskScheduler) executeScenarioTask(task *models.Task) {
+	ts.executeScenarioTaskWithContext(ts.ctx, task)
+}
+
+// executeScenarioTaskWithContext 带 context 执行场景任务（支持取消）
+func (ts *TaskScheduler) executeScenarioTaskWithContext(ctx context.Context, task *models.Task) {
 	// 更新任务状态为运行中
 	task.Status = models.TaskStatusRunning
 	startTime := time.Now()
@@ -966,8 +1025,18 @@ func (ts *TaskScheduler) executeScenarioTask(task *models.Task) {
 		ts.createTaskLog(task.ID, nil, "scenario_agents", fmt.Sprintf("已配置 %d 个智能体", len(agents)), map[string]interface{}{"agents": agentInfo})
 	}
 
-	// 执行任务
-	err = runner.Run(ts.ctx)
+	// 执行任务（使用传入的 ctx 支持取消）
+	err = runner.Run(ctx)
+
+	// 检查是否是被取消
+	if ctx.Err() == context.Canceled {
+		logger.LogTask(zapcore.InfoLevel, "Scenario task cancelled by user",
+			zap.Uint64("task_id", task.ID),
+			zap.Duration("duration", time.Since(startTime)))
+		ts.createTaskLog(task.ID, nil, "scenario_cancelled", "场景任务被用户取消", nil)
+		// 任务被取消，不更新状态（由 StopTask 处理）
+		return
+	}
 
 	// 更新结果
 	duration := time.Since(startTime)

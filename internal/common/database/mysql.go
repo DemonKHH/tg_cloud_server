@@ -76,24 +76,11 @@ func autoMigrate(db *gorm.DB) error {
 	)
 }
 
-// migrateRestrictionStatus 迁移旧的 two_way 和 frozen 状态到新的布尔字段
+// migrateRestrictionStatus 迁移旧的 two_way 状态到新的布尔字段
 func migrateRestrictionStatus(db *gorm.DB) error {
-	// 将 status='frozen' 的账号设置 is_frozen=true，并将 status 改为 normal
-	result := db.Model(&models.TGAccount{}).
-		Where("status = ?", "frozen").
-		Updates(map[string]interface{}{
-			"is_frozen": true,
-			"status":    "normal",
-		})
-	if result.Error != nil {
-		return fmt.Errorf("failed to migrate frozen accounts: %w", result.Error)
-	}
-	if result.RowsAffected > 0 {
-		fmt.Printf("Migrated %d frozen accounts\n", result.RowsAffected)
-	}
-
 	// 将 status='two_way' 的账号设置 is_bidirectional=true，并将 status 改为 normal
-	result = db.Model(&models.TGAccount{}).
+	// 注意：frozen 状态保留在 status 字段中，不需要迁移
+	result := db.Model(&models.TGAccount{}).
 		Where("status = ?", "two_way").
 		Updates(map[string]interface{}{
 			"is_bidirectional": true,
@@ -103,7 +90,7 @@ func migrateRestrictionStatus(db *gorm.DB) error {
 		return fmt.Errorf("failed to migrate two_way accounts: %w", result.Error)
 	}
 	if result.RowsAffected > 0 {
-		fmt.Printf("Migrated %d two_way accounts\n", result.RowsAffected)
+		fmt.Printf("Migrated %d two_way accounts to is_bidirectional field\n", result.RowsAffected)
 	}
 
 	return nil

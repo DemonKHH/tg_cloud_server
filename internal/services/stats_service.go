@@ -341,7 +341,7 @@ func (s *statsService) getAccountActivityStats(ctx context.Context, userID uint6
 // calculateRiskStats 根据状态分布计算风控统计
 func (s *statsService) calculateRiskStats(distribution map[string]int64) models.AccountRiskStats {
 	return models.AccountRiskStats{
-		HighRiskAccounts:   distribution[string(models.AccountStatusDead)],
+		HighRiskAccounts:   distribution[string(models.AccountStatusDead)] + distribution[string(models.AccountStatusFrozen)],
 		MediumRiskAccounts: distribution[string(models.AccountStatusRestricted)] + distribution[string(models.AccountStatusWarning)],
 		LowRiskAccounts:    distribution[string(models.AccountStatusNormal)] + distribution[string(models.AccountStatusNew)] + distribution[string(models.AccountStatusCooling)],
 		RestrictedAccounts: distribution[string(models.AccountStatusRestricted)],

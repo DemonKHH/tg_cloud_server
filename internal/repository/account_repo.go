@@ -31,7 +31,7 @@ type AccountRepository interface {
 	UpdateSessionData(accountID uint64, sessionData []byte) error
 	UpdateConnectionStatus(id uint64, isOnline bool) error
 	Update2FAStatus(id uint64, has2FA bool, password string) error
-	UpdateRestrictionStatus(id uint64, isFrozen, isBidirectional bool, frozenUntil *string) error
+	UpdateRestrictionStatus(id uint64, status models.AccountStatus, isBidirectional bool, frozenUntil *string) error
 	GetStatusDistribution(userID uint64) (map[string]int64, error)
 	GetGrowthTrend(userID uint64, days int) ([]models.TimeSeriesPoint, error)
 	GetProxyUsageStats(userID uint64) (*models.ProxyUsageStats, error)
@@ -360,17 +360,17 @@ func (r *accountRepository) Update2FAStatus(id uint64, has2FA bool, password str
 		Updates(updates).Error
 }
 
-// UpdateRestrictionStatus 更新账号限制状态（冻结和双向）
-func (r *accountRepository) UpdateRestrictionStatus(id uint64, isFrozen, isBidirectional bool, frozenUntil *string) error {
+// UpdateRestrictionStatus 更新账号限制状态（状态和双向限制）
+func (r *accountRepository) UpdateRestrictionStatus(id uint64, status models.AccountStatus, isBidirectional bool, frozenUntil *string) error {
 	updates := map[string]interface{}{
-		"is_frozen":        isFrozen,
+		"status":           status,
 		"is_bidirectional": isBidirectional,
 		"updated_at":       time.Now(),
 	}
 	if frozenUntil != nil {
 		updates["frozen_until"] = *frozenUntil
-	} else if !isFrozen {
-		// 如果不再冻结，清除冻结时间
+	} else if status != models.AccountStatusFrozen {
+		// 如果不是冻结状态，清除冻结时间
 		updates["frozen_until"] = nil
 	}
 	return r.db.Model(&models.TGAccount{}).

@@ -71,15 +71,6 @@ func (s *riskControlService) CanExecuteTask(ctx context.Context, accountID uint6
 		return false, "账号不存在"
 	}
 
-	// 检查冻结状态
-	if account.IsFrozen {
-		s.logger.Warn("Task blocked - account is frozen",
-			zap.Uint64("account_id", accountID),
-			zap.String("phone", account.Phone),
-			zap.String("task_type", string(taskType)))
-		return false, "账号已冻结，无法执行任务"
-	}
-
 	switch account.Status {
 	case models.AccountStatusDead:
 		s.logger.Warn("Task blocked - account is dead",
@@ -87,6 +78,13 @@ func (s *riskControlService) CanExecuteTask(ctx context.Context, accountID uint6
 			zap.String("phone", account.Phone),
 			zap.String("task_type", string(taskType)))
 		return false, "账号已死亡，无法执行任务"
+
+	case models.AccountStatusFrozen:
+		s.logger.Warn("Task blocked - account is frozen",
+			zap.Uint64("account_id", accountID),
+			zap.String("phone", account.Phone),
+			zap.String("task_type", string(taskType)))
+		return false, "账号已冻结，无法执行任务"
 
 	case models.AccountStatusCooling:
 		// 检查冷却是否到期
@@ -125,7 +123,6 @@ func (s *riskControlService) CanExecuteTask(ctx context.Context, accountID uint6
 	s.logger.Debug("Account allowed to execute task",
 		zap.Uint64("account_id", accountID),
 		zap.String("status", string(account.Status)),
-		zap.Bool("is_frozen", account.IsFrozen),
 		zap.Bool("is_bidirectional", account.IsBidirectional),
 		zap.String("task_type", string(taskType)))
 

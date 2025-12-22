@@ -17,6 +17,7 @@ const (
 	AccountStatusDead        AccountStatus = "dead"        // 死亡
 	AccountStatusCooling     AccountStatus = "cooling"     // 冷却
 	AccountStatusMaintenance AccountStatus = "maintenance" // 维护
+	AccountStatusFrozen      AccountStatus = "frozen"      // 冻结
 )
 
 // ConnectionStatus 连接状态枚举
@@ -55,7 +56,7 @@ type TGAccount struct {
 	Phone       string        `json:"phone" gorm:"uniqueIndex;size:20;not null"`
 	SessionData string        `json:"-" gorm:"type:text"` // 隐藏敏感数据
 	ProxyID     *uint64       `json:"proxy_id" gorm:"index"`
-	Status      AccountStatus `json:"status" gorm:"type:enum('new','normal','warning','restricted','dead','cooling','maintenance');default:'new'"`
+	Status      AccountStatus `json:"status" gorm:"type:enum('new','normal','warning','restricted','dead','cooling','maintenance','frozen');default:'new'"`
 	IsOnline    bool          `json:"is_online" gorm:"default:false"` // 是否在线
 
 	// Telegram 账号信息（从 Telegram 获取并存储）
@@ -71,8 +72,7 @@ type TGAccount struct {
 	TwoFAPassword string `json:"two_fa_password" gorm:"column:two_fa_password;size:100"`    // 2FA密码
 	Is2FACorrect  bool   `json:"is_2fa_correct" gorm:"column:is_2fa_correct;default:false"` // 2FA密码是否正确
 
-	// 限制状态（独立的布尔字段，可同时存在）
-	IsFrozen        bool    `json:"is_frozen" gorm:"default:false"`                   // 是否被冻结
+	// 双向限制状态（独立字段，可与其他状态同时存在）
 	IsBidirectional bool    `json:"is_bidirectional" gorm:"default:false"`            // 是否双向限制
 	FrozenUntil     *string `json:"frozen_until" gorm:"column:frozen_until;size:100"` // 冻结结束时间
 
@@ -99,14 +99,15 @@ func (TGAccount) TableName() string {
 func (a *TGAccount) IsAvailable() bool {
 	return a.Status != AccountStatusDead &&
 		a.Status != AccountStatusCooling &&
-		a.Status != AccountStatusMaintenance
+		a.Status != AccountStatusMaintenance &&
+		a.Status != AccountStatusFrozen
 }
 
 // NeedsAttention 检查账号是否需要关注
 func (a *TGAccount) NeedsAttention() bool {
 	return a.Status == AccountStatusWarning ||
 		a.Status == AccountStatusRestricted ||
-		a.IsFrozen ||
+		a.Status == AccountStatusFrozen ||
 		a.IsBidirectional
 }
 
@@ -125,6 +126,8 @@ func (a *TGAccount) GetStatusColor() string {
 		return "blue"
 	case AccountStatusMaintenance:
 		return "gray"
+	case AccountStatusFrozen:
+		return "red"
 	default:
 		return "purple"
 	}
@@ -144,8 +147,7 @@ type AccountSummary struct {
 	IsOnline bool          `json:"is_online"`
 	ProxyID  *uint64       `json:"proxy_id,omitempty"`
 
-	// 限制状态
-	IsFrozen        bool    `json:"is_frozen"`
+	// 双向限制状态（独立字段）
 	IsBidirectional bool    `json:"is_bidirectional"`
 	FrozenUntil     *string `json:"frozen_until,omitempty" gorm:"column:frozen_until"`
 

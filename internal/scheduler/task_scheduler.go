@@ -595,6 +595,15 @@ func (ts *TaskScheduler) executeTaskWithContext(ctx context.Context, task *model
 				isFrozen, _ := accountResult["is_frozen"].(bool)
 				isBidirectional, _ := accountResult["is_bidirectional"].(bool)
 
+				// 确定新状态
+				var newStatus models.AccountStatus
+				if isFrozen {
+					newStatus = models.AccountStatusFrozen
+				} else {
+					// 如果不是冻结，保持当前状态或设为正常
+					newStatus = models.AccountStatusNormal
+				}
+
 				// 获取冻结结束时间
 				var frozenUntil *string
 				if until, ok := accountResult["frozen_until"].(string); ok && until != "" {
@@ -602,16 +611,16 @@ func (ts *TaskScheduler) executeTaskWithContext(ctx context.Context, task *model
 				}
 
 				// 更新限制状态
-				if err := ts.accountRepo.UpdateRestrictionStatus(accountID, isFrozen, isBidirectional, frozenUntil); err != nil {
+				if err := ts.accountRepo.UpdateRestrictionStatus(accountID, newStatus, isBidirectional, frozenUntil); err != nil {
 					ts.logger.Error("Failed to update account restriction status",
 						zap.Uint64("account_id", accountID),
-						zap.Bool("is_frozen", isFrozen),
+						zap.String("status", string(newStatus)),
 						zap.Bool("is_bidirectional", isBidirectional),
 						zap.Error(err))
 				} else {
 					ts.logger.Info("Updated account restriction status",
 						zap.Uint64("account_id", accountID),
-						zap.Bool("is_frozen", isFrozen),
+						zap.String("status", string(newStatus)),
 						zap.Bool("is_bidirectional", isBidirectional))
 
 					// 记录状态更新日志

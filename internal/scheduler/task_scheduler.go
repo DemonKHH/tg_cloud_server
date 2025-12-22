@@ -589,41 +589,43 @@ func (ts *TaskScheduler) executeTaskWithContext(ctx context.Context, task *model
 
 			successCount++
 
-			// 如果是账号检查任务，且有建议的状态变更，自动更新账号状态
+			// 如果是账号检查任务，更新限制状态
 			if task.TaskType == models.TaskTypeCheck {
-				if suggestedStatus, ok := accountResult["suggested_status"].(string); ok {
-					var newStatus models.AccountStatus
-					shouldUpdate := false
+				// 获取冻结和双向限制状态
+				isFrozen, _ := accountResult["is_frozen"].(bool)
+				isBidirectional, _ := accountResult["is_bidirectional"].(bool)
 
-					switch suggestedStatus {
-					case "frozen":
-						newStatus = models.AccountStatusFrozen
-						shouldUpdate = true
-					case "two_way":
-						newStatus = models.AccountStatusTwoWay
-						shouldUpdate = true
-					}
+				// 获取冻结结束时间
+				var frozenUntil *string
+				if until, ok := accountResult["frozen_until"].(string); ok && until != "" {
+					frozenUntil = &until
+				}
 
-					if shouldUpdate {
-						var frozenUntil *string
-						if until, ok := accountResult["frozen_until"].(string); ok && until != "" {
-							frozenUntil = &until
+				// 更新限制状态
+				if err := ts.accountRepo.UpdateRestrictionStatus(accountID, isFrozen, isBidirectional, frozenUntil); err != nil {
+					ts.logger.Error("Failed to update account restriction status",
+						zap.Uint64("account_id", accountID),
+						zap.Bool("is_frozen", isFrozen),
+						zap.Bool("is_bidirectional", isBidirectional),
+						zap.Error(err))
+				} else {
+					ts.logger.Info("Updated account restriction status",
+						zap.Uint64("account_id", accountID),
+						zap.Bool("is_frozen", isFrozen),
+						zap.Bool("is_bidirectional", isBidirectional))
+
+					// 记录状态更新日志
+					if isFrozen || isBidirectional {
+						statusMsg := ""
+						if isFrozen && isBidirectional {
+							statusMsg = "冻结 + 双向限制"
+						} else if isFrozen {
+							statusMsg = "冻结"
+						} else if isBidirectional {
+							statusMsg = "双向限制"
 						}
-
-						if err := ts.accountRepo.UpdateRiskStatus(accountID, newStatus, frozenUntil); err != nil {
-							ts.logger.Error("Failed to auto-update account status",
-								zap.Uint64("account_id", accountID),
-								zap.String("new_status", string(newStatus)),
-								zap.Error(err))
-						} else {
-							ts.logger.Info("Auto-updated account status",
-								zap.Uint64("account_id", accountID),
-								zap.String("new_status", string(newStatus)))
-
-							// 记录状态更新日志
-							ts.createTaskLog(task.ID, &accountID, "status_updated",
-								fmt.Sprintf("账号 %d 状态自动更新为: %s", accountID, newStatus), nil)
-						}
+						ts.createTaskLog(task.ID, &accountID, "restriction_updated",
+							fmt.Sprintf("账号 %d 限制状态更新: %s", accountID, statusMsg), nil)
 					}
 				}
 

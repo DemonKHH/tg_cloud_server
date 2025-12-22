@@ -71,6 +71,15 @@ func (s *riskControlService) CanExecuteTask(ctx context.Context, accountID uint6
 		return false, "账号不存在"
 	}
 
+	// 检查冻结状态
+	if account.IsFrozen {
+		s.logger.Warn("Task blocked - account is frozen",
+			zap.Uint64("account_id", accountID),
+			zap.String("phone", account.Phone),
+			zap.String("task_type", string(taskType)))
+		return false, "账号已冻结，无法执行任务"
+	}
+
 	switch account.Status {
 	case models.AccountStatusDead:
 		s.logger.Warn("Task blocked - account is dead",
@@ -78,13 +87,6 @@ func (s *riskControlService) CanExecuteTask(ctx context.Context, accountID uint6
 			zap.String("phone", account.Phone),
 			zap.String("task_type", string(taskType)))
 		return false, "账号已死亡，无法执行任务"
-
-	case models.AccountStatusFrozen:
-		s.logger.Warn("Task blocked - account is frozen",
-			zap.Uint64("account_id", accountID),
-			zap.String("phone", account.Phone),
-			zap.String("task_type", string(taskType)))
-		return false, "账号已冻结，无法执行任务"
 
 	case models.AccountStatusCooling:
 		// 检查冷却是否到期
@@ -103,21 +105,31 @@ func (s *riskControlService) CanExecuteTask(ctx context.Context, accountID uint6
 			zap.Uint64("account_id", accountID),
 			zap.String("phone", account.Phone))
 
-	case models.AccountStatusRestricted, models.AccountStatusTwoWay:
+	case models.AccountStatusRestricted:
 		// 允许执行，但记录警告日志
-		s.logger.Warn("Executing task on restricted/two_way account",
+		s.logger.Warn("Executing task on restricted account",
 			zap.Uint64("account_id", accountID),
 			zap.String("phone", account.Phone),
 			zap.String("status", string(account.Status)),
 			zap.String("task_type", string(taskType)))
 	}
 
+	// 检查双向限制状态
+	if account.IsBidirectional {
+		s.logger.Warn("Executing task on bidirectional restricted account",
+			zap.Uint64("account_id", accountID),
+			zap.String("phone", account.Phone),
+			zap.String("task_type", string(taskType)))
+	}
+
 	s.logger.Debug("Account allowed to execute task",
 		zap.Uint64("account_id", accountID),
 		zap.String("status", string(account.Status)),
+		zap.Bool("is_frozen", account.IsFrozen),
+		zap.Bool("is_bidirectional", account.IsBidirectional),
 		zap.String("task_type", string(taskType)))
 
-	// new, normal, warning, restricted, two_way 都允许执行
+	// new, normal, warning, restricted 都允许执行（双向限制也允许，但会记录警告）
 	return true, ""
 }
 

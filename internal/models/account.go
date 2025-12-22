@@ -17,8 +17,6 @@ const (
 	AccountStatusDead        AccountStatus = "dead"        // 死亡
 	AccountStatusCooling     AccountStatus = "cooling"     // 冷却
 	AccountStatusMaintenance AccountStatus = "maintenance" // 维护
-	AccountStatusTwoWay      AccountStatus = "two_way"     // 双向
-	AccountStatusFrozen      AccountStatus = "frozen"      // 冻结
 )
 
 // ConnectionStatus 连接状态枚举
@@ -57,7 +55,7 @@ type TGAccount struct {
 	Phone       string        `json:"phone" gorm:"uniqueIndex;size:20;not null"`
 	SessionData string        `json:"-" gorm:"type:text"` // 隐藏敏感数据
 	ProxyID     *uint64       `json:"proxy_id" gorm:"index"`
-	Status      AccountStatus `json:"status" gorm:"type:enum('new','normal','warning','restricted','dead','cooling','maintenance','two_way','frozen');default:'new'"`
+	Status      AccountStatus `json:"status" gorm:"type:enum('new','normal','warning','restricted','dead','cooling','maintenance');default:'new'"`
 	IsOnline    bool          `json:"is_online" gorm:"default:false"` // 是否在线
 
 	// Telegram 账号信息（从 Telegram 获取并存储）
@@ -73,8 +71,10 @@ type TGAccount struct {
 	TwoFAPassword string `json:"two_fa_password" gorm:"column:two_fa_password;size:100"`    // 2FA密码
 	Is2FACorrect  bool   `json:"is_2fa_correct" gorm:"column:is_2fa_correct;default:false"` // 2FA密码是否正确
 
-	// 限制信息
-	FrozenUntil *string `json:"frozen_until" gorm:"column:frozen_until;size:100"` // 冻结结束时间
+	// 限制状态（独立的布尔字段，可同时存在）
+	IsFrozen        bool    `json:"is_frozen" gorm:"default:false"`                   // 是否被冻结
+	IsBidirectional bool    `json:"is_bidirectional" gorm:"default:false"`            // 是否双向限制
+	FrozenUntil     *string `json:"frozen_until" gorm:"column:frozen_until;size:100"` // 冻结结束时间
 
 	// 风控字段
 	ConsecutiveFailures uint32     `json:"consecutive_failures" gorm:"default:0"` // 连续失败次数
@@ -105,7 +105,9 @@ func (a *TGAccount) IsAvailable() bool {
 // NeedsAttention 检查账号是否需要关注
 func (a *TGAccount) NeedsAttention() bool {
 	return a.Status == AccountStatusWarning ||
-		a.Status == AccountStatusRestricted
+		a.Status == AccountStatusRestricted ||
+		a.IsFrozen ||
+		a.IsBidirectional
 }
 
 // GetStatusColor 获取状态颜色（用于前端显示）
@@ -123,10 +125,6 @@ func (a *TGAccount) GetStatusColor() string {
 		return "blue"
 	case AccountStatusMaintenance:
 		return "gray"
-	case AccountStatusTwoWay:
-		return "yellow"
-	case AccountStatusFrozen:
-		return "red"
 	default:
 		return "purple"
 	}
@@ -140,14 +138,20 @@ func (a *TGAccount) BeforeCreate(tx *gorm.DB) error {
 
 // AccountSummary 账号摘要信息（用于列表显示）
 type AccountSummary struct {
-	ID            uint64        `json:"id"`
-	Phone         string        `json:"phone"`
-	Status        AccountStatus `json:"status"`
-	IsOnline      bool          `json:"is_online"`
-	ProxyID       *uint64       `json:"proxy_id,omitempty"`
-	FrozenUntil   *string       `json:"frozen_until,omitempty" gorm:"column:frozen_until"`
-	Has2FA        bool          `json:"has_2fa" gorm:"column:has_2fa"`
-	TwoFAPassword string        `json:"two_fa_password,omitempty" gorm:"column:two_fa_password"`
+	ID       uint64        `json:"id"`
+	Phone    string        `json:"phone"`
+	Status   AccountStatus `json:"status"`
+	IsOnline bool          `json:"is_online"`
+	ProxyID  *uint64       `json:"proxy_id,omitempty"`
+
+	// 限制状态
+	IsFrozen        bool    `json:"is_frozen"`
+	IsBidirectional bool    `json:"is_bidirectional"`
+	FrozenUntil     *string `json:"frozen_until,omitempty" gorm:"column:frozen_until"`
+
+	// 2FA 信息
+	Has2FA        bool   `json:"has_2fa" gorm:"column:has_2fa"`
+	TwoFAPassword string `json:"two_fa_password,omitempty" gorm:"column:two_fa_password"`
 
 	// 风控字段
 	ConsecutiveFailures uint32     `json:"consecutive_failures"`

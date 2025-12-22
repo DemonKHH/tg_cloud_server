@@ -387,10 +387,6 @@ export default function AccountsPage() {
         return <AlertCircle className="h-4 w-4 text-blue-500" />
       case "maintenance":
         return <AlertCircle className="h-4 w-4 text-gray-500" />
-      case "two_way":
-        return <AlertCircle className="h-4 w-4 text-yellow-600" />
-      case "frozen":
-        return <XCircle className="h-4 w-4 text-red-600" />
       case "new":
       default:
         return <AlertCircle className="h-4 w-4 text-purple-500" />
@@ -411,10 +407,6 @@ export default function AccountsPage() {
         return "bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-900 dark:text-blue-300 dark:border-blue-800"
       case "maintenance":
         return "bg-gray-50 text-gray-700 border border-gray-200 dark:bg-gray-900 dark:text-gray-300 dark:border-gray-800"
-      case "two_way":
-        return "bg-yellow-50 text-yellow-700 border border-yellow-200 dark:bg-yellow-900 dark:text-yellow-300 dark:border-yellow-800"
-      case "frozen":
-        return "bg-red-50 text-red-700 border border-red-200 dark:bg-red-900 dark:text-red-300 dark:border-red-800"
       case "new":
       default:
         return "bg-purple-50 text-purple-700 border border-purple-200 dark:bg-purple-900 dark:text-purple-300 dark:border-purple-800"
@@ -430,8 +422,6 @@ export default function AccountsPage() {
       dead: "死亡",
       cooling: "冷却",
       maintenance: "维护",
-      two_way: "双向",
-      frozen: "冻结",
     }
     return statusMap[status] || status
   }
@@ -899,8 +889,7 @@ export default function AccountsPage() {
                 <div className="text-3xl font-bold text-orange-900 dark:text-orange-100">
                   {(accountStats?.status_distribution?.warning ?? 0) + 
                    (accountStats?.status_distribution?.restricted ?? 0) + 
-                   (accountStats?.status_distribution?.dead ?? 0) +
-                   (accountStats?.status_distribution?.frozen ?? 0)}
+                   (accountStats?.status_distribution?.dead ?? 0)}
                 </div>
                 <p className="text-xs text-orange-700/70 dark:text-orange-300/70 mt-1">
                   需要关注的账号数量
@@ -940,8 +929,6 @@ export default function AccountsPage() {
                   <SelectItem value="dead">死亡</SelectItem>
                   <SelectItem value="cooling">冷却</SelectItem>
                   <SelectItem value="maintenance">维护</SelectItem>
-                  <SelectItem value="two_way">双向</SelectItem>
-                  <SelectItem value="frozen">冻结</SelectItem>
                 </SelectContent>
               </Select>
               {(search || filters.status) && (
@@ -1453,8 +1440,8 @@ export default function AccountsPage() {
                                 </div>
                               )}
 
-                              {/* SpamBot Info */}
-                              {record.status === 'frozen' && (
+                              {/* 限制状态显示 */}
+                              {record.is_frozen && (
                                 <div className="mt-1">
                                   <Badge variant="destructive" className="w-fit text-[10px] px-1 py-0 h-5">
                                     <AlertCircle className="h-3 w-3 mr-1" />
@@ -1467,7 +1454,7 @@ export default function AccountsPage() {
                                   )}
                                 </div>
                               )}
-                              {record.status === 'two_way' && (
+                              {record.is_bidirectional && (
                                 <div className="mt-1">
                                   <Badge variant="outline" className="w-fit bg-yellow-50 text-yellow-700 border-yellow-200 text-[10px] px-1 py-0 h-5">
                                     <AlertCircle className="h-3 w-3 mr-1" />

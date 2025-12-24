@@ -3,6 +3,7 @@ package handlers
 import (
 	"archive/zip"
 	"bytes"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -958,6 +959,16 @@ func (h *AccountHandler) ExportAccounts(c *gin.Context) {
 			continue
 		}
 
+		// 解码base64的session数据
+		// 数据库中存储的是base64编码的gotd JSON格式session
+		sessionBytes, err := base64.StdEncoding.DecodeString(account.SessionData)
+		if err != nil {
+			h.logger.Error("Failed to decode session data",
+				zap.String("phone", account.Phone),
+				zap.Error(err))
+			continue
+		}
+
 		// 创建文件夹路径: 手机号/手机号.session
 		folderPath := account.Phone + "/"
 		sessionFileName := folderPath + account.Phone + ".session"
@@ -971,8 +982,8 @@ func (h *AccountHandler) ExportAccounts(c *gin.Context) {
 			continue
 		}
 
-		// 写入session数据
-		_, err = fileWriter.Write([]byte(account.SessionData))
+		// 写入解码后的session数据（二进制格式）
+		_, err = fileWriter.Write(sessionBytes)
 		if err != nil {
 			h.logger.Error("Failed to write session data",
 				zap.String("phone", account.Phone),

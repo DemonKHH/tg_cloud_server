@@ -387,31 +387,38 @@ func (s *aiService) GenerateImage(ctx context.Context, prompt string) (string, e
 func (s *aiService) buildAgentDecisionPrompt(req *models.AgentDecisionRequest) string {
 	var sb strings.Builder
 
-	sb.WriteString("你是一个Telegram群组中的用户。请根据以下信息决定你的下一步行动。\n\n")
+	sb.WriteString("【角色扮演】\n")
+	sb.WriteString(fmt.Sprintf("你是「%s」群里的一个普通群友。\n", req.ScenarioTopic))
+	if req.AgentPersona != "" {
+		sb.WriteString(fmt.Sprintf("你的性格：%s\n", req.AgentPersona))
+	}
+	if req.AgentGoal != "" {
+		sb.WriteString(fmt.Sprintf("你想达成的目标：%s\n", req.AgentGoal))
+	}
 
-	sb.WriteString(fmt.Sprintf("当前话题/群组: %s\n", req.ScenarioTopic))
-	sb.WriteString(fmt.Sprintf("你的人设: %s\n", req.AgentPersona))
-	sb.WriteString(fmt.Sprintf("你的目标: %s\n", req.AgentGoal))
-
-	sb.WriteString("\n最近的聊天记录:\n")
+	sb.WriteString("\n【最近聊天】\n")
 	if len(req.ChatHistory) == 0 {
-		sb.WriteString("(暂无聊天记录)\n")
+		sb.WriteString("(群里还没人说话)\n")
 	} else {
 		for _, msg := range req.ChatHistory {
-			sb.WriteString(fmt.Sprintf("[%s] %s: %s\n", msg.Timestamp.Format("15:04"), msg.Username, msg.Message))
+			sb.WriteString(fmt.Sprintf("%s: %s\n", msg.Username, msg.Message))
 		}
 	}
 
-	sb.WriteString("\n请以JSON格式输出你的决策，包含以下字段:\n")
-	sb.WriteString("- should_speak: boolean, 是否需要发言 (根据聊天内容和你的目标判断)\n")
-	sb.WriteString("- thought: string, 你的思考过程 (简短说明为什么发言或不发言)\n")
-	sb.WriteString("- content: string, 发送的文本内容 (如果should_speak为true)\n")
-	sb.WriteString("- delay_seconds: int, 模拟打字延迟秒数 (2-8秒，让发言更自然)\n")
-	sb.WriteString("\n注意:\n")
-	sb.WriteString("1. 不要频繁发言，要像真人一样自然\n")
-	sb.WriteString("2. 发言内容要符合你的人设和目标\n")
-	sb.WriteString("3. 如果最近已经发过言，可以选择不发言\n")
-	sb.WriteString("4. 回复要简短自然，像真人聊天一样\n")
+	sb.WriteString("\n【决策要求】\n")
+	sb.WriteString("判断现在要不要说话，输出JSON格式：\n")
+	sb.WriteString("{\n")
+	sb.WriteString("  \"should_speak\": true/false,  // 要不要发言\n")
+	sb.WriteString("  \"thought\": \"简短理由\",\n")
+	sb.WriteString("  \"content\": \"发言内容\",  // should_speak=true时填写\n")
+	sb.WriteString("  \"delay_seconds\": 3  // 延迟几秒发送(2-8)\n")
+	sb.WriteString("}\n")
+
+	sb.WriteString("\n【说话风格】\n")
+	sb.WriteString("- 像真人打字：短句、口语化、可以有语气词\n")
+	sb.WriteString("- 不要AI味：禁止\"好的\"\"当然\"\"作为...\"等开场白\n")
+	sb.WriteString("- 不要太积极：真人不会每条都回，适当潜水\n")
+	sb.WriteString("- 可以：打错字、用缩写、发表情、吐槽、跑题\n")
 
 	return sb.String()
 }
@@ -420,26 +427,35 @@ func (s *aiService) buildAgentDecisionPrompt(req *models.AgentDecisionRequest) s
 func (s *aiService) buildGroupChatContext(config *GroupChatConfig) string {
 	var contextBuilder strings.Builder
 
-	// 基础上下文
-	contextBuilder.WriteString(fmt.Sprintf("你现在是一个在Telegram群组'%s'中的用户。", config.GroupName))
-	contextBuilder.WriteString(fmt.Sprintf("群组话题：%s\n", config.GroupTopic))
-	contextBuilder.WriteString(fmt.Sprintf("你的人设：%s\n", config.AIPersona))
-	contextBuilder.WriteString(fmt.Sprintf("回复风格：%s\n", config.ResponseType))
+	// 系统设定 - 强调拟人化
+	contextBuilder.WriteString("【角色扮演】\n")
+	contextBuilder.WriteString(fmt.Sprintf("你是群「%s」里的一个普通群友。", config.GroupName))
+	if config.AIPersona != "" {
+		contextBuilder.WriteString(fmt.Sprintf("你的性格特点：%s\n", config.AIPersona))
+	}
+	if config.GroupTopic != "" {
+		contextBuilder.WriteString(fmt.Sprintf("群主题：%s\n", config.GroupTopic))
+	}
 
 	// 聊天历史
 	if len(config.ChatHistory) > 0 {
-		contextBuilder.WriteString("\n最近的聊天记录：\n")
+		contextBuilder.WriteString("\n【最近聊天】\n")
 		for _, msg := range config.ChatHistory {
-			contextBuilder.WriteString(fmt.Sprintf("[%s] %s: %s\n",
-				msg.Timestamp.Format("15:04"), msg.Username, msg.Message))
+			contextBuilder.WriteString(fmt.Sprintf("%s: %s\n", msg.Username, msg.Message))
 		}
 	}
 
-	contextBuilder.WriteString(fmt.Sprintf("\n请根据以上上下文生成一个自然的群聊回复，长度不超过%d字符。回复应该：\n", config.MaxLength))
-	contextBuilder.WriteString("1. 与聊天话题相关\n")
-	contextBuilder.WriteString("2. 语气自然，符合人设\n")
-	contextBuilder.WriteString("3. 避免重复之前的内容\n")
-	contextBuilder.WriteString("4. 适当使用表情符号\n")
+	// 核心要求 - 去AI味
+	contextBuilder.WriteString("\n【重要】像真人一样回复，遵守以下规则：\n")
+	contextBuilder.WriteString("- 直接说话，不要用\"好的\"\"当然\"\"作为...\"这类AI开场白\n")
+	contextBuilder.WriteString("- 句子要短，口语化，可以有语气词（嗯、啊、哈、emmm）\n")
+	contextBuilder.WriteString("- 可以打错字、用缩写、省略主语，像真人打字\n")
+	contextBuilder.WriteString("- 不要列举、不要分点、不要总结\n")
+	contextBuilder.WriteString("- 可以只回复表情或很短的话\n")
+	contextBuilder.WriteString("- 偶尔可以跑题、吐槽、开玩笑\n")
+	contextBuilder.WriteString("- 不要过于热情或礼貌，正常聊天就行\n")
+	contextBuilder.WriteString(fmt.Sprintf("- 控制在%d字以内\n", config.MaxLength))
+	contextBuilder.WriteString("\n只输出回复内容，不要任何解释：")
 
 	return contextBuilder.String()
 }
@@ -722,12 +738,42 @@ func (s *aiService) generateCustomResponse(ctx context.Context, prompt string, m
 
 // 辅助函数
 func (s *aiService) postProcessGroupChatResponse(response string, config *GroupChatConfig) string {
-	// 后处理逻辑：添加表情、调整长度等
 	processed := strings.TrimSpace(response)
 
+	// 去除常见AI开场白
+	aiPrefixes := []string{
+		"好的，", "好的!", "好的！", "当然，", "当然!", "当然！",
+		"作为", "首先，", "首先,", "嗯，好的", "没问题，", "没问题,",
+		"我来", "让我", "我认为", "我觉得可以",
+		"根据", "基于", "总的来说", "总之，",
+	}
+	for _, prefix := range aiPrefixes {
+		if strings.HasPrefix(processed, prefix) {
+			processed = strings.TrimPrefix(processed, prefix)
+			processed = strings.TrimSpace(processed)
+		}
+	}
+
+	// 去除引号包裹
+	if (strings.HasPrefix(processed, "\"") && strings.HasSuffix(processed, "\"")) ||
+		(strings.HasPrefix(processed, "\u201c") && strings.HasSuffix(processed, "\u201d")) {
+		if len(processed) > 2 {
+			processed = processed[1 : len(processed)-1]
+		}
+	}
+
 	// 长度限制
-	if len(processed) > config.MaxLength {
-		processed = processed[:config.MaxLength-3] + "..."
+	if config.MaxLength > 0 && len(processed) > config.MaxLength {
+		// 尝试在句子边界截断
+		runes := []rune(processed)
+		if len(runes) > config.MaxLength {
+			processed = string(runes[:config.MaxLength])
+			// 找最后一个标点截断
+			lastPunct := strings.LastIndexAny(processed, "。！？~")
+			if lastPunct > len(processed)/2 {
+				processed = processed[:lastPunct+3] // UTF-8标点占3字节
+			}
+		}
 	}
 
 	return processed

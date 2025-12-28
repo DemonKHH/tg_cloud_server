@@ -35,6 +35,7 @@ type CronService struct {
 	taskService        *services.TaskService
 	accountService     *services.AccountService
 	riskControlService services.RiskControlService
+	taskLogService     services.TaskLogService
 	userRepo           repository.UserRepository
 	taskRepo           repository.TaskRepository
 	accountRepo        repository.AccountRepository
@@ -67,6 +68,11 @@ func NewCronService(
 		taskRepo:           taskRepo,
 		accountRepo:        accountRepo,
 	}
+}
+
+// SetTaskLogService 设置任务日志服务（可选）
+func (s *CronService) SetTaskLogService(taskLogService services.TaskLogService) {
+	s.taskLogService = taskLogService
 }
 
 // SetConnectionPool 设置连接池（可选）
@@ -103,6 +109,10 @@ func (s *CronService) Start() error {
 	}
 
 	if err := s.addRiskControlRecoveryJob(); err != nil {
+		return err
+	}
+
+	if err := s.addTaskLogCleanupJob(); err != nil {
 		return err
 	}
 
@@ -794,4 +804,97 @@ func (s *CronService) addRiskControlRecoveryJob() error {
 
 	s.logger.Info("Risk control recovery jobs added successfully")
 	return nil
+}
+
+// addTaskLogCleanupJob 添加任务日志清理任务
+func (s *CronService) addTaskLogCleanupJob() error {
+	// 每天凌晨3点执行任务日志清理
+	_, err := s.cron.AddFunc("0 0 3 * * *", func() {
+		if s.taskLogService == nil {
+			s.logger.Debug("Task log service not set, skipping task log cleanup")
+			return
+		}
+
+		ctx := context.Background()
+		s.logger.Info("Running task log cleanup job")
+
+		// 默认保留30天日志
+		retentionDays := 30
+
+		// 执行清理，带重试逻辑
+		deletedCount, err := s.cleanupTaskLogsWithRetry(ctx, retentionDays)
+		if err != nil {
+			s.logger.Error("Task log cleanup failed after all retries",
+				zap.Int("retention_days", retentionDays),
+				zap.Error(err))
+			return
+		}
+
+		s.logger.Info("Task log cleanup completed successfully",
+			zap.Int64("deleted_count", deletedCount),
+			zap.Int("retention_days", retentionDays))
+	})
+
+	if err != nil {
+		s.logger.Error("Failed to add task log cleanup job", zap.Error(err))
+		return err
+	}
+
+	s.logger.Info("Task log cleanup job added successfully (runs daily at 3:00 AM)")
+	return nil
+}
+
+// cleanupTaskLogsWithRetry 带重试逻辑的任务日志清理
+func (s *CronService) cleanupTaskLogsWithRetry(ctx context.Context, retentionDays int) (int64, error) {
+	const maxRetries = 3
+	var lastErr error
+	var deletedCount int64
+
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		s.logger.Info("Attempting task log cleanup",
+			zap.Int("attempt", attempt),
+			zap.Int("max_retries", maxRetries))
+
+		deletedCount, lastErr = s.taskLogService.CleanupExpiredLogs(ctx, retentionDays)
+		if lastErr == nil {
+			// 清理成功
+			s.logger.Info("Task log cleanup attempt succeeded",
+				zap.Int("attempt", attempt),
+				zap.Int64("deleted_count", deletedCount))
+			return deletedCount, nil
+		}
+
+		// 清理失败，记录错误
+		s.logger.Warn("Task log cleanup attempt failed",
+			zap.Int("attempt", attempt),
+			zap.Int("max_retries", maxRetries),
+			zap.Error(lastErr))
+
+		// 如果不是最后一次尝试，使用指数退避等待
+		if attempt < maxRetries {
+			backoffDuration := s.calculateExponentialBackoff(attempt)
+			s.logger.Info("Waiting before retry",
+				zap.Duration("backoff", backoffDuration),
+				zap.Int("next_attempt", attempt+1))
+			time.Sleep(backoffDuration)
+		}
+	}
+
+	// 所有重试都失败
+	return 0, fmt.Errorf("task log cleanup failed after %d attempts: %w", maxRetries, lastErr)
+}
+
+// calculateExponentialBackoff 计算指数退避时间
+func (s *CronService) calculateExponentialBackoff(attempt int) time.Duration {
+	// 基础延迟 1 秒，指数增长：1s, 2s, 4s, ...
+	baseDelay := time.Second
+	backoff := baseDelay * time.Duration(1<<uint(attempt-1))
+
+	// 最大延迟 30 秒
+	maxDelay := 30 * time.Second
+	if backoff > maxDelay {
+		backoff = maxDelay
+	}
+
+	return backoff
 }

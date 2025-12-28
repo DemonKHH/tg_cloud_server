@@ -194,14 +194,14 @@ func (m *WebSocketManager) Broadcast(msgType string, data interface{}) {
 var wsManager *WebSocketManager
 
 // RegisterWebSocketRoutes 注册WebSocket路由
-func RegisterWebSocketRoutes(router *gin.Engine, redisClient *redis.Client, authService *services.AuthService) {
+func RegisterWebSocketRoutes(router *gin.Engine, redisClient *redis.Client, authService *services.AuthService, notificationService services.NotificationService) {
 	log := logger.Get().Named("websocket")
 
 	// 初始化WebSocket管理器
 	wsManager = NewWebSocketManager(authService)
 	go wsManager.Run()
 
-	// WebSocket连接端点
+	// WebSocket连接端点 (旧版本，保持兼容)
 	router.GET("/ws", func(c *gin.Context) {
 		// 升级HTTP连接到WebSocket
 		conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
@@ -215,6 +215,38 @@ func RegisterWebSocketRoutes(router *gin.Engine, redisClient *redis.Client, auth
 
 		// 处理WebSocket连接
 		handleWebSocketConnection(conn, wsManager, log)
+	})
+
+	// NotificationService WebSocket 端点 (支持任务日志订阅)
+	router.GET("/api/v1/ws", func(c *gin.Context) {
+		// 从查询参数获取 token
+		token := c.Query("token")
+		if token == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Missing token"})
+			return
+		}
+
+		// 验证 token
+		userID, err := authService.VerifyToken(token)
+		if err != nil {
+			log.Warn("Invalid token for WebSocket connection", zap.Error(err))
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
+			return
+		}
+
+		// 升级HTTP连接到WebSocket
+		conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
+		if err != nil {
+			log.Error("Failed to upgrade to websocket", zap.Error(err))
+			return
+		}
+
+		log.Info("NotificationService WebSocket connection established",
+			zap.Uint64("user_id", userID),
+			zap.String("remote_addr", conn.RemoteAddr().String()))
+
+		// 注册到 NotificationService
+		notificationService.RegisterWSConnection(userID, conn)
 	})
 
 	// WebSocket状态端点

@@ -29,6 +29,7 @@ type TaskScheduler struct {
 	taskRepo           repository.TaskRepository     // 任务仓库
 	aiService          services.AIService            // AI服务
 	riskControlService services.RiskControlService   // 风控服务
+	taskLogService     services.TaskLogService       // 任务日志服务
 	logger             *zap.Logger
 	mu                 sync.RWMutex
 	ctx                context.Context
@@ -42,6 +43,7 @@ func NewTaskScheduler(
 	accountRepo repository.AccountRepository,
 	taskRepo repository.TaskRepository,
 	aiService services.AIService,
+	taskLogService services.TaskLogService,
 ) *TaskScheduler {
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -53,6 +55,7 @@ func NewTaskScheduler(
 		accountRepo:    accountRepo,
 		taskRepo:       taskRepo,
 		aiService:      aiService,
+		taskLogService: taskLogService,
 		logger:         logger.Get().Named("task_scheduler"),
 		ctx:            ctx,
 		cancel:         cancel,
@@ -709,6 +712,18 @@ func (ts *TaskScheduler) completeTaskWithSuccess(task *models.Task) {
 			zap.Uint64("task_id", task.ID),
 			zap.Error(err))
 	}
+
+	// 发送任务完成的最终日志
+	var duration time.Duration
+	if task.StartedAt != nil {
+		duration = completedTime.Sub(*task.StartedAt)
+	}
+	ts.createTaskLog(task.ID, nil, "task_completed", fmt.Sprintf("任务执行完成 (总耗时: %s)", duration), map[string]interface{}{
+		"status":       "completed",
+		"completed_at": completedTime,
+		"duration":     duration.String(),
+		"result":       task.Result,
+	})
 }
 
 // performRiskControlCheck 执行风控检查
@@ -823,6 +838,19 @@ func (ts *TaskScheduler) completeTaskWithError(task *models.Task, taskErr error)
 			zap.Uint64("task_id", task.ID),
 			zap.Error(err))
 	}
+
+	// 发送任务失败的最终日志
+	var duration time.Duration
+	if task.StartedAt != nil {
+		duration = completedTime.Sub(*task.StartedAt)
+	}
+	ts.createTaskLog(task.ID, nil, "task_failed", fmt.Sprintf("任务执行失败: %v (总耗时: %s)", taskErr, duration), map[string]interface{}{
+		"status":       "failed",
+		"completed_at": completedTime,
+		"duration":     duration.String(),
+		"error":        taskErr.Error(),
+		"result":       task.Result,
+	})
 }
 
 // createTaskExecutor 创建任务执行器
@@ -932,7 +960,7 @@ func (ts *TaskScheduler) Close() {
 	ts.cancel()
 }
 
-// createTaskLog 创建任务日志
+// createTaskLog 创建任务日志并推送给订阅者
 func (ts *TaskScheduler) createTaskLog(taskID uint64, accountID *uint64, action, message string, extraData interface{}) {
 	var extraDataJSON []byte
 	if extraData != nil {
@@ -948,20 +976,49 @@ func (ts *TaskScheduler) createTaskLog(taskID uint64, accountID *uint64, action,
 		extraDataJSON = []byte("{}")
 	}
 
-	taskLog := &models.TaskLog{
-		TaskID:    taskID,
-		AccountID: accountID,
-		Action:    action,
-		Message:   message,
-		ExtraData: extraDataJSON,
-		CreatedAt: time.Now(),
+	// 确定日志级别
+	level := services.LogLevelInfo
+	if strings.Contains(action, "error") || strings.Contains(action, "failed") {
+		level = services.LogLevelError
+	} else if strings.Contains(action, "warn") || strings.Contains(action, "skipped") {
+		level = services.LogLevelWarn
 	}
 
-	if err := ts.taskRepo.CreateTaskLog(taskLog); err != nil {
-		ts.logger.Error("Failed to create task log",
-			zap.Uint64("task_id", taskID),
-			zap.String("action", action),
-			zap.Error(err))
+	// 使用 TaskLogService 创建日志（先持久化再推送）
+	if ts.taskLogService != nil {
+		logEntry := &services.TaskLogEntry{
+			TaskID:    taskID,
+			AccountID: accountID,
+			Level:     level,
+			Action:    action,
+			Message:   message,
+			ExtraData: extraDataJSON,
+			CreatedAt: time.Now(),
+		}
+
+		if err := ts.taskLogService.CreateLog(ts.ctx, logEntry); err != nil {
+			ts.logger.Error("Failed to create task log via TaskLogService",
+				zap.Uint64("task_id", taskID),
+				zap.String("action", action),
+				zap.Error(err))
+		}
+	} else {
+		// 回退到直接使用 taskRepo（兼容旧代码）
+		taskLog := &models.TaskLog{
+			TaskID:    taskID,
+			AccountID: accountID,
+			Action:    action,
+			Message:   message,
+			ExtraData: extraDataJSON,
+			CreatedAt: time.Now(),
+		}
+
+		if err := ts.taskRepo.CreateTaskLog(taskLog); err != nil {
+			ts.logger.Error("Failed to create task log",
+				zap.Uint64("task_id", taskID),
+				zap.String("action", action),
+				zap.Error(err))
+		}
 	}
 }
 

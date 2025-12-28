@@ -4,7 +4,7 @@ import { toast } from "sonner"
 import { MainLayout } from "@/components/layout/main-layout"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { X, RefreshCw, CheckCircle2, Clock, PlayCircle, AlertCircle, Ban, FileText, Pause, Play, Square, Trash2, Search, ChevronDown, Eye } from "lucide-react"
+import { X, RefreshCw, CheckCircle2, Clock, PlayCircle, AlertCircle, Ban, FileText, Pause, Play, Square, Trash2, Search, ChevronDown, Eye, Radio } from "lucide-react"
 import { taskAPI } from "@/lib/api"
 import { useState } from "react"
 import { Badge } from "@/components/ui/badge"
@@ -40,6 +40,7 @@ import {
   formatDuration,
   formatPercent,
 } from "@/lib/task-config"
+import { TaskLogDrawer } from "@/components/business/task-log-drawer"
 
 export default function TasksPage() {
   const {
@@ -65,8 +66,6 @@ export default function TasksPage() {
   // 查看日志相关状态
   const [logsDialogOpen, setLogsDialogOpen] = useState(false)
   const [viewingTask, setViewingTask] = useState<any>(null)
-  const [logs, setLogs] = useState<any[]>([])
-  const [loadingLogs, setLoadingLogs] = useState(false)
 
   // 确认对话框状态
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false)
@@ -78,29 +77,6 @@ export default function TasksPage() {
   const [detailDialogOpen, setDetailDialogOpen] = useState(false)
   const [detailTask, setDetailTask] = useState<any>(null)
 
-
-
-  const loadLogs = async (taskId: string) => {
-    try {
-      setLoadingLogs(true)
-      const response = await taskAPI.getLogs(taskId)
-      if (response.code === 0 && response.data) {
-        // 确保logs是数组格式
-        const logsData = Array.isArray(response.data) ? response.data : []
-        setLogs(logsData)
-      } else {
-        toast.error(response.msg || "加载日志失败")
-        setLogs([])
-      }
-    } catch (error: any) {
-      console.error("加载日志失败:", error)
-      const errorMessage = error instanceof Error ? error.message : "加载日志失败"
-      toast.error(errorMessage)
-      setLogs([])
-    } finally {
-      setLoadingLogs(false)
-    }
-  }
 
   const getTaskTypeText = (type: string) => {
     return getTaskTypeLabel(type)
@@ -331,10 +307,9 @@ export default function TasksPage() {
   }
 
   // 查看日志
-  const handleViewLogs = async (task: any) => {
+  const handleViewLogs = (task: any) => {
     setViewingTask(task)
     setLogsDialogOpen(true)
-    await loadLogs(String(task.id))
   }
 
   // 查看详情
@@ -913,36 +888,15 @@ export default function TasksPage() {
 
 
 
-        {/* 查看日志对话框 */}
-        <Dialog open={logsDialogOpen} onOpenChange={setLogsDialogOpen}>
-          <DialogContent className="sm:max-w-[800px] max-h-[600px] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>任务日志 - #{viewingTask?.id}</DialogTitle>
-              <DialogDescription>
-                {viewingTask && `${getTaskTypeText(viewingTask.task_type)} - ${getStatusText(viewingTask.status)}`}
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-2 py-4">
-              {loadingLogs ? (
-                <div className="text-center text-muted-foreground py-4">加载中...</div>
-              ) : logs.length === 0 ? (
-                <div className="text-center text-muted-foreground py-4">暂无日志</div>
-              ) : (
-                logs.map((log: any, index: number) => (
-                  <div key={index} className="border-l-2 border-muted pl-4 py-2">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-sm font-medium">{log.action}</span>
-                      <span className="text-xs text-muted-foreground">
-                        {new Date(log.created_at).toLocaleString()}
-                      </span>
-                    </div>
-                    <div className="text-sm text-muted-foreground">{log.message}</div>
-                  </div>
-                ))
-              )}
-            </div>
-          </DialogContent>
-        </Dialog>
+        {/* 查看日志抽屉 - 实时日志 */}
+        {viewingTask && (
+          <TaskLogDrawer
+            open={logsDialogOpen}
+            onOpenChange={setLogsDialogOpen}
+            taskId={viewingTask.id}
+            taskName={`${getTaskTypeText(viewingTask.task_type)} #${viewingTask.id}`}
+          />
+        )}
 
         {/* 取消任务确认对话框 */}
         <Dialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>

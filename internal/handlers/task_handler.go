@@ -1,8 +1,10 @@
 package handlers
 
 import (
+	"context"
 	"fmt"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -16,8 +18,9 @@ import (
 
 // TaskHandler 任务处理器
 type TaskHandler struct {
-	taskService *services.TaskService
-	logger      *zap.Logger
+	taskService    *services.TaskService
+	taskLogService services.TaskLogService
+	logger         *zap.Logger
 }
 
 // NewTaskHandler 创建任务处理器
@@ -26,6 +29,11 @@ func NewTaskHandler(taskService *services.TaskService) *TaskHandler {
 		taskService: taskService,
 		logger:      logger.Get().Named("task_handler"),
 	}
+}
+
+// SetTaskLogService 设置任务日志服务
+func (h *TaskHandler) SetTaskLogService(taskLogService services.TaskLogService) {
+	h.taskLogService = taskLogService
 }
 
 // CreateTask 创建任务
@@ -278,7 +286,7 @@ func (h *TaskHandler) RetryTask(c *gin.Context) {
 	response.SuccessWithMessage(c, "任务重试已调度", task)
 }
 
-// GetTaskLogs 获取任务日志
+// GetTaskLogs 获取任务日志（支持分页和过滤）
 func (h *TaskHandler) GetTaskLogs(c *gin.Context) {
 	userID, err := utils.GetUserID(c)
 	if err != nil {
@@ -291,13 +299,124 @@ func (h *TaskHandler) GetTaskLogs(c *gin.Context) {
 		return
 	}
 
-	logs, err := h.taskService.GetTaskLogs(userID, taskID)
+	// 首先验证任务是否属于用户
+	_, err = h.taskService.GetTask(userID, taskID)
 	if err != nil {
 		if err == services.ErrTaskNotFound {
 			response.TaskNotFound(c)
 			return
 		}
-		h.logger.Error("Failed to get task logs",
+		h.logger.Error("Failed to verify task ownership",
+			zap.Uint64("user_id", userID),
+			zap.Uint64("task_id", taskID),
+			zap.Error(err))
+		response.InternalError(c, "验证任务失败")
+		return
+	}
+
+	// 如果没有设置 TaskLogService，使用旧的方式获取日志
+	if h.taskLogService == nil {
+		logs, err := h.taskService.GetTaskLogs(userID, taskID)
+		if err != nil {
+			h.logger.Error("Failed to get task logs",
+				zap.Uint64("user_id", userID),
+				zap.Uint64("task_id", taskID),
+				zap.Error(err))
+			response.InternalError(c, "获取任务日志失败")
+			return
+		}
+		response.Success(c, logs)
+		return
+	}
+
+	// 构建查询过滤器
+	filter := &services.LogQueryFilter{
+		TaskID: taskID,
+		Page:   1,
+		Limit:  50,
+		Order:  "asc",
+	}
+
+	// 解析分页参数
+	if page := c.Query("page"); page != "" {
+		if p, err := strconv.Atoi(page); err == nil && p > 0 {
+			filter.Page = p
+		}
+	}
+
+	if limit := c.Query("limit"); limit != "" {
+		if l, err := strconv.Atoi(limit); err == nil && l > 0 {
+			filter.Limit = l
+			if filter.Limit > 200 {
+				filter.Limit = 200
+			}
+		}
+	}
+
+	// 解析过滤参数
+	if level := c.Query("level"); level != "" {
+		logLevel := services.LogLevel(level)
+		if services.IsValidLogLevel(logLevel) {
+			filter.Level = &logLevel
+		} else {
+			response.InvalidParam(c, "无效的日志级别，有效值: info, warn, error, debug")
+			return
+		}
+	}
+
+	if startTime := c.Query("start_time"); startTime != "" {
+		if t, err := time.Parse(time.RFC3339, startTime); err == nil {
+			filter.StartTime = &t
+		} else {
+			// 尝试解析 Unix 时间戳
+			if ts, err := strconv.ParseInt(startTime, 10, 64); err == nil {
+				t := time.Unix(ts, 0)
+				filter.StartTime = &t
+			} else {
+				response.InvalidParam(c, "无效的开始时间格式，请使用 RFC3339 格式或 Unix 时间戳")
+				return
+			}
+		}
+	}
+
+	if endTime := c.Query("end_time"); endTime != "" {
+		if t, err := time.Parse(time.RFC3339, endTime); err == nil {
+			filter.EndTime = &t
+		} else {
+			// 尝试解析 Unix 时间戳
+			if ts, err := strconv.ParseInt(endTime, 10, 64); err == nil {
+				t := time.Unix(ts, 0)
+				filter.EndTime = &t
+			} else {
+				response.InvalidParam(c, "无效的结束时间格式，请使用 RFC3339 格式或 Unix 时间戳")
+				return
+			}
+		}
+	}
+
+	if accountID := c.Query("account_id"); accountID != "" {
+		if id, err := strconv.ParseUint(accountID, 10, 64); err == nil {
+			filter.AccountID = &id
+		} else {
+			response.InvalidParam(c, "无效的账号ID")
+			return
+		}
+	}
+
+	if order := c.Query("order"); order != "" {
+		if order == "asc" || order == "desc" {
+			filter.Order = order
+		} else {
+			response.InvalidParam(c, "无效的排序方式，有效值: asc, desc")
+			return
+		}
+	}
+
+	// 查询日志
+	ctx := context.Background()
+	result, err := h.taskLogService.QueryLogs(ctx, filter)
+	if err != nil {
+		h.logger.Error("Failed to query task logs",
 			zap.Uint64("user_id", userID),
 			zap.Uint64("task_id", taskID),
 			zap.Error(err))
@@ -305,7 +424,8 @@ func (h *TaskHandler) GetTaskLogs(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, logs)
+	// 返回分页结果
+	response.Success(c, result)
 }
 
 // GetTaskStats 获取任务统计

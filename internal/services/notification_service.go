@@ -69,16 +69,147 @@ type WSConnection struct {
 	// 订阅的事件类型集合
 	subscriptions map[string]bool
 	subMutex      sync.RWMutex
+	// 订阅的任务日志 taskID -> bool
+	taskLogSubscriptions map[uint64]bool
+	taskLogSubMutex      sync.RWMutex
+}
+
+// TaskLogSubscription 任务日志订阅管理
+type TaskLogSubscription struct {
+	TaskID      uint64
+	Subscribers map[uint64]*WSConnection // userID -> connection
+	mutex       sync.RWMutex
+}
+
+// TaskLogSubscriptionManager 任务日志订阅管理器
+type TaskLogSubscriptionManager struct {
+	// taskID -> TaskLogSubscription
+	subscriptions map[uint64]*TaskLogSubscription
+	mutex         sync.RWMutex
+}
+
+// Subscribe 订阅任务日志
+func (m *TaskLogSubscriptionManager) Subscribe(taskID uint64, userID uint64, conn *WSConnection) {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+
+	// 获取或创建任务订阅
+	sub, exists := m.subscriptions[taskID]
+	if !exists {
+		sub = &TaskLogSubscription{
+			TaskID:      taskID,
+			Subscribers: make(map[uint64]*WSConnection),
+		}
+		m.subscriptions[taskID] = sub
+	}
+
+	// 添加订阅者
+	sub.mutex.Lock()
+	sub.Subscribers[userID] = conn
+	sub.mutex.Unlock()
+
+	// 更新连接的订阅列表
+	conn.taskLogSubMutex.Lock()
+	conn.taskLogSubscriptions[taskID] = true
+	conn.taskLogSubMutex.Unlock()
+}
+
+// Unsubscribe 取消订阅任务日志
+func (m *TaskLogSubscriptionManager) Unsubscribe(taskID uint64, userID uint64, conn *WSConnection) {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+
+	if sub, exists := m.subscriptions[taskID]; exists {
+		sub.mutex.Lock()
+		delete(sub.Subscribers, userID)
+		sub.mutex.Unlock()
+
+		// 如果没有订阅者了，删除订阅
+		sub.mutex.RLock()
+		isEmpty := len(sub.Subscribers) == 0
+		sub.mutex.RUnlock()
+		if isEmpty {
+			delete(m.subscriptions, taskID)
+		}
+	}
+
+	// 更新连接的订阅列表
+	if conn != nil {
+		conn.taskLogSubMutex.Lock()
+		delete(conn.taskLogSubscriptions, taskID)
+		conn.taskLogSubMutex.Unlock()
+	}
+}
+
+// UnsubscribeAll 取消用户的所有任务日志订阅
+func (m *TaskLogSubscriptionManager) UnsubscribeAll(userID uint64, conn *WSConnection) {
+	if conn == nil {
+		return
+	}
+
+	// 获取用户订阅的所有任务
+	conn.taskLogSubMutex.RLock()
+	taskIDs := make([]uint64, 0, len(conn.taskLogSubscriptions))
+	for taskID := range conn.taskLogSubscriptions {
+		taskIDs = append(taskIDs, taskID)
+	}
+	conn.taskLogSubMutex.RUnlock()
+
+	// 取消所有订阅
+	for _, taskID := range taskIDs {
+		m.Unsubscribe(taskID, userID, conn)
+	}
+}
+
+// GetSubscribers 获取任务的所有订阅者
+func (m *TaskLogSubscriptionManager) GetSubscribers(taskID uint64) []*WSConnection {
+	m.mutex.RLock()
+	defer m.mutex.RUnlock()
+
+	sub, exists := m.subscriptions[taskID]
+	if !exists {
+		return nil
+	}
+
+	sub.mutex.RLock()
+	defer sub.mutex.RUnlock()
+
+	subscribers := make([]*WSConnection, 0, len(sub.Subscribers))
+	for _, conn := range sub.Subscribers {
+		subscribers = append(subscribers, conn)
+	}
+	return subscribers
+}
+
+// GetSubscriberUserIDs 获取任务的所有订阅者用户ID
+func (m *TaskLogSubscriptionManager) GetSubscriberUserIDs(taskID uint64) []uint64 {
+	m.mutex.RLock()
+	defer m.mutex.RUnlock()
+
+	sub, exists := m.subscriptions[taskID]
+	if !exists {
+		return nil
+	}
+
+	sub.mutex.RLock()
+	defer sub.mutex.RUnlock()
+
+	userIDs := make([]uint64, 0, len(sub.Subscribers))
+	for userID := range sub.Subscribers {
+		userIDs = append(userIDs, userID)
+	}
+	return userIDs
 }
 
 // WSHub WebSocket集线器
 type WSHub struct {
-	clients    map[uint64]*WSConnection
-	broadcast  chan WSMessage
-	register   chan *WSConnection
-	unregister chan *WSConnection
-	mutex      sync.RWMutex
-	logger     *zap.Logger
+	clients           map[uint64]*WSConnection
+	broadcast         chan WSMessage
+	register          chan *WSConnection
+	unregister        chan *WSConnection
+	mutex             sync.RWMutex
+	logger            *zap.Logger
+	taskLogSubManager *TaskLogSubscriptionManager
 }
 
 // NotificationService 通知服务接口
@@ -115,6 +246,13 @@ type NotificationService interface {
 	PushRealTimeStats(userID uint64, stats map[string]interface{}) error
 	PushTaskQueueUpdate(userID uint64, accountID uint64, queueInfo *models.QueueInfo) error
 
+	// 任务日志订阅管理
+	SetTaskLogService(taskLogService TaskLogService)
+	SubscribeTaskLogs(userID uint64, taskID uint64) ([]*TaskLogEntry, error)
+	UnsubscribeTaskLogs(userID uint64, taskID uint64) error
+	GetTaskLogSubscribers(taskID uint64) []uint64
+	PushTaskLog(taskID uint64, log *TaskLogEntry)
+
 	// 消息管理
 	GetUnreadNotifications(userID uint64) ([]*Notification, error)
 	MarkNotificationAsRead(userID uint64, notificationID string) error
@@ -133,6 +271,7 @@ type NotificationService interface {
 type notificationService struct {
 	hub                *WSHub
 	eventService       *events.EventService
+	taskLogService     TaskLogService
 	logger             *zap.Logger
 	notifications      map[string]*Notification // 内存存储通知，实际应该用数据库
 	notificationsMutex sync.RWMutex
@@ -148,13 +287,19 @@ func NewNotificationService(eventService *events.EventService) NotificationServi
 		running:       false,
 	}
 
+	// 创建任务日志订阅管理器
+	taskLogSubManager := &TaskLogSubscriptionManager{
+		subscriptions: make(map[uint64]*TaskLogSubscription),
+	}
+
 	// 创建WebSocket集线器
 	service.hub = &WSHub{
-		clients:    make(map[uint64]*WSConnection),
-		broadcast:  make(chan WSMessage, 256),
-		register:   make(chan *WSConnection),
-		unregister: make(chan *WSConnection),
-		logger:     service.logger.Named("ws_hub"),
+		clients:           make(map[uint64]*WSConnection),
+		broadcast:         make(chan WSMessage, 256),
+		register:          make(chan *WSConnection),
+		unregister:        make(chan *WSConnection),
+		logger:            service.logger.Named("ws_hub"),
+		taskLogSubManager: taskLogSubManager,
 	}
 
 	return service
@@ -204,12 +349,13 @@ func (s *notificationService) Stop() error {
 // RegisterWSConnection 注册WebSocket连接
 func (s *notificationService) RegisterWSConnection(userID uint64, conn *websocket.Conn) *WSConnection {
 	client := &WSConnection{
-		UserID:        userID,
-		Conn:          conn,
-		Send:          make(chan WSMessage, 256),
-		Hub:           s.hub,
-		LastActive:    time.Now(),
-		subscriptions: make(map[string]bool),
+		UserID:               userID,
+		Conn:                 conn,
+		Send:                 make(chan WSMessage, 256),
+		Hub:                  s.hub,
+		LastActive:           time.Now(),
+		subscriptions:        make(map[string]bool),
+		taskLogSubscriptions: make(map[uint64]bool),
 	}
 
 	s.hub.register <- client
@@ -481,6 +627,14 @@ func (hub *WSHub) run() {
 				close(client.Send)
 			}
 			hub.mutex.Unlock()
+
+			// 清理该用户的所有任务日志订阅
+			if hub.taskLogSubManager != nil {
+				hub.taskLogSubManager.UnsubscribeAll(client.UserID, client)
+				hub.logger.Debug("Cleaned up task log subscriptions for disconnected client",
+					zap.Uint64("user_id", client.UserID))
+			}
+
 			hub.logger.Info("Client unregistered", zap.Uint64("user_id", client.UserID))
 
 		case message := <-hub.broadcast:
@@ -592,6 +746,14 @@ func (s *notificationService) handleWSMessage(client *WSConnection, message []by
 	case "unsubscribe":
 		// 处理取消订阅请求
 		s.handleUnsubscribe(client, msg)
+
+	case "subscribe_task_logs":
+		// 处理任务日志订阅请求
+		s.handleSubscribeTaskLogs(client, msg)
+
+	case "unsubscribe_task_logs":
+		// 处理取消任务日志订阅请求
+		s.handleUnsubscribeTaskLogs(client, msg)
 
 	case "mark_read":
 		// 标记通知为已读
@@ -934,6 +1096,83 @@ func (s *notificationService) handleUnsubscribe(client *WSConnection, msg map[st
 		zap.Strings("events", unsubscribed))
 }
 
+// handleSubscribeTaskLogs 处理任务日志订阅请求
+func (s *notificationService) handleSubscribeTaskLogs(client *WSConnection, msg map[string]interface{}) {
+	// 获取任务ID
+	taskIDFloat, ok := msg["task_id"].(float64)
+	if !ok {
+		s.sendError(client, "Invalid task_id: must be a number")
+		return
+	}
+	taskID := uint64(taskIDFloat)
+
+	if taskID == 0 {
+		s.sendError(client, "Invalid task_id: must be greater than 0")
+		return
+	}
+
+	// 订阅任务日志
+	logs, err := s.SubscribeTaskLogs(client.UserID, taskID)
+	if err != nil {
+		s.sendError(client, fmt.Sprintf("Failed to subscribe to task logs: %v", err))
+		return
+	}
+
+	// 发送订阅成功响应，包含初始日志
+	response := WSMessage{
+		Type: "subscribe_task_logs_success",
+		Data: map[string]interface{}{
+			"task_id":      taskID,
+			"initial_logs": logs,
+			"message":      "Successfully subscribed to task logs",
+		},
+		Timestamp: time.Now(),
+	}
+	client.Send <- response
+
+	s.logger.Info("Client subscribed to task logs via WebSocket",
+		zap.Uint64("user_id", client.UserID),
+		zap.Uint64("task_id", taskID),
+		zap.Int("initial_logs_count", len(logs)))
+}
+
+// handleUnsubscribeTaskLogs 处理取消任务日志订阅请求
+func (s *notificationService) handleUnsubscribeTaskLogs(client *WSConnection, msg map[string]interface{}) {
+	// 获取任务ID
+	taskIDFloat, ok := msg["task_id"].(float64)
+	if !ok {
+		s.sendError(client, "Invalid task_id: must be a number")
+		return
+	}
+	taskID := uint64(taskIDFloat)
+
+	if taskID == 0 {
+		s.sendError(client, "Invalid task_id: must be greater than 0")
+		return
+	}
+
+	// 取消订阅任务日志
+	if err := s.UnsubscribeTaskLogs(client.UserID, taskID); err != nil {
+		s.sendError(client, fmt.Sprintf("Failed to unsubscribe from task logs: %v", err))
+		return
+	}
+
+	// 发送取消订阅成功响应
+	response := WSMessage{
+		Type: "unsubscribe_task_logs_success",
+		Data: map[string]interface{}{
+			"task_id": taskID,
+			"message": "Successfully unsubscribed from task logs",
+		},
+		Timestamp: time.Now(),
+	}
+	client.Send <- response
+
+	s.logger.Info("Client unsubscribed from task logs via WebSocket",
+		zap.Uint64("user_id", client.UserID),
+		zap.Uint64("task_id", taskID))
+}
+
 // sendError 发送错误消息给客户端
 func (s *notificationService) sendError(client *WSConnection, message string) {
 	response := WSMessage{
@@ -994,5 +1233,105 @@ func (s *notificationService) mapNotificationTypeToEventType(notificationType No
 		return "stats.*"
 	default:
 		return string(notificationType)
+	}
+}
+
+// SetTaskLogService 设置任务日志服务
+func (s *notificationService) SetTaskLogService(taskLogService TaskLogService) {
+	s.taskLogService = taskLogService
+}
+
+// SubscribeTaskLogs 订阅任务日志
+// 返回最近50条日志作为初始数据
+func (s *notificationService) SubscribeTaskLogs(userID uint64, taskID uint64) ([]*TaskLogEntry, error) {
+	s.hub.mutex.RLock()
+	client, exists := s.hub.clients[userID]
+	s.hub.mutex.RUnlock()
+
+	if !exists {
+		return nil, fmt.Errorf("user %d is not connected", userID)
+	}
+
+	// 添加订阅
+	s.hub.taskLogSubManager.Subscribe(taskID, userID, client)
+
+	s.logger.Info("User subscribed to task logs",
+		zap.Uint64("user_id", userID),
+		zap.Uint64("task_id", taskID))
+
+	// 获取最近50条日志作为初始数据
+	if s.taskLogService != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		logs, err := s.taskLogService.GetRecentLogs(ctx, taskID, 50)
+		if err != nil {
+			s.logger.Warn("Failed to get recent logs for subscription",
+				zap.Uint64("task_id", taskID),
+				zap.Error(err))
+			return nil, nil // 订阅成功，但获取初始日志失败
+		}
+		return logs, nil
+	}
+
+	return nil, nil
+}
+
+// UnsubscribeTaskLogs 取消订阅任务日志
+func (s *notificationService) UnsubscribeTaskLogs(userID uint64, taskID uint64) error {
+	s.hub.mutex.RLock()
+	client, exists := s.hub.clients[userID]
+	s.hub.mutex.RUnlock()
+
+	if !exists {
+		return fmt.Errorf("user %d is not connected", userID)
+	}
+
+	// 移除订阅
+	s.hub.taskLogSubManager.Unsubscribe(taskID, userID, client)
+
+	s.logger.Info("User unsubscribed from task logs",
+		zap.Uint64("user_id", userID),
+		zap.Uint64("task_id", taskID))
+
+	return nil
+}
+
+// GetTaskLogSubscribers 获取任务的所有订阅者用户ID
+func (s *notificationService) GetTaskLogSubscribers(taskID uint64) []uint64 {
+	return s.hub.taskLogSubManager.GetSubscriberUserIDs(taskID)
+}
+
+// PushTaskLog 推送任务日志给订阅者
+// 实现 LogPusher 接口
+func (s *notificationService) PushTaskLog(taskID uint64, log *TaskLogEntry) {
+	// 获取该任务的所有订阅者
+	subscribers := s.hub.taskLogSubManager.GetSubscribers(taskID)
+	if len(subscribers) == 0 {
+		return
+	}
+
+	// 构建推送消息
+	message := WSMessage{
+		Type: "task_log",
+		Data: map[string]interface{}{
+			"task_id": taskID,
+			"log":     log,
+		},
+		Timestamp: time.Now(),
+	}
+
+	// 推送给所有订阅者
+	for _, conn := range subscribers {
+		select {
+		case conn.Send <- message:
+			s.logger.Debug("Task log pushed to subscriber",
+				zap.Uint64("task_id", taskID),
+				zap.Uint64("user_id", conn.UserID),
+				zap.Uint64("log_id", log.ID))
+		default:
+			s.logger.Warn("Failed to push task log: channel full",
+				zap.Uint64("task_id", taskID),
+				zap.Uint64("user_id", conn.UserID))
+		}
 	}
 }

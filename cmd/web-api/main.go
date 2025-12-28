@@ -137,8 +137,20 @@ func main() {
 	aiService := services.NewAIService(aiProvider, aiConfig)
 	logger.Info("AI service initialized", zap.String("provider", string(aiProvider)))
 
+	// 初始化通知服务
+	notificationService := services.NewNotificationService(eventService)
+	if err := notificationService.Start(); err != nil {
+		logger.Fatal("Failed to start notification service", zap.Error(err))
+	}
+	logger.Info("Notification service initialized and started")
+
+	// 初始化任务日志服务（使用 NotificationService 作为 LogPusher）
+	taskLogService := services.NewTaskLogService(db, notificationService)
+	notificationService.SetTaskLogService(taskLogService)
+	logger.Info("Task log service initialized")
+
 	// 初始化任务调度器
-	taskScheduler := scheduler.NewTaskScheduler(connectionPool, accountRepo, taskRepo, aiService)
+	taskScheduler := scheduler.NewTaskScheduler(connectionPool, accountRepo, taskRepo, aiService, taskLogService)
 	logger.Info("Task scheduler initialized and started")
 
 	// 初始化服务层
@@ -164,11 +176,13 @@ func main() {
 	// 初始化定时任务服务
 	cronService := cron.NewCronService(taskService, accountService, riskControlService, userRepo, taskRepo, accountRepo)
 	cronService.SetConnectionPool(connectionPool)
+	cronService.SetTaskLogService(taskLogService)
 
 	// 初始化处理器
 	authHandler := handlers.NewAuthHandler(authService)
 	accountHandler := handlers.NewAccountHandler(accountService)
 	taskHandler := handlers.NewTaskHandler(taskService)
+	taskHandler.SetTaskLogService(taskLogService) // 注入任务日志服务
 	proxyHandler := handlers.NewProxyHandler(proxyService)
 	moduleHandler := handlers.NewModuleHandler(taskService, accountService)
 	verifyCodeHandler := handlers.NewVerifyCodeHandler(verifyCodeService)
@@ -200,7 +214,7 @@ func main() {
 	routes.RegisterAuthRoutes(router, authHandler)
 	routes.RegisterAPIRoutes(router, accountHandler, taskHandler, proxyHandler, moduleHandler, statsHandler, settingsHandler, aiHandler, authService, cfg)
 	routes.SetupVerifyCodeRoutes(router, verifyCodeHandler, authService)
-	routes.RegisterWebSocketRoutes(router, redisClient, authService)
+	routes.RegisterWebSocketRoutes(router, redisClient, authService, notificationService)
 
 	// 注册指标端点
 	metrics.RegisterMetricsHandler(router)
@@ -284,6 +298,12 @@ func main() {
 	// 停止任务调度器
 	taskScheduler.Stop()
 	logger.Info("Task scheduler stopped")
+
+	// 停止通知服务
+	if err := notificationService.Stop(); err != nil {
+		logger.Error("Failed to stop notification service", zap.Error(err))
+	}
+	logger.Info("Notification service stopped")
 
 	// 优雅关闭服务器
 	if err := server.Shutdown(ctx); err != nil {

@@ -87,11 +87,19 @@ export function useTaskLogs(options: UseTaskLogsOptions): UseTaskLogsReturn {
 
   // 发送订阅请求
   const subscribe = useCallback(() => {
-    if (isSubscribed || !taskId) return;
+    if (isSubscribed || !taskId) {
+      console.log("[useTaskLogs] Skip subscribe:", { isSubscribed, taskId });
+      return;
+    }
 
     // 确保 WebSocket 已连接
-    if (wsManager.getStatus() !== "connected") {
+    const currentStatus = wsManager.getStatus();
+    console.log("[useTaskLogs] Subscribing to task logs:", { taskId, currentStatus });
+    
+    if (currentStatus !== "connected") {
+      console.log("[useTaskLogs] WebSocket not connected, connecting...");
       wsManager.connect();
+      return; // 连接成功后会自动订阅
     }
 
     setIsLoading(true);
@@ -101,6 +109,8 @@ export function useTaskLogs(options: UseTaskLogsOptions): UseTaskLogsReturn {
       type: "subscribe_task_logs",
       task_id: taskId,
     });
+
+    console.log("[useTaskLogs] Subscribe request sent:", sent);
 
     if (!sent) {
       setError("发送订阅请求失败");
@@ -157,6 +167,7 @@ export function useTaskLogs(options: UseTaskLogsOptions): UseTaskLogsReturn {
   // 监听订阅成功消息
   useEffect(() => {
     const unsubscribe = wsManager.subscribe("subscribe_task_logs_success", (message: WSMessage) => {
+      console.log("[useTaskLogs] Received subscribe_task_logs_success:", message);
       const data = message.data as {
         task_id: number;
         initial_logs: TaskLogEntry[];
@@ -164,6 +175,7 @@ export function useTaskLogs(options: UseTaskLogsOptions): UseTaskLogsReturn {
       };
 
       if (data.task_id === taskId) {
+        console.log("[useTaskLogs] Setting initial logs:", data.initial_logs?.length || 0);
         setLogs(data.initial_logs || []);
         setIsLoading(false);
         setIsSubscribed(true);
@@ -188,12 +200,14 @@ export function useTaskLogs(options: UseTaskLogsOptions): UseTaskLogsReturn {
   // 监听实时日志推送
   useEffect(() => {
     const unsubscribe = wsManager.subscribe("task_log", (message: WSMessage) => {
+      console.log("[useTaskLogs] Received task_log:", message);
       const data = message.data as {
         task_id: number;
         log: TaskLogEntry;
       };
 
       if (data.task_id === taskId && data.log) {
+        console.log("[useTaskLogs] Adding new log:", data.log);
         setLogs((prevLogs) => {
           const newLogs = [...prevLogs, data.log];
           // 限制最大数量

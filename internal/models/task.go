@@ -216,12 +216,13 @@ func (t *Task) BeforeCreate(tx *gorm.DB) error {
 // TaskLog 任务执行日志模型
 type TaskLog struct {
 	ID        uint64          `json:"id" gorm:"primaryKey;autoIncrement"`
-	TaskID    uint64          `json:"task_id" gorm:"not null;index"`
+	TaskID    uint64          `json:"task_id" gorm:"not null;index:idx_task_created"`
 	AccountID *uint64         `json:"account_id" gorm:"index"`
+	Level     string          `json:"level" gorm:"size:10;default:'info'"`
 	Action    string          `json:"action" gorm:"size:50;not null"`
 	Message   string          `json:"message" gorm:"type:text"`
 	ExtraData json.RawMessage `json:"extra_data" gorm:"type:json"`
-	CreatedAt time.Time       `json:"created_at"`
+	CreatedAt time.Time       `json:"created_at" gorm:"index:idx_task_created"`
 
 	// 关联关系
 	Task    Task       `json:"task" gorm:"foreignKey:TaskID"`

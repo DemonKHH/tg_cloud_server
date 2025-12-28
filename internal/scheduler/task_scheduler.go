@@ -962,6 +962,11 @@ func (ts *TaskScheduler) Close() {
 
 // createTaskLog 创建任务日志并推送给订阅者
 func (ts *TaskScheduler) createTaskLog(taskID uint64, accountID *uint64, action, message string, extraData interface{}) {
+	ts.logger.Info("createTaskLog called",
+		zap.Uint64("task_id", taskID),
+		zap.String("action", action),
+		zap.Bool("has_task_log_service", ts.taskLogService != nil))
+
 	var extraDataJSON []byte
 	if extraData != nil {
 		var err error
@@ -1003,6 +1008,7 @@ func (ts *TaskScheduler) createTaskLog(taskID uint64, accountID *uint64, action,
 				zap.Error(err))
 		}
 	} else {
+		ts.logger.Warn("TaskLogService is nil, falling back to taskRepo")
 		// 回退到直接使用 taskRepo（兼容旧代码）
 		taskLog := &models.TaskLog{
 			TaskID:    taskID,

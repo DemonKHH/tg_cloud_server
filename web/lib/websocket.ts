@@ -216,9 +216,12 @@ class WebSocketManager {
   }
 
   private notifyListeners(message: WSMessage): void {
+    console.log("[WebSocket] Received message:", message.type, message);
+    
     // 通知特定类型的监听器
     const listeners = this.messageListeners.get(message.type);
     if (listeners) {
+      console.log("[WebSocket] Notifying", listeners.size, "listeners for type:", message.type);
       listeners.forEach((listener) => listener(message));
     }
 

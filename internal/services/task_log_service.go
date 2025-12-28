@@ -41,7 +41,7 @@ type TaskLogEntry struct {
 	ID        uint64          `json:"id" gorm:"primaryKey;autoIncrement"`
 	TaskID    uint64          `json:"task_id" gorm:"not null;index:idx_task_created"`
 	AccountID *uint64         `json:"account_id" gorm:"index"`
-	Level     LogLevel        `json:"level" gorm:"type:enum('info','warn','error','debug');default:'info'"`
+	Level     LogLevel        `json:"level" gorm:"size:10;default:'info'"`
 	Action    string          `json:"action" gorm:"size:50;not null"`
 	Message   string          `json:"message" gorm:"type:text"`
 	ExtraData json.RawMessage `json:"extra_data" gorm:"type:json"`
@@ -150,6 +150,11 @@ func NewTaskLogService(db *gorm.DB, logPusher LogPusher) TaskLogService {
 
 // CreateLog 创建日志并推送
 func (s *taskLogService) CreateLog(ctx context.Context, log *TaskLogEntry) error {
+	s.logger.Info("CreateLog called",
+		zap.Uint64("task_id", log.TaskID),
+		zap.String("action", log.Action),
+		zap.String("message", log.Message))
+
 	// 设置默认值
 	if log.Level == "" {
 		log.Level = LogLevelInfo
@@ -173,7 +178,7 @@ func (s *taskLogService) CreateLog(ctx context.Context, log *TaskLogEntry) error
 		return fmt.Errorf("failed to create task log: %w", err)
 	}
 
-	s.logger.Debug("Task log created",
+	s.logger.Info("Task log created successfully",
 		zap.Uint64("log_id", log.ID),
 		zap.Uint64("task_id", log.TaskID),
 		zap.String("level", string(log.Level)),
@@ -182,6 +187,8 @@ func (s *taskLogService) CreateLog(ctx context.Context, log *TaskLogEntry) error
 	// 推送给订阅者（异步，不阻塞）
 	if s.logPusher != nil {
 		go s.logPusher.PushTaskLog(log.TaskID, log)
+	} else {
+		s.logger.Warn("No log pusher configured, skipping push")
 	}
 
 	return nil

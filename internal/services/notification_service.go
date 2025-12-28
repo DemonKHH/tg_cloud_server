@@ -1244,11 +1244,17 @@ func (s *notificationService) SetTaskLogService(taskLogService TaskLogService) {
 // SubscribeTaskLogs 订阅任务日志
 // 返回最近50条日志作为初始数据
 func (s *notificationService) SubscribeTaskLogs(userID uint64, taskID uint64) ([]*TaskLogEntry, error) {
+	s.logger.Info("SubscribeTaskLogs called",
+		zap.Uint64("user_id", userID),
+		zap.Uint64("task_id", taskID))
+
 	s.hub.mutex.RLock()
 	client, exists := s.hub.clients[userID]
 	s.hub.mutex.RUnlock()
 
 	if !exists {
+		s.logger.Warn("User not connected for task log subscription",
+			zap.Uint64("user_id", userID))
 		return nil, fmt.Errorf("user %d is not connected", userID)
 	}
 
@@ -1270,6 +1276,9 @@ func (s *notificationService) SubscribeTaskLogs(userID uint64, taskID uint64) ([
 				zap.Error(err))
 			return nil, nil // 订阅成功，但获取初始日志失败
 		}
+		s.logger.Info("Returning initial logs",
+			zap.Uint64("task_id", taskID),
+			zap.Int("log_count", len(logs)))
 		return logs, nil
 	}
 
@@ -1306,7 +1315,15 @@ func (s *notificationService) GetTaskLogSubscribers(taskID uint64) []uint64 {
 func (s *notificationService) PushTaskLog(taskID uint64, log *TaskLogEntry) {
 	// 获取该任务的所有订阅者
 	subscribers := s.hub.taskLogSubManager.GetSubscribers(taskID)
+
+	s.logger.Debug("PushTaskLog called",
+		zap.Uint64("task_id", taskID),
+		zap.Uint64("log_id", log.ID),
+		zap.Int("subscriber_count", len(subscribers)))
+
 	if len(subscribers) == 0 {
+		s.logger.Debug("No subscribers for task log",
+			zap.Uint64("task_id", taskID))
 		return
 	}
 

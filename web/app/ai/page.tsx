@@ -10,7 +10,6 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   Select,
   SelectContent,
@@ -31,7 +30,6 @@ import {
   Sparkles,
   MessageSquare,
   Users,
-  Play,
   Trash2,
   Settings2,
   Target,
@@ -86,9 +84,6 @@ export default function AIPage() {
 
   // 批量选择的账号（用于场景配置）
   const [scenarioSelectedAccounts, setScenarioSelectedAccounts] = useState<number[]>([])
-
-  // 快速创建选择的账号
-  const [quickSelectedAccounts, setQuickSelectedAccounts] = useState<number[]>([])
 
   // 加载账号列表
   useEffect(() => {
@@ -266,79 +261,6 @@ export default function AIPage() {
     }
   }
 
-  // 快速创建
-  const [quickForm, setQuickForm] = useState({
-    group: "",
-    duration: "30",
-    personality: "friendly",
-    keywords: "",
-    rate: "0.3",
-  })
-
-  const handleQuickCreate = async () => {
-    if (quickSelectedAccounts.length === 0) {
-      toast.error("请选择至少一个账号")
-      return
-    }
-    if (!quickForm.group) {
-      toast.error("请填写目标群组")
-      return
-    }
-
-    setLoading(true)
-    try {
-      let groupInput = quickForm.group.trim()
-      const config: any = {}
-
-      if (/^-?\d+$/.test(groupInput)) {
-        config.group_id = parseInt(groupInput)
-      } else {
-        groupInput = groupInput.replace(/^https?:\/\//, '').replace(/^t\.me\//, '').replace(/^@/, '')
-        config.group_name = groupInput
-      }
-
-      if (quickForm.duration) {
-        config.monitor_duration_seconds = parseInt(quickForm.duration) * 60
-      }
-
-      config.ai_config = {
-        personality: quickForm.personality,
-        response_rate: parseFloat(quickForm.rate) || 0.3,
-      }
-
-      if (quickForm.keywords) {
-        config.ai_config.keywords = quickForm.keywords.split(",").map(k => k.trim()).filter(k => k)
-      }
-
-      const response = await taskAPI.create({
-        account_ids: quickSelectedAccounts,
-        task_type: "group_chat",
-        priority: 5,
-        auto_start: true,
-        task_config: config,
-      })
-
-      if (response.code === 0) {
-        toast.success("AI炒群任务创建成功")
-        setQuickSelectedAccounts([])
-        setQuickForm({
-          group: "",
-          duration: "30",
-          personality: "friendly",
-          keywords: "",
-          rate: "0.3",
-        })
-      } else {
-        toast.error(response.msg || "创建失败")
-      }
-    } catch (error) {
-      console.error("Quick create error:", error)
-      toast.error("创建任务失败")
-    } finally {
-      setLoading(false)
-    }
-  }
-
   // 获取未添加的账号
   const availableAccounts = accounts.filter(a => !scenario.agents.find(ag => ag.account_id === a.id))
 
@@ -366,20 +288,8 @@ export default function AIPage() {
           </div>
         </div>
 
-        <Tabs defaultValue="scenario" className="space-y-6">
-          <TabsList>
-            <TabsTrigger value="scenario" className="gap-2">
-              <Users className="h-4 w-4" />
-              多智能体场景
-            </TabsTrigger>
-            <TabsTrigger value="quick" className="gap-2">
-              <Zap className="h-4 w-4" />
-              快速创建
-            </TabsTrigger>
-          </TabsList>
-
-          {/* 多智能体场景配置 */}
-          <TabsContent value="scenario" className="space-y-6">
+        {/* 多智能体场景配置 */}
+        <div className="space-y-6">
             {/* 场景基本信息 */}
             <Card>
               <CardHeader>
@@ -587,153 +497,7 @@ export default function AIPage() {
                 </CardContent>
               </Card>
             </div>
-          </TabsContent>
-
-          {/* 快速创建 */}
-          <TabsContent value="quick" className="space-y-6">
-            <div className="grid gap-6 md:grid-cols-2">
-              {/* 账号选择 */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Users className="h-5 w-5" />
-                    选择账号
-                  </CardTitle>
-                  <CardDescription>
-                    选择参与炒群的账号 (已选 {quickSelectedAccounts.length} 个)
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="max-h-[300px] overflow-y-auto space-y-2">
-                    {accounts.length === 0 ? (
-                      <p className="text-sm text-muted-foreground text-center py-4">
-                        暂无可用账号
-                      </p>
-                    ) : (
-                      accounts.map(account => (
-                        <div
-                          key={account.id}
-                          className={`flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-colors ${
-                            quickSelectedAccounts.includes(account.id)
-                              ? "border-primary bg-primary/5"
-                              : "hover:bg-muted/50"
-                          }`}
-                          onClick={() => {
-                            setQuickSelectedAccounts(prev =>
-                              prev.includes(account.id)
-                                ? prev.filter(id => id !== account.id)
-                                : [...prev, account.id]
-                            )
-                          }}
-                        >
-                          <div className="flex items-center gap-3">
-                            <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
-                              <Bot className="h-4 w-4 text-primary" />
-                            </div>
-                            <div>
-                              <p className="font-medium text-sm">{account.phone}</p>
-                              <p className="text-xs text-muted-foreground">
-                                {account.first_name || account.username || "未设置昵称"}
-                              </p>
-                            </div>
-                          </div>
-                          <Badge 
-                            variant={account.status === "normal" ? "default" : "outline"}
-                            className={
-                              account.status === "normal" ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : ""
-                            }
-                          >
-                            {account.status === "normal" ? "正常" : account.status}
-                          </Badge>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* 快速配置 */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Settings2 className="h-5 w-5" />
-                    任务配置
-                  </CardTitle>
-                  <CardDescription>配置AI炒群参数（所有账号共用）</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="space-y-2">
-                    <Label>目标群组</Label>
-                    <Input
-                      value={quickForm.group}
-                      onChange={e => setQuickForm({ ...quickForm, group: e.target.value })}
-                      placeholder="@groupname 或 t.me/group 或 群组ID"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label>持续时间 (分钟)</Label>
-                      <Input
-                        type="number"
-                        value={quickForm.duration}
-                        onChange={e => setQuickForm({ ...quickForm, duration: e.target.value })}
-                        placeholder="30"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>回复概率</Label>
-                      <Input
-                        type="number"
-                        min="0.1"
-                        max="1"
-                        step="0.1"
-                        value={quickForm.rate}
-                        onChange={e => setQuickForm({ ...quickForm, rate: e.target.value })}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>AI性格</Label>
-                    <Select
-                      value={quickForm.personality}
-                      onValueChange={v => setQuickForm({ ...quickForm, personality: v })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="friendly">友好热情</SelectItem>
-                        <SelectItem value="professional">专业严谨</SelectItem>
-                        <SelectItem value="humorous">幽默风趣</SelectItem>
-                        <SelectItem value="casual">随意轻松</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>触发关键词 (可选)</Label>
-                    <Input
-                      value={quickForm.keywords}
-                      onChange={e => setQuickForm({ ...quickForm, keywords: e.target.value })}
-                      placeholder="价格, 咨询, 问题 (逗号分隔)"
-                    />
-                  </div>
-
-                  <Button
-                    className="w-full gap-2"
-                    onClick={handleQuickCreate}
-                    disabled={loading || quickSelectedAccounts.length === 0}
-                  >
-                    <Play className="h-4 w-4" />
-                    {loading ? "创建中..." : "开始炒群"}
-                  </Button>
-                </CardContent>
-              </Card>
-            </div>
-          </TabsContent>
-        </Tabs>
+        </div>
 
         {/* 功能说明 */}
         <Card>
@@ -744,25 +508,14 @@ export default function AIPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="p-4 rounded-lg bg-muted/30 border">
-                <div className="flex items-center gap-2 mb-2">
-                  <Users className="h-5 w-5 text-blue-500" />
-                  <span className="font-medium">多智能体场景</span>
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  为每个账号配置独立人设，模拟多人真实互动。支持人设模板快速应用。
-                </p>
+            <div className="p-4 rounded-lg bg-muted/30 border">
+              <div className="flex items-center gap-2 mb-2">
+                <Users className="h-5 w-5 text-blue-500" />
+                <span className="font-medium">多智能体场景</span>
               </div>
-              <div className="p-4 rounded-lg bg-muted/30 border">
-                <div className="flex items-center gap-2 mb-2">
-                  <Zap className="h-5 w-5 text-yellow-500" />
-                  <span className="font-medium">快速创建</span>
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  简单配置，所有账号共用同一AI性格，适合快速启动。
-                </p>
-              </div>
+              <p className="text-sm text-muted-foreground">
+                为每个账号配置独立人设，模拟多人真实互动。支持人设模板快速应用。
+              </p>
             </div>
           </CardContent>
         </Card>

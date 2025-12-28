@@ -161,12 +161,7 @@ function LogEntry({ log }: { log: TaskLogEntry }) {
             </span>
           )}
         </div>
-        <p className="text-xs break-words leading-relaxed">{log.message}</p>
-        {log.extra_data && Object.keys(log.extra_data).length > 0 && (
-          <pre className="mt-1 text-[10px] text-muted-foreground bg-background/50 rounded p-1 overflow-x-auto">
-            {JSON.stringify(log.extra_data, null, 2)}
-          </pre>
-        )}
+        <p className="text-xs break-words leading-relaxed whitespace-pre-wrap">{log.message}</p>
       </div>
     </motion.div>
   )

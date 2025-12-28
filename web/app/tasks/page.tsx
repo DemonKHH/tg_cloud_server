@@ -241,6 +241,7 @@ export default function TasksPage() {
       case 'start':
         return status === 'pending'
       case 'stop':
+      case 'pause':
         return ['running', 'pending', 'queued'].includes(status)
       case 'cancel':
         return ['pending', 'queued'].includes(status)
@@ -262,6 +263,7 @@ export default function TasksPage() {
       case 'start':
         return enabled ? '启动任务' : `启动任务 - 只有待执行的任务才能启动（当前: ${statusText}）`
       case 'stop':
+      case 'pause':
         return enabled ? '停止任务' : `停止任务 - 只有运行中、待执行或排队的任务才能停止（当前: ${statusText}）`
       case 'cancel':
         return enabled ? '取消任务' : `取消任务 - 只有待执行或排队的任务才能取消（当前: ${statusText}）`

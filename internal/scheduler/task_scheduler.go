@@ -415,7 +415,7 @@ func (ts *TaskScheduler) executeTaskWithContext(ctx context.Context, task *model
 	var lastError error
 
 	// 记录任务开始日志
-	ts.createTaskLog(task.ID, nil, "task_started", fmt.Sprintf("开始执行任务，共 %d 个账号", len(accountIDs)), nil)
+	ts.createTaskLog(task.ID, nil, "task_started", fmt.Sprintf("任务开始执行，共 %d 个账号待处理", len(accountIDs)), nil)
 
 	for i, accountID := range accountIDs {
 		// 检查任务是否被取消
@@ -425,7 +425,7 @@ func (ts *TaskScheduler) executeTaskWithContext(ctx context.Context, task *model
 				zap.Uint64("task_id", task.ID),
 				zap.Int("completed_accounts", i),
 				zap.Int("total_accounts", len(accountIDs)))
-			ts.createTaskLog(task.ID, nil, "task_cancelled", fmt.Sprintf("任务被用户取消，已完成 %d/%d 个账号", i, len(accountIDs)), nil)
+			ts.createTaskLog(task.ID, nil, "task_cancelled", fmt.Sprintf("任务被取消，已完成 %d/%d 个账号", i, len(accountIDs)), nil)
 			// 任务被取消，不更新状态（由 StopTask 处理）
 			return
 		default:
@@ -440,7 +440,7 @@ func (ts *TaskScheduler) executeTaskWithContext(ctx context.Context, task *model
 			zap.Int("total_accounts", len(accountIDs)))
 
 		// 记录账号开始执行日志
-		ts.createTaskLog(task.ID, &accountID, "account_started", fmt.Sprintf("开始使用账号 %d 执行任务 (%d/%d)", accountID, i+1, len(accountIDs)), nil)
+		ts.createTaskLog(task.ID, &accountID, "account_started", fmt.Sprintf("正在处理第 %d/%d 个账号...", i+1, len(accountIDs)), nil)
 
 		// 先检查账号状态，死亡账号直接跳过
 		account, err := ts.accountRepo.GetByID(accountID)
@@ -453,10 +453,19 @@ func (ts *TaskScheduler) executeTaskWithContext(ctx context.Context, task *model
 				"status": "skipped",
 				"error":  fmt.Sprintf("获取账号信息失败: %v", err),
 			}
-			ts.createTaskLog(task.ID, &accountID, "account_skipped", fmt.Sprintf("账号 %d 获取信息失败，跳过执行", accountID), nil)
+			ts.createTaskLog(task.ID, &accountID, "account_skipped", fmt.Sprintf("获取账号信息失败: %v", err), nil)
 			failCount++
 			lastError = err
 			continue
+		}
+
+		// 获取账号显示名称（手机号）
+		accountPhone := account.Phone
+
+		// 获取代理信息（从预加载的 ProxyIP 关联中获取）
+		proxyInfo := ""
+		if account.ProxyIP != nil {
+			proxyInfo = fmt.Sprintf("%s:%d", account.ProxyIP.IP, account.ProxyIP.Port)
 		}
 
 		// 检查账号是否为死亡状态
@@ -469,7 +478,7 @@ func (ts *TaskScheduler) executeTaskWithContext(ctx context.Context, task *model
 				"status": "skipped",
 				"reason": "账号已死亡，跳过执行",
 			}
-			ts.createTaskLog(task.ID, &accountID, "account_skipped", fmt.Sprintf("账号 %d 已死亡，跳过执行", accountID), nil)
+			ts.createTaskLog(task.ID, &accountID, "account_skipped", fmt.Sprintf("账号 %s 已失效，跳过", accountPhone), nil)
 			// 死亡账号不计入失败，直接跳过
 			continue
 		}
@@ -485,14 +494,18 @@ func (ts *TaskScheduler) executeTaskWithContext(ctx context.Context, task *model
 				"error":  fmt.Sprintf("risk control check failed: %v", err),
 			}
 			// 记录风控检查失败日志
-			ts.createTaskLog(task.ID, &accountID, "risk_check_failed", fmt.Sprintf("账号 %d 风控检查失败: %v", accountID, err), nil)
+			ts.createTaskLog(task.ID, &accountID, "risk_check_failed", fmt.Sprintf("账号 %s 风控检查未通过: %v", accountPhone, err), nil)
 			failCount++
 			lastError = err
 			continue
 		}
 
-		// 记录风控检查通过日志
-		ts.createTaskLog(task.ID, &accountID, "risk_check_passed", fmt.Sprintf("账号 %d 风控检查通过", accountID), nil)
+		// 记录风控检查通过日志（使用代理信息）
+		if proxyInfo != "" {
+			ts.createTaskLog(task.ID, &accountID, "risk_check_passed", fmt.Sprintf("账号 %s 通过风控检查，使用代理 %s", accountPhone, proxyInfo), nil)
+		} else {
+			ts.createTaskLog(task.ID, &accountID, "risk_check_passed", fmt.Sprintf("账号 %s 通过风控检查", accountPhone), nil)
+		}
 
 		// 创建任务执行器
 		taskExecutor, err := ts.createTaskExecutor(task, accountID)
@@ -506,7 +519,7 @@ func (ts *TaskScheduler) executeTaskWithContext(ctx context.Context, task *model
 				"error":  fmt.Sprintf("failed to create executor: %v", err),
 			}
 			// 记录创建执行器失败日志
-			ts.createTaskLog(task.ID, &accountID, "executor_creation_failed", fmt.Sprintf("账号 %d 创建任务执行器失败: %v", accountID, err), nil)
+			ts.createTaskLog(task.ID, &accountID, "executor_creation_failed", fmt.Sprintf("账号 %s 初始化失败: %v", accountPhone, err), nil)
 			failCount++
 			lastError = err
 			continue
@@ -537,7 +550,7 @@ func (ts *TaskScheduler) executeTaskWithContext(ctx context.Context, task *model
 			accountResult["status"] = "failed"
 			accountResult["error"] = err.Error()
 			// 记录执行失败日志
-			ts.createTaskLog(task.ID, &accountID, "execution_failed", fmt.Sprintf("账号 %d 执行失败: %v (耗时: %s)", accountID, err, accountDuration), accountResult)
+			ts.createTaskLog(task.ID, &accountID, "execution_failed", fmt.Sprintf("账号 %s 执行失败: %v", accountPhone, err), nil)
 
 			// 上报任务失败结果到风控服务
 			if ts.riskControlService != nil {
@@ -564,26 +577,26 @@ func (ts *TaskScheduler) executeTaskWithContext(ctx context.Context, task *model
 
 						var message string
 						if status == "success" {
-							message = fmt.Sprintf("账号 %d 成功发送给 %s", accountID, targetName)
+							message = fmt.Sprintf("成功发送给 %s", targetName)
 						} else {
 							errorMsg := "未知错误"
 							if e, ok := resultMap["error"].(string); ok {
 								errorMsg = e
 							}
-							message = fmt.Sprintf("账号 %d 发送给 %s 失败: %s", accountID, targetName, errorMsg)
+							message = fmt.Sprintf("发送给 %s 失败: %s", targetName, errorMsg)
 						}
 
-						ts.createTaskLog(task.ID, &accountID, fmt.Sprintf("target_%s", status), message, resultMap)
+						ts.createTaskLog(task.ID, &accountID, fmt.Sprintf("target_%s", status), message, nil)
 					}
 				}
 			}
 
 			// 记录执行成功日志
-			logMessage := fmt.Sprintf("账号 %d 执行成功 (耗时: %s)", accountID, accountDuration)
+			logMessage := fmt.Sprintf("账号 %s 执行成功，耗时 %s", accountPhone, accountDuration)
 			if task.TaskType == models.TaskTypeCheck {
-				logMessage = ts.buildCheckTaskSummary(accountID, accountDuration, accountResult)
+				logMessage = ts.buildCheckTaskSummaryWithPhone(accountPhone, accountDuration, accountResult)
 			}
-			ts.createTaskLog(task.ID, &accountID, "execution_success", logMessage, accountResult)
+			ts.createTaskLog(task.ID, &accountID, "execution_success", logMessage, nil)
 
 			// 上报任务成功结果到风控服务
 			if ts.riskControlService != nil {
@@ -637,7 +650,7 @@ func (ts *TaskScheduler) executeTaskWithContext(ctx context.Context, task *model
 							statusMsg = "双向限制"
 						}
 						ts.createTaskLog(task.ID, &accountID, "restriction_updated",
-							fmt.Sprintf("账号 %d 限制状态更新: %s", accountID, statusMsg), nil)
+							fmt.Sprintf("账号 %s 状态更新: %s", accountPhone, statusMsg), nil)
 					}
 				}
 
@@ -675,7 +688,7 @@ func (ts *TaskScheduler) executeTaskWithContext(ctx context.Context, task *model
 			zap.Int("total_accounts", len(accountIDs)),
 			zap.Duration("duration", duration),
 			zap.Error(lastError))
-		ts.createTaskLog(task.ID, nil, "task_failed", fmt.Sprintf("任务执行失败，所有 %d 个账号都失败了 (总耗时: %s)", len(accountIDs), duration), task.Result)
+		ts.createTaskLog(task.ID, nil, "task_failed", fmt.Sprintf("任务失败，%d 个账号全部执行失败，耗时 %s", len(accountIDs), duration), nil)
 		ts.completeTaskWithError(task, fmt.Errorf("all %d accounts failed, last error: %w", len(accountIDs), lastError))
 	} else if failCount > 0 {
 		// 部分成功
@@ -685,7 +698,7 @@ func (ts *TaskScheduler) executeTaskWithContext(ctx context.Context, task *model
 			zap.Int("fail_count", failCount),
 			zap.Int("total_accounts", len(accountIDs)),
 			zap.Duration("duration", duration))
-		ts.createTaskLog(task.ID, nil, "task_partial_success", fmt.Sprintf("任务部分成功: %d 成功, %d 失败 (总耗时: %s)", successCount, failCount, duration), task.Result)
+		ts.createTaskLog(task.ID, nil, "task_partial_success", fmt.Sprintf("任务部分完成: %d 成功, %d 失败，耗时 %s", successCount, failCount, duration), nil)
 		ts.completeTaskWithSuccess(task)
 	} else {
 		// 全部成功
@@ -693,7 +706,7 @@ func (ts *TaskScheduler) executeTaskWithContext(ctx context.Context, task *model
 			zap.Uint64("task_id", task.ID),
 			zap.Int("total_accounts", len(accountIDs)),
 			zap.Duration("duration", duration))
-		ts.createTaskLog(task.ID, nil, "task_completed", fmt.Sprintf("任务执行成功，所有 %d 个账号都成功了 (总耗时: %s)", len(accountIDs), duration), task.Result)
+		ts.createTaskLog(task.ID, nil, "task_completed", fmt.Sprintf("任务完成，%d 个账号全部成功，耗时 %s", len(accountIDs), duration), nil)
 		ts.completeTaskWithSuccess(task)
 	}
 }
@@ -962,11 +975,6 @@ func (ts *TaskScheduler) Close() {
 
 // createTaskLog 创建任务日志并推送给订阅者
 func (ts *TaskScheduler) createTaskLog(taskID uint64, accountID *uint64, action, message string, extraData interface{}) {
-	ts.logger.Info("createTaskLog called",
-		zap.Uint64("task_id", taskID),
-		zap.String("action", action),
-		zap.Bool("has_task_log_service", ts.taskLogService != nil))
-
 	var extraDataJSON []byte
 	if extraData != nil {
 		var err error
@@ -1056,16 +1064,28 @@ func (ts *TaskScheduler) executeScenarioTaskWithContext(ctx context.Context, tas
 
 	// 记录任务开始日志，包含配置信息
 	configInfo := make(map[string]interface{})
+	var scenarioName, scenarioTopic string
 	if name, ok := task.Config["name"].(string); ok {
 		configInfo["name"] = name
+		scenarioName = name
 	}
 	if topic, ok := task.Config["topic"].(string); ok {
 		configInfo["topic"] = topic
+		scenarioTopic = topic
 	}
 	if duration, ok := task.Config["duration"].(float64); ok {
 		configInfo["duration"] = duration
 	}
-	ts.createTaskLog(task.ID, nil, "scenario_start", fmt.Sprintf("场景任务开始执行: %v", configInfo), configInfo)
+
+	// 构建用户友好的日志消息
+	startMsg := "场景任务开始执行"
+	if scenarioName != "" {
+		startMsg = fmt.Sprintf("场景任务 [%s] 开始执行", scenarioName)
+		if scenarioTopic != "" {
+			startMsg = fmt.Sprintf("场景任务 [%s] 开始执行，主题: %s", scenarioName, scenarioTopic)
+		}
+	}
+	ts.createTaskLog(task.ID, nil, "scenario_start", startMsg, configInfo)
 
 	// 创建 AgentRunner
 	runner, err := telegram.NewAgentRunner(task, ts.aiService, ts.connectionPool)
@@ -1180,6 +1200,65 @@ func (ts *TaskScheduler) buildCheckTaskSummary(accountID uint64, duration time.D
 			}
 		} else {
 			sb.WriteString("失败")
+			if err, ok := result["spam_bot_error"].(string); ok {
+				sb.WriteString(fmt.Sprintf(" (%s)", err))
+			}
+		}
+	}
+
+	return sb.String()
+}
+
+// buildCheckTaskSummaryWithPhone 构建检查任务的详细摘要（使用手机号）
+func (ts *TaskScheduler) buildCheckTaskSummaryWithPhone(phone string, duration time.Duration, result map[string]interface{}) string {
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("账号 %s 检查完成 (耗时: %s)", phone, duration))
+
+	// 2FA Check
+	if status, ok := result["2fa_check"].(string); ok {
+		sb.WriteString("\n- 2FA: ")
+		if status == "passed" {
+			has2FA, _ := result["has_2fa"].(bool)
+			if has2FA {
+				sb.WriteString("已开启")
+				if isCorrect, ok := result["is_2fa_correct"].(string); ok {
+					switch isCorrect {
+					case "unchecked":
+						sb.WriteString(" (密码已配置)")
+					case "missing":
+						sb.WriteString(" (密码未配置)")
+					}
+				}
+			} else {
+				sb.WriteString("未开启")
+			}
+		} else {
+			sb.WriteString("检查失败")
+			if err, ok := result["2fa_error"].(string); ok {
+				sb.WriteString(fmt.Sprintf(" (%s)", err))
+			}
+		}
+	}
+
+	// SpamBot Check
+	if status, ok := result["spam_bot_check"].(string); ok {
+		sb.WriteString("\n- 限制状态: ")
+		if status == "passed" {
+			isFrozen, _ := result["is_frozen"].(bool)
+			isBidirectional, _ := result["is_bidirectional"].(bool)
+
+			if isFrozen {
+				sb.WriteString("冻结")
+				if until, ok := result["frozen_until"].(string); ok && until != "" {
+					sb.WriteString(fmt.Sprintf(" (直到: %s)", until))
+				}
+			} else if isBidirectional {
+				sb.WriteString("双向限制")
+			} else {
+				sb.WriteString("正常")
+			}
+		} else {
+			sb.WriteString("检查失败")
 			if err, ok := result["spam_bot_error"].(string); ok {
 				sb.WriteString(fmt.Sprintf(" (%s)", err))
 			}

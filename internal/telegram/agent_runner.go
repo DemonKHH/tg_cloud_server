@@ -38,6 +38,14 @@ type AgentRunner struct {
 
 	// 消息触发通道
 	messageTrigger chan string // accountID
+
+	// 频率限制
+	lastSpeakTime     map[string]time.Time // accountID -> 上次发言时间
+	lastSpeakMu       sync.RWMutex
+	minSpeakInterval  time.Duration // 单个账号最小发言间隔
+	globalLastSpeak   time.Time     // 全局上次发言时间
+	globalSpeakMu     sync.Mutex
+	minGlobalInterval time.Duration // 全局最小发言间隔
 }
 
 // NewAgentRunner 创建智能体运行器
@@ -62,6 +70,10 @@ func NewAgentRunner(task *models.Task, aiService AIService, pool *ConnectionPool
 		rnd:            rand.New(rand.NewSource(time.Now().UnixNano())),
 		messageCache:   make(map[string][]models.ChatMessage),
 		messageTrigger: make(chan string, 100), // 缓冲通道，避免阻塞
+		// 频率限制配置
+		lastSpeakTime:     make(map[string]time.Time),
+		minSpeakInterval:  100 * time.Second, // 单个账号至少间隔30秒
+		minGlobalInterval: 60 * time.Second,  // 全局至少间隔10秒
 	}, nil
 }
 
@@ -166,6 +178,35 @@ func (r *AgentRunner) triggerAgentDecision(ctx context.Context, accountID string
 		r.logger.Warn("Agent not found for account",
 			zap.String("account_id", accountID))
 		return
+	}
+
+	// 检查全局发言频率
+	r.globalSpeakMu.Lock()
+	timeSinceGlobalSpeak := time.Since(r.globalLastSpeak)
+	if timeSinceGlobalSpeak < r.minGlobalInterval {
+		r.globalSpeakMu.Unlock()
+		r.logger.Debug("Global rate limit hit, skipping",
+			zap.String("account_id", accountID),
+			zap.Duration("time_since_last", timeSinceGlobalSpeak),
+			zap.Duration("min_interval", r.minGlobalInterval))
+		return
+	}
+	r.globalSpeakMu.Unlock()
+
+	// 检查单个账号发言频率
+	r.lastSpeakMu.RLock()
+	lastSpeak, exists := r.lastSpeakTime[accountID]
+	r.lastSpeakMu.RUnlock()
+
+	if exists {
+		timeSinceSpeak := time.Since(lastSpeak)
+		if timeSinceSpeak < r.minSpeakInterval {
+			r.logger.Debug("Account rate limit hit, skipping",
+				zap.String("account_id", accountID),
+				zap.Duration("time_since_last", timeSinceSpeak),
+				zap.Duration("min_interval", r.minSpeakInterval))
+			return
+		}
 	}
 
 	// 检查活跃度
@@ -299,7 +340,25 @@ func (r *AgentRunner) executeAgentLoop(ctx context.Context, agent *models.AgentC
 	r.simulateTyping(ctx, accountIDStr, delay)
 
 	// 执行发送文本消息
-	return r.sendTextMessage(ctx, accountIDStr, decision.Content, 0)
+	err = r.sendTextMessage(ctx, accountIDStr, decision.Content, 0)
+	if err == nil {
+		// 发送成功，更新发言时间
+		now := time.Now()
+
+		r.lastSpeakMu.Lock()
+		r.lastSpeakTime[accountIDStr] = now
+		r.lastSpeakMu.Unlock()
+
+		r.globalSpeakMu.Lock()
+		r.globalLastSpeak = now
+		r.globalSpeakMu.Unlock()
+
+		r.logger.Info("Agent message sent successfully",
+			zap.Uint64("account_id", agent.AccountID),
+			zap.String("persona", agent.Persona.Name),
+			zap.Duration("loop_duration", time.Since(loopStartTime)))
+	}
+	return err
 }
 
 // fetchChatHistory 获取聊天记录
